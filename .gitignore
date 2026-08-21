@@ -1,0 +1,16 @@
+# dependencies / package managers
+node_modules/
+.pnpm-store/
+.npm-cache/
+
+# dsh test profile: local harness state, not project source
+.dsh-test/
+
+# local spec notes (kept out of version control on purpose)
+REQUIREMENTS.md
+
+# logs
+*.log
+
+# OS junk
+.DS_Store

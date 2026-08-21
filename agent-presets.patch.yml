@@ -1,0 +1,14 @@
+# 一次性 patch overlay：仅为本次 dsh 启动装配 agent-presets 服务，不改任何全局默认。
+# 用法（在本目录下）: dsh --profile tui --patch agent-presets.patch.yml
+#
+# - CLI 启动时会自动注入随发行版内置的 preset 根目录（标准/PTC/极简/创造）；
+# - 插件自身追加 ~/.dsh/.agent-presets（用户预设，如"权限官"）；
+# - default 保持 standard（与现状一致）。要"只切一个会话"到创造模式：
+#   新建一个空白会话后输入 /preset cordis，仅该会话变为创造模式。
+# - 若想让本次启动里的每个新会话默认就是创造模式，把 default: standard 改成
+#   default: cordis 即可（同样不改任何持久化配置）。
+- insert:
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: standard

@@ -1,0 +1,11 @@
+# The dsh-nvim-tui bundle patch: mounts the Neovim TUI runner over dsh-base
+# under the stable plugin id `nvim-tui-runner`. The runner spawns nvim
+# (built-in TUI renders the terminal) and bridges DSH agent events to it
+# over msgpack-RPC.
+#
+# The runner is pure presentation — all agent state arrives via the host's
+# services/events (`agents`, `agentDefaultModel`, `session/event`, `appExit`).
+
+- insert:
+    - id: nvim-tui-runner
+      name: 'dsh-nvim-tui'
