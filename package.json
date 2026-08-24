@@ -21,8 +21,10 @@
     }
   },
   "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
     "smoke": "node scripts/smoke.js",
-    "prepublishOnly": "node scripts/smoke.js",
+    "prepublishOnly": "npm run build && node scripts/smoke.js",
     "e2e": "node scripts/e2e.js"
   },
   "peerDependencies": {
@@ -43,5 +45,9 @@
     "neovim",
     "terminal"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2"
+  }
 }

@@ -248,6 +248,7 @@ dsh_tui 在 `VimEnter`（用户配置加载完成后）接管窗口布局，并�
 
 ```bash
 npm install                      # neovim 客户端（+ dsh peer 依赖用于本地解析）
+npm run build                    # TypeScript (src/) → lib/（strict，tsc）
 node scripts/smoke.js            # 无头冒烟：RPC 往返 + Lua 插件 + 事件渲染
 ```
 

@@ -1,0 +1,381 @@
+import type { Context } from '@deepseek-ai/cordis'
+
+/**
+ * Shared type layer for the dsh-nvim-tui runner.
+ *
+ * Session events, host event payloads, and the structural service
+ * interfaces this bundle consumes from the harness runtime. Everything is
+ * declared LOCALLY (structural) on purpose: the services are assembled by
+ * the host profile at runtime and are not package dependencies of this
+ * bundle, so the emitted .d.ts must not reference packages consumers may
+ * not have installed (the exception: peer/eco packages like cordis are
+ * always present in a dsh host).
+ *
+ * @module dsh-nvim-tui/types
+ */
+
+/** One TokenUsage record (disjoint counters, folded per session). */
+export interface TokenUsage {
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+}
+
+/** Session usage accumulator (stats.js). */
+export interface Usage {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+}
+
+/** Durable image attachment reference (dsh-attachment). */
+export interface ImageAttachmentRef {
+  mediaType: string
+  bytes?: number
+  width?: number
+  height?: number
+  [key: string]: unknown
+}
+
+/** One message content block. */
+export type MessageContent =
+  | { type: 'text'; text: string }
+  | { type: 'reasoning'; text: string }
+  | { type: 'image'; attachment: ImageAttachmentRef }
+  | { type: string; [key: string]: unknown }
+
+/** A chat message (assistant messages carry id/usage; results carry source). */
+export interface ChatMessage {
+  id?: string
+  content?: MessageContent[]
+  text?: string
+  usage?: TokenUsage
+  source?: { callId?: string; [key: string]: unknown }
+  [key: string]: unknown
+}
+
+/** Streaming chunk from the LLM adapter. */
+export type AssistantChunk =
+  | { type: 'reasoning-delta'; text: string }
+  | { type: 'text-delta'; text: string }
+  | { type: 'finish'; reason: {
+      kind: string
+      failure?: { message?: string; [key: string]: unknown }
+      error?: { message?: string; [key: string]: unknown }
+      [key: string]: unknown
+    } }
+
+/** One session-log event. `data` IS the message for user/message variants.
+ *  Only the event kinds this bundle consumes are members — the union doubles
+ *  as the discriminator for switch/=== narrowing (no catch-all member, which
+ *  would defeat narrowing). Unknown kinds arrive as `unknown` and are
+ *  dropped by the default branch. */
+type SessionEventBase = { time?: number; seq?: number }
+export type SessionEvent =
+  | (SessionEventBase & { type: 'turn/start'; data?: { turn?: number; [key: string]: unknown } })
+  | (SessionEventBase & { type: 'turn/end'; data?: Record<string, unknown> })
+  | (SessionEventBase & { type: 'user/message'; data?: ChatMessage | { message?: ChatMessage } })
+  | (SessionEventBase & { type: 'assistant/message'; data?: { turn?: number; step?: number; message?: ChatMessage; usage?: TokenUsage } })
+  | (SessionEventBase & { type: 'assistant/chunk'; data?: { chunk?: AssistantChunk } })
+  | (SessionEventBase & { type: 'tool/call'; data?: { turn?: number; step?: number; callId?: string; name?: string; arguments?: string } })
+  | (SessionEventBase & { type: 'tool/result'; data?: { turn?: number; step?: number; message?: ChatMessage; error?: { code?: string; name?: string; [key: string]: unknown } | null } })
+  | (SessionEventBase & { type: 'session/title'; data?: { title?: string } })
+  | (SessionEventBase & { type: 'agent/status'; data?: { status?: string } })
+  | (SessionEventBase & { type: 'request/context'; data?: { contextWindow?: number; provider?: string } })
+  | (SessionEventBase & { type: 'sandbox/mode'; data?: { mode?: string } })
+  | (SessionEventBase & { type: 'approval/policy'; data?: { policy?: string } })
+  | (SessionEventBase & { type: 'plan/mode'; data?: { active?: boolean } })
+  | (SessionEventBase & { type: 'goal/change'; data?: { goal?: unknown } })
+
+/** agent/status host event payload. */
+export interface AgentStatusPayload {
+  agent?: { session?: { id?: string } }
+  status?: string
+}
+
+/** subagent/start / subagent/end payload. */
+export interface SubagentInfo {
+  runId?: string
+  provider?: string
+  id?: string
+  stopReason?: string
+}
+
+/** workflow/start payload. */
+export interface WorkflowInfo {
+  id?: string
+  meta?: { name?: string; [key: string]: unknown }
+  [key: string]: unknown
+}
+
+/** workflow/end result. */
+export interface WorkflowResult {
+  stopReason?: string
+  error?: string
+}
+
+/** approval/request payload. */
+export interface ApprovalRequest {
+  toolName?: string
+  reason?: string
+  agent?: { session?: { id?: string } }
+  signal?: { addEventListener: (ev: string, cb: () => void, opts?: unknown) => void; removeEventListener?: (ev: string, cb: () => void) => void }
+}
+
+/** One user question (userQuestions service). */
+export interface UserQuestion {
+  id: string
+  question: string
+  detail?: string
+  header?: string
+  multiSelect?: boolean
+  options?: Array<{ label: string; description?: string }>
+}
+
+// ---------------------------------------------------------------------------
+// Service surfaces (structural — what this bundle actually calls)
+// ---------------------------------------------------------------------------
+
+/** dsh-subagent directory service. */
+export interface SubagentsService {
+  listChildren?: (parentSessionId: string) => Promise<Array<{
+    kind?: string
+    id: string
+    label?: string
+    activity?: string
+    mode?: string
+    reason?: string
+    hasChildren?: boolean
+  }>>
+  followup?: (agent: unknown, childId: string, content: unknown[], options: unknown) => Promise<unknown>
+}
+
+/** dsh-session-persistence: history list + read-only inspection. */
+export interface SessionPersistenceService {
+  list?: () => Promise<Array<{
+    id: string
+    cwd?: string
+    origin?: string
+    parentSession?: string
+    createdAt?: number
+    title?: string
+  }>>
+  inspect?: (id: string) => Promise<{ events?: unknown[] } | undefined>
+  truncateStored?: (id: string, seq: unknown) => Promise<unknown> | unknown
+}
+
+/** dsh-attachment durable image save. */
+export interface AttachmentsService {
+  saveImage: (img: SaveImageAttachment) => Promise<ImageAttachmentRef>
+  imageLimits?: { maxImagesPerMessage?: number }
+}
+
+/** Input-side image shape (bytes + type + optional name). */
+export interface SaveImageAttachment {
+  data: Uint8Array
+  mediaType: string
+  name?: string
+}
+
+/** dsh-compaction service. */
+export interface CompactionService {
+  compactNow: (
+    opts: { session: unknown; options: unknown },
+    signal: AbortSignal,
+  ) => Promise<{ shadowedSeqs: unknown[]; shadowedTokenCount: number } | null>
+}
+
+/** dsh-goal service. */
+export interface GoalState {
+  id: string
+  revision: number
+  objective: string
+  phase: string
+  blockedReason?: { message: string }
+  roundsStarted: number
+  maxGoalRounds: number
+  activation: string
+}
+export interface GoalsService {
+  get: (agent: unknown) => GoalState | undefined
+  create: (agent: unknown, opts: { objective: string }) => void
+  pause: (agent: unknown, ref?: { id: string; revision: number }) => void
+  resume: (agent: unknown, ref?: { id: string; revision: number }) => void
+  complete: (agent: unknown, ref?: { id: string; revision: number }) => void
+  clear: (agent: unknown, ref?: { id: string; revision: number }) => void
+}
+
+/** dsh-plan-mode service. */
+export interface PlanModeService {
+  get: (agent: unknown) => { active: boolean; pending?: boolean }
+  set: (agent: unknown, on: boolean) => string
+}
+
+/** dsh-jobs service (workflow/job registry). */
+export interface JobsService {
+  kill: (jobId: string, agent: unknown, reason: string) => string
+  list: (agent: unknown) => Array<{ id: string; label?: string; status: string; startedAt?: number }>
+}
+
+/** dsh-skill service. */
+export interface SkillsService {
+  get: (name: string, scope: { scope: unknown }) => Promise<SkillDef | undefined>
+  list: (scope: { scope: unknown }) => Promise<SkillDef[]>
+}
+
+export interface SkillDef {
+  name: string
+  description?: string
+  whenToUse?: string
+  content?: string
+}
+
+/** dsh-permission-presets service. */
+export interface PermissionPresetsService {
+  names: Iterable<string>
+  set: (session: unknown, name: string) => void
+  current: (events: unknown) => string
+  optionOf: (name: string) => { label?: string; description?: string } | undefined
+}
+
+/** dsh-file-reference service. */
+export interface FileReferencesService {
+  list?: (agent: unknown, query: string, signal: AbortSignal) => Promise<Array<{ path: string }>>
+}
+
+/** dsh-settings service. */
+export interface SettingsService {
+  prepareDocument?: () => Promise<string | undefined>
+  describe?: (opts?: { redactSecrets?: boolean }) => Array<{
+    name?: string
+    sections?: Array<{ key: string; value?: unknown; [k: string]: unknown }>
+    [k: string]: unknown
+  }>
+  documentPath?: string
+  writable?: boolean
+}
+
+/** dsh-tools (MCP) service. */
+export interface ToolsService {
+  schemas: (agent: unknown) => Array<{ name: string }>
+}
+
+/** dsh-session-query service. */
+export interface SessionQueryService {
+  searchSessions: (opts: {
+    query: string
+    eventFilters?: unknown[]
+    limit: number
+  }) => Promise<{ items?: Array<{ sessionId?: string; id?: string; title?: string; bestMatch?: { snippet?: string } }> }>
+}
+
+/** dsh-session-title service. */
+export interface SessionTitleService {
+  rename: (session: unknown, title: string) => void
+}
+
+/** dsh-message-feedback service. */
+export interface MessageFeedbackService {
+  list: (opts: { sessionId: string }) => Promise<{ ok: boolean; value: { items: Array<{ messageId: string; version?: unknown }> } }>
+  delete: (opts: { sessionId: string; messageId: string; ifVersion: unknown }) => Promise<unknown>
+  put: (opts: {
+    sessionId: string
+    messageId: string
+    rating: string
+    note?: string
+    ifVersion: unknown
+  }) => Promise<{ ok: boolean; error?: { code?: string } }>
+}
+
+/** dsh-user-questions interactive answerer provider. */
+export interface UserQuestionsService {
+  registerProvider: (provider: {
+    ask: (request: { questions?: UserQuestion[]; signal?: { addEventListener: (ev: string, cb: () => void, opts?: unknown) => void } }) => Promise<unknown>
+  }) => () => void
+}
+
+/** dsh-agent-presets service. */
+export interface AgentPresetsService {
+  list?: () => Promise<Array<{ id: string; name?: string }>>
+  recompose?: (agentCtx: unknown, presetId: string) => Promise<{ id: string }>
+}
+
+/** A live session record from the harness store. */
+export interface HarnessSession {
+  id: string
+  header?: {
+    parentSession?: string
+    origin?: string
+    createdAt?: number
+    cwd?: string
+    [key: string]: unknown
+  }
+  events?: SessionEvent[]
+  append: (type: string, data: unknown) => void
+  [key: string]: unknown
+}
+
+/** The harness session store. */
+export interface SessionStore {
+  get: (id: string) => HarnessSession | undefined
+  list: () => HarnessSession[]
+  flush: (session: HarnessSession) => Promise<unknown>
+  fork: (parentId: string) => HarnessSession
+}
+
+/** An owned live agent handle. */
+export interface AgentHandle {
+  agent: {
+    session: HarnessSession & { header: Record<string, unknown>; events: SessionEvent[] }
+    status?: string
+    cancel: (cause: unknown) => void
+    followup: (message: unknown) => void
+    steer: (directive: unknown) => void
+    [key: string]: unknown
+  }
+  dispose: () => Promise<unknown>
+}
+
+/** The harness agents service. */
+export interface AgentsService {
+  create: (options: {
+    sessionId: string
+    meta?: Record<string, unknown>
+    agentOptions?: Record<string, unknown>
+    seed?: unknown[]
+    setup?: (agentCtx: Context) => void
+  }) => Promise<AgentHandle>
+  resume: (options: {
+    resumeSessionId: string
+    agentOptions?: Record<string, unknown>
+    setup?: (agentCtx: Context) => void
+  }) => Promise<AgentHandle>
+}
+
+/** dsh-agent-default-model selection. */
+export interface ModelSelection {
+  currentSelection: () => { provider: string; model: string; reasoningEffort?: string; [key: string]: unknown }
+  saveSelection: (next: unknown) => Promise<unknown>
+}
+
+/** LLM service (model info / providers). */
+export interface LlmService {
+  resolveModelInfo: (provider: string, model: string) => Promise<{ inputModalities?: string[] } | undefined>
+  listProviders: () => Array<{ provider: string; models?: Array<string | { id?: string; [k: string]: unknown }> }>
+}
+
+/**
+ * The harness runtime context as consumed by this bundle: the cordis context
+ * narrowed to the injected services (sessions/agents/agentDefaultModel) plus
+ * the loosely-typed service registry and event bus.
+ */
+export interface RuntimeCtx {
+  get(name: string): unknown
+  on(name: string, cb: (...args: any[]) => unknown): () => void
+  sessions: SessionStore
+  agents: AgentsService
+  agentDefaultModel: ModelSelection
+  llm?: LlmService
+}
