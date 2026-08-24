@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis';
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
-export declare const BUILD_VERSION = "0.1.0";
+export declare const BUILD_VERSION = "0.2.0";
 export declare const BUILD_STAMP: string;
 export declare const name = "dsh-nvim-tui";
 /**
