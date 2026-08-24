@@ -5,10 +5,10 @@
  * replaces them with aligned, bordered rows:
  *
  *   ┌─────────┬────┬─────┐
- *   │ 日期    │ AQI│ 等级│   <- every cell bold (DshTuiBold)
- *   ├─────────┼────┼─────┤
- *   │ 今天    │ 29 │ 🟢  │   <- numeric columns right-aligned
- *   └─────────┴────┴─────┘   <- borders dim (DshTuiDivider)
+ *   │ 日期    │ AQI│ 等级│   <- the WHOLE table bold (DshTuiBold):
+ *   ├─────────┼────┼─────┤      cells, │ separators, ─ borders and corners
+ *   │ 今天    │ 29 │ 🟢  │      alike (uniform stroke weight)
+ *   └─────────┴────┴─────┘
  *
  * Column widths use DISPLAY width (CJK/emoji count 2), so the borders line up
  * in nvim's grid. While the tail is still streaming (`streamOpen`), an open
@@ -23,9 +23,6 @@ import stringWidth from 'string-width'
 export type TableEntry =
   | { table: true; text: string; group: string | null; spans: Array<{ s: number; e: number; group: string }> }
   | { table: false; raw: string }
-
-/** UTF-8 byte length — highlight spans must be byte-indexed for nvim. */
-const utf8Len = (s: string): number => Buffer.byteLength(s ?? '', 'utf8')
 
 const isTableRow = (line: string): boolean => /^\s*\|.*\|\s*$/.test(line)
 const isSeparator = (line: string): boolean => /^\s*\|(\s*:?-{2,}:?\s*\|)+\s*$/.test(line)
@@ -95,33 +92,26 @@ export function renderTable(block: string[], closed: boolean): RenderedRow[] {
   const border = (l: string, m: string, r: string): string =>
     l + widths.map((w) => '─'.repeat(w + 2)).join(m) + r
   /**
-   * One bordered row. EVERY row's cells carry DshTuiBold spans (uniform
-   * style); the spans cover only cell contents — a whole-row bold group
-   * would bold the `│` separators too and render them as thick vertical
-   * lines.
+   * One bordered data row. The WHOLE table renders bold (uniform stroke
+   * weight): every row — cells, `│` separators, padding — carries a
+   * full-row DshTuiBold group, and the border rows (─ corners junctions)
+   * carry the same group. The old style (per-cell bold spans + dim borders)
+   * left `─`/corners visually thinner than `│`, so the frame looked
+   * half-bold; uniform bold everywhere fixes the mismatch.
    */
-  const row = (cells: string[], group: string | null): RenderedRow => {
-    const parts = cells.map((t, c) => cell(t, c))
-    const spans: Array<{ s: number; e: number; group: string }> = []
-    let col = 1 // after the leading '│'
-    for (const part of parts) {
-      spans.push({ s: col, e: col + utf8Len(part), group: 'DshTuiBold' })
-      col += utf8Len(part) + 1 // cell content + '│' separator
-    }
-    return {
-      text: '│' + parts.join('│') + '│',
-      group,
-      spans,
-    }
-  }
+  const row = (cells: string[]): RenderedRow => ({
+    text: '│' + cells.map((t, c) => cell(t, c)).join('│') + '│',
+    group: 'DshTuiBold',
+    spans: [],
+  })
 
   const out: RenderedRow[] = [
-    { text: border('┌', '┬', '┐'), group: 'DshTuiDivider', spans: [] },
-    row(header, null),
-    { text: border('├', '┼', '┤'), group: 'DshTuiDivider', spans: [] },
+    { text: border('┌', '┬', '┐'), group: 'DshTuiBold', spans: [] },
+    row(header),
+    { text: border('├', '┼', '┤'), group: 'DshTuiBold', spans: [] },
   ]
-  for (const r of body) out.push(row(r, null))
-  if (closed) out.push({ text: border('└', '┴', '┘'), group: 'DshTuiDivider', spans: [] })
+  for (const r of body) out.push(row(r))
+  if (closed) out.push({ text: border('└', '┴', '┘'), group: 'DshTuiBold', spans: [] })
   return out
 }
 

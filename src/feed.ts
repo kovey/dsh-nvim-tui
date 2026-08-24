@@ -28,7 +28,8 @@ import { NeovimClient } from 'neovim'
 
 import { transformTables } from './table.js'
 import { imageLabel } from './images.js'
-import { formatElapsed } from './stats.js'
+import { formatElapsed, formatTokens } from './stats.js'
+import { t } from './i18n.js'
 import type { AssistantChunk, ChatMessage, ImageAttachmentRef, MessageContent, SessionEvent } from './types.js'
 
 const INLINE_RE = /(\*\*[^*]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\n]+\))/g
@@ -295,6 +296,34 @@ export class FeedRenderer {
     this.reasoningStartedAt = null
   }
 
+  /**
+   * Structured tool results (web_search hits, grep/glob matches, …): a JSON
+   * array of objects itemizes into compact rows instead of one truncated
+   * blob — the terminal's counterpart of the web's per-tool cards. Returns
+   * null when the text is not a usable JSON array.
+   */
+  static structuredHits(text: string): string[] | null {
+    if (!text || (!text.trimStart().startsWith('[') && !text.trimStart().startsWith('{'))) return null
+    let parsed: unknown
+    try { parsed = JSON.parse(text) } catch { return null }
+    const items = Array.isArray(parsed)
+      ? parsed
+      : (parsed as { results?: unknown; hits?: unknown } | null)?.results ?? (parsed as { results?: unknown; hits?: unknown } | null)?.hits
+    if (!Array.isArray(items) || items.length === 0) return null
+    const rows: string[] = []
+    for (const it of items.slice(0, 8)) {
+      if (typeof it !== 'object' || it === null) { rows.push(FeedRenderer.truncate(it)); continue }
+      const o = it as { title?: unknown; url?: unknown; snippet?: unknown; path?: unknown; name?: unknown }
+      const title = String(o.title ?? o.name ?? o.path ?? '').replace(/\s+/g, ' ').trim()
+      const url = String(o.url ?? '').trim()
+      const snippet = String(o.snippet ?? '').replace(/\s+/g, ' ').trim()
+      const parts = [title, url, snippet].filter((x) => x !== '')
+      if (parts.length === 0) { rows.push(FeedRenderer.truncate(it)); continue }
+      rows.push(FeedRenderer.truncate(parts.join(' · '), 100))
+    }
+    return rows.length > 0 ? rows : null
+  }
+
   /** One-line preview of raw model JSON arguments. */
   static argsPreview(argumentsText: string | undefined): string {
     if (typeof argumentsText !== 'string' || argumentsText.trim() === '') return '{}'
@@ -394,9 +423,11 @@ export class FeedRenderer {
         const name = call?.name ?? 'tool'
         const elapsed = call ? Math.max(0, (this.eventTime ?? Date.now()) - (call.startedAt ?? this.eventTime)) : null
         const failed = data.error !== undefined && data.error !== null
-        const preview = FeedRenderer.truncate(FeedRenderer.messageText(data.message))
+        const resultText = FeedRenderer.messageText(data.message)
+        const structured = failed ? null : FeedRenderer.structuredHits(resultText)
+        const preview = FeedRenderer.truncate(resultText)
         const elapsedText = elapsed === null ? '' : ` · ${formatElapsed(elapsed)}`
-        const previewPart = !this.dense && preview ? ` · ${preview}` : ''
+        const previewPart = !this.dense && structured === null && preview ? ` · ${preview}` : ''
         let line: string
         if (failed) {
           const err = data.error
@@ -404,11 +435,14 @@ export class FeedRenderer {
         } else {
           line = `✓ ${name}${elapsedText}${previewPart}`
         }
-        if (this.reasoningBuf !== null) {
-          this.panelLines.push(line)
-          this.panelVersion++
-        } else {
-          this.pushTool(line)
+        const outLines = structured === null || this.dense ? [line] : [line, ...structured.map((h) => `  · ${h}`)]
+        for (const l of outLines) {
+          if (this.reasoningBuf !== null) {
+            this.panelLines.push(l)
+            this.panelVersion++
+          } else {
+            this.pushTool(l)
+          }
         }
         this.toolActivity = null
         this.schedule()
@@ -435,6 +469,74 @@ export class FeedRenderer {
         this.turnMarkerBase = null
         this.schedule()
         break
+      case 'todo/write': {
+        // Standing todo list (todo_write): the terminal counterpart of the
+        // web's TodoDock strip — a compact block at its flow position.
+        const todos = event.data?.todos ?? []
+        if (todos.length === 0) break
+        const count = (st: string) => todos.filter((t) => t.status === st).length
+        const done = count('completed')
+        const doing = count('in_progress')
+        const pending = count('pending')
+        this.base.push('', `${t('📋 待办')} ${todos.length} ${t('项')} · ${done} ${t('完成')} · ${doing} ${t('进行中')} · ${pending} ${t('待办')}`)
+        for (const t of todos) {
+          const mark = t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '…' : '·'
+          this.base.push(`  ${mark} ${t.content}`)
+        }
+        this.schedule()
+        break
+      }
+      case 'compaction/start':
+        this.base.push('', t('⋯ 正在压缩上下文…'))
+        this.schedule()
+        break
+      case 'compaction/summary': {
+        // Checkpoint row (web: one collapsed disclosure): replaced-item and
+        // estimated-token counts, summary block folded underneath.
+        const d = event.data
+        const rows = d?.shadowedSeqs?.length
+        const tokens = d?.shadowedTokenCount
+        this.base.push('', `${t('⋯ 上下文压缩')} · ${rows ?? '?'} ${t('条历史')}${typeof tokens === 'number' ? ` · ≈${formatTokens(tokens)} tokens` : ''}`)
+        if (d?.summary !== undefined && d.summary !== '') {
+          this.base.push(`  ${t('摘要')}：`)
+          for (const line of d.summary.split('\n').slice(0, 12)) this.base.push(`    ${line}`)
+        }
+        this.schedule()
+        break
+      }
+      case 'compaction/end':
+        break
+      case 'llm/retry': {
+        // Muted retry status row (web keeps ONE row per chain; the buffer
+        // model is append-only, so each attempt lands its own row).
+        const d = event.data
+        const delayText = typeof d?.delayMs === 'number' ? formatElapsed(d.delayMs) : '?'
+        const fail = d?.failure?.message ?? d?.failure?.code
+        const cap = d?.mode === 'always' ? '∞' : (d?.maxRetries !== undefined ? `/${d.maxRetries}` : '')
+        this.base.push('', `${t('↻ 重试 #')}${d?.retry ?? '?'}${cap} · ${delayText} ${t('后重试')}${fail ? ` · ${FeedRenderer.truncate(fail)}` : ''}`)
+        this.schedule()
+        break
+      }
+      case 'llm/retry-started':
+        this.base.push('', `${t('↻ 重试 #')}${event.data?.retry ?? '?'} ${t('已发起')}`)
+        this.schedule()
+        break
+      case 'tool-workflow/run-start':
+        this.pushWorkflow(`◈ workflow ${FeedRenderer.truncate(String(event.data?.name ?? event.data?.runId ?? ''), 60)}`)
+        break
+      case 'tool-workflow/agent-start': {
+        const d = event.data
+        this.pushSubagent(`  ◇ #${d?.seq ?? '?'} ${d?.label ?? 'subagent'}${d?.phase ? ` · ${d.phase}` : ''}`)
+        break
+      }
+      case 'tool-workflow/agent-end': {
+        const d = event.data
+        this.pushSubagent(`  ◇ #${d?.seq ?? '?'} · ${d?.outcome ?? 'settled'}`)
+        break
+      }
+      case 'tool-workflow/run-end':
+        this.pushWorkflow(`◈ workflow · ${event.data?.stopReason ?? 'ended'}`)
+        break
       default:
         break
     }
@@ -448,7 +550,7 @@ export class FeedRenderer {
     this.pushSubagent(`◇ subagent ${info.provider ?? '?'} · ${FeedRenderer.truncate(String(info.id ?? ''), 16)}`)
   }
 
-  subagentEnd(info: { runId?: string; provider?: string; stopReason?: string }): void {
+  subagentEnd(info: { runId?: string; provider?: string; id?: string; stopReason?: string }): void {
     const run = info.runId ? this.subagents.get(info.runId) : undefined
     const elapsed = run ? Date.now() - run.startedAt : null
     this.subagents.delete(info.runId ?? '')

@@ -972,7 +972,11 @@ end
 -- ---------------------------------------------------------------------------
 -- Generic scrollable info float (workflow view, settings overview, …).
 -- ---------------------------------------------------------------------------
-function M.show_lines_float(title, lines)
+--- Generic read-only lines float (workflow / settings / trajectory).
+--- `editPath` (optional): map i/o to open that file in a new tab — the
+--- settings overview's edit shortcut. Without it i/o are Nop'd so a read-only
+--- float never answers an edit attempt with a raw E21 error.
+function M.show_lines_float(title, lines, editPath)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = 'nofile'
   vim.bo[buf].bufhidden = 'wipe'
@@ -996,6 +1000,20 @@ function M.show_lines_float(title, lines)
   vim.wo[win].cursorline = true
   vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_lines_float()<CR>', { buffer = buf })
   vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_lines_float()<CR>', { buffer = buf })
+  if type(editPath) == 'string' and editPath ~= '' then
+    vim.keymap.set('n', 'i', function()
+      vim.cmd('tabedit ' .. vim.fn.fnameescape(editPath))
+      M.close_lines_float()
+    end, { buffer = buf })
+    vim.keymap.set('n', 'o', function()
+      vim.cmd('tabedit ' .. vim.fn.fnameescape(editPath))
+      M.close_lines_float()
+    end, { buffer = buf })
+  else
+    -- Read-only float: an edit attempt must not surface a raw E21.
+    vim.keymap.set('n', 'i', '<Nop>', { buffer = buf })
+    vim.keymap.set('n', 'o', '<Nop>', { buffer = buf })
+  end
   vim.cmd('stopinsert') -- input window hands over in insert mode
   M._linesWin = win
   return { buf = buf, win = win }

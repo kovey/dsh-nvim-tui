@@ -5,6 +5,7 @@
 //   npm run e2e -- "你好，请只回复：收到"
 //
 // Requires a working dsh install + credentials (the same env `dsh` uses).
+// Runs via Node's native type stripping (Node >= 23.6).
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -30,12 +31,12 @@ const child = spawn('dsh', ['--profile', 'nvim-tui'], {
 })
 
 let out = ''
-child.stdout.on('data', (d) => { out += d })
-child.stderr.on('data', (d) => { out += d })
+child.stdout.on('data', (d: Buffer) => { out += d.toString() })
+child.stderr.on('data', (d: Buffer) => { out += d.toString() })
 
 const deadline = Date.now() + timeoutMs
-const finished = await new Promise((resolve) => {
-  const poll = () => {
+const finished = await new Promise<'dump' | 'exit' | 'timeout'>((resolve) => {
+  const poll = (): void => {
     if (fs.existsSync(dumpPath)) return resolve('dump')
     if (child.exitCode !== null) return resolve('exit')
     if (Date.now() > deadline) return resolve('timeout')

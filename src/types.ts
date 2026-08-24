@@ -78,7 +78,7 @@ export type SessionEvent =
   | (SessionEventBase & { type: 'turn/end'; data?: Record<string, unknown> })
   | (SessionEventBase & { type: 'user/message'; data?: ChatMessage | { message?: ChatMessage } })
   | (SessionEventBase & { type: 'assistant/message'; data?: { turn?: number; step?: number; message?: ChatMessage; usage?: TokenUsage } })
-  | (SessionEventBase & { type: 'assistant/chunk'; data?: { chunk?: AssistantChunk } })
+  | (SessionEventBase & { type: 'assistant/chunk'; data?: { turn?: number; step?: number; chunk?: AssistantChunk } })
   | (SessionEventBase & { type: 'tool/call'; data?: { turn?: number; step?: number; callId?: string; name?: string; arguments?: string } })
   | (SessionEventBase & { type: 'tool/result'; data?: { turn?: number; step?: number; message?: ChatMessage; error?: { code?: string; name?: string; [key: string]: unknown } | null } })
   | (SessionEventBase & { type: 'session/title'; data?: { title?: string } })
@@ -88,6 +88,16 @@ export type SessionEvent =
   | (SessionEventBase & { type: 'approval/policy'; data?: { policy?: string } })
   | (SessionEventBase & { type: 'plan/mode'; data?: { active?: boolean } })
   | (SessionEventBase & { type: 'goal/change'; data?: { goal?: unknown } })
+  | (SessionEventBase & { type: 'todo/write'; data?: { todos?: Array<{ content: string; status: string }> } })
+  | (SessionEventBase & { type: 'compaction/start'; data?: { compactionId?: string; sourceCommandId?: string } })
+  | (SessionEventBase & { type: 'compaction/summary'; data?: { compactionId?: string; sourceCommandId?: string; summary?: string; shadowedSeqs?: number[]; shadowedTokenCount?: number } })
+  | (SessionEventBase & { type: 'compaction/end'; data?: { compactionId?: string } })
+  | (SessionEventBase & { type: 'llm/retry'; data?: { retryId?: string; retry?: number; maxRetries?: number; mode?: string; delayMs?: number; failure?: { message?: string; code?: string; [k: string]: unknown } } })
+  | (SessionEventBase & { type: 'llm/retry-started'; data?: { retryId?: string; retry?: number } })
+  | (SessionEventBase & { type: 'tool-workflow/run-start'; data?: { runId?: string; name?: string } })
+  | (SessionEventBase & { type: 'tool-workflow/agent-start'; data?: { runId?: string; seq?: number; label?: string; phase?: string; childId?: string } })
+  | (SessionEventBase & { type: 'tool-workflow/agent-end'; data?: { runId?: string; seq?: number; outcome?: string } })
+  | (SessionEventBase & { type: 'tool-workflow/run-end'; data?: { runId?: string; stopReason?: string } })
 
 /** agent/status host event payload. */
 export interface AgentStatusPayload {
@@ -240,6 +250,45 @@ export interface PermissionPresetsService {
   optionOf: (name: string) => { label?: string; description?: string } | undefined
 }
 
+/** dsh-host-plugin-inventory (read-only loader entry projection). */
+export interface PluginInventoryService {
+  list?: () => { entries?: Array<{ entryId: string; moduleName: string; enabled: boolean; fiberPhase: string }> }
+}
+
+/** dsh-session-projection registry (whole-log projection reads). */
+export interface SessionProjectionsService {
+  stateOf?: (session: unknown, key: string) => unknown
+  snapshot?: (session: unknown) => Record<string, unknown>
+}
+
+/** dsh-workspace registry (workspace grouping + session archive). */
+export interface WorkspaceEntityLike {
+  id: string
+  path: string
+  title: string
+  sessionIds: readonly string[]
+  setTitle?: (title: string) => Promise<void>
+  detachSession?: (sessionId: string) => Promise<void>
+}
+export interface WorkspacesService {
+  list: () => WorkspaceEntityLike[]
+  create?: (path: string, title?: string) => Promise<{ id: string }>
+  delete?: (id: string) => Promise<boolean>
+  insertBefore?: (id: string, beforeId?: string) => Promise<readonly string[]>
+  archiveSession?: (sessionId: string) => Promise<void>
+  archivedSessionIds?: readonly string[]
+}
+
+/** dsh-session-reference resolver (in-process candidate listing). */
+export interface SessionReferenceService {
+  listCandidates?: (agent: unknown, query?: string, limit?: number, signal?: AbortSignal) => Promise<Array<{
+    sessionId: string
+    label: string
+    cwd?: string
+    createdAt: number
+  }>>
+}
+
 /** dsh-file-reference service. */
 export interface FileReferencesService {
   list?: (agent: unknown, query: string, signal: AbortSignal) => Promise<Array<{ path: string }>>
@@ -247,6 +296,7 @@ export interface FileReferencesService {
 
 /** dsh-settings service. */
 export interface SettingsService {
+  update?: (ns: string, patch: Record<string, unknown>, expectedRevision?: number) => Promise<void>
   prepareDocument?: () => Promise<string | undefined>
   describe?: (opts?: { redactSecrets?: boolean }) => Array<{
     name?: string
@@ -325,6 +375,16 @@ export interface SessionStore {
   fork: (parentId: string) => HarnessSession
 }
 
+/** The agent inbox projection (queued next-turn / next-step messages). */
+export interface InboxLike {
+  nextTurn?: readonly unknown[]
+  nextStep?: readonly unknown[]
+  hasPending?: boolean
+  remove?: (messageId: string) => boolean
+  replace?: (messageId: string, newMessage: unknown) => boolean
+  clear?: () => void
+}
+
 /** An owned live agent handle. */
 export interface AgentHandle {
   agent: {
@@ -333,6 +393,7 @@ export interface AgentHandle {
     cancel: (cause: unknown) => void
     followup: (message: unknown) => void
     steer: (directive: unknown) => void
+    inbox?: InboxLike
     [key: string]: unknown
   }
   dispose: () => Promise<unknown>
@@ -363,7 +424,8 @@ export interface ModelSelection {
 /** LLM service (model info / providers). */
 export interface LlmService {
   resolveModelInfo: (provider: string, model: string) => Promise<{ inputModalities?: string[] } | undefined>
-  listProviders: () => Array<{ provider: string; models?: Array<string | { id?: string; [k: string]: unknown }> }>
+  listProviders: () => Array<{ id?: string; name?: string; provider?: string }>
+  listConfigurableProviders?: () => Array<{ provider?: string; displayName?: string; settingsNs?: string }>
 }
 
 /**

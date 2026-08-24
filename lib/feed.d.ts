@@ -124,6 +124,13 @@ export declare class FeedRenderer {
      *  (read-only replays like the subagent view) the full thinking text is
      *  inlined as a dim block instead. */
     commitReasoning(): void;
+    /**
+     * Structured tool results (web_search hits, grep/glob matches, …): a JSON
+     * array of objects itemizes into compact rows instead of one truncated
+     * blob — the terminal's counterpart of the web's per-tool cards. Returns
+     * null when the text is not a usable JSON array.
+     */
+    static structuredHits(text: string): string[] | null;
     /** One-line preview of raw model JSON arguments. */
     static argsPreview(argumentsText: string | undefined): string;
     static truncate(text: unknown, max?: number): string;
@@ -138,6 +145,7 @@ export declare class FeedRenderer {
     subagentEnd(info: {
         runId?: string;
         provider?: string;
+        id?: string;
         stopReason?: string;
     }): void;
     workflowStart(info: {

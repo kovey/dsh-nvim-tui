@@ -154,7 +154,14 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 会话 | `/skills [技能名]` | 技能目录浏览（浮窗查看详情） |
 | 会话 | `/fb up\|down [备注]` | 对最后一条助手消息点赞/点踩（message-feedback） |
 | 会话 | `/subagents` | 子代理目录（思考链只读回放 + continuable 续聊 `subagents.followup`） |
-| 会话 | `/workflow` | 工作流运行视图（阶段树 + agent 序列 + 日志） |
+| 会话 | `/workflow` | 工作流运行视图（阶段树 + agent 序列 + 日志；转录内嵌套回放） |
+| 会话 | `/queue` | 消息队列：查看/编辑/删除排队消息、清空（agent inbox 投影，状态栏 ⏳ 计数） |
+| 会话 | `/workspace [add <目录> [标题] \| delete <id>]` | 工作区管理（dsh-workspace：分组/排序/归档） |
+| 会话 | `/archive [会话id]` | 归档会话（从所有列表隐藏，非破坏性） |
+| 会话 | `/locale [zh\|en]` | 界面语言切换（runner 侧字典化；Lua 按键提示保持中文） |
+| 信息 | `/context` | 上下文组成分解（≈used/capacity · system/tools/messages · claim 窗口） |
+| 信息 | `/plugins` | 宿主插件清单（loader 条目只读投影） |
+| 模型 | `/models` | 模型/供应商目录（llm.listProviders + 当前选择） |
 | 会话 | `/attach [路径]` | 附加文件/目录（图片 = durable attachment，其余 = @ 路径引用）；`@` 输入即文件引用补全 |
 | 会话 | `/image <路径> [提示]` | **多模态识图**：本地图片（png/jpg/webp/gif，支持 `~/`）随提示发送；macOS 无参数时读剪贴板图片；`/image clear` 清空 `<C-v>` 队列 |
 | 模型 | `/model [provider/model]` | 无参浮窗选择，带参直接切换；热切 + 持久化默认 |
@@ -167,6 +174,7 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 显示 | `/theme default\|dim\|vivid\|contrast\|mono` | 内置高亮预设（不覆盖则跟随 colorscheme） |
 | 显示 | `/layout default\|panel` | 布局预设（无参循环切换） |
 | 信息 | `/cost` `/export` `/config` `/status` `/doctor` | 用量成本 / 导出转录 md / 配置摘要 / 会话快照 / 终端诊断 |
+| 系统 | `/settings [edit \| set <key.path> <value>]` | 设置总览 / 打开 settings.yaml / 类型化写入（settings.update） |
 | 信息 | `/mcp` | MCP server 工具统计（按 server 分组） |
 | 信息 | `/deliverables` | 本回合交付物（nvim 新标签页打开产物文件） |
 | 信息 | `/trajectory` | 回合步骤轨迹 |
@@ -249,7 +257,8 @@ dsh_tui 在 `VimEnter`（用户配置加载完成后）接管窗口布局，并�
 ```bash
 npm install                      # neovim 客户端（+ dsh peer 依赖用于本地解析）
 npm run build                    # TypeScript (src/) → lib/（strict，tsc）
-node scripts/smoke.js            # 无头冒烟：RPC 往返 + Lua 插件 + 事件渲染
+npm run smoke                    # 无头冒烟：RPC 往返 + Lua 插件 + 事件渲染
+                                 # （scripts/*.ts 经 Node ≥23.6 原生 type-stripping 直跑）
 ```
 
 **端到端无头验证**（不需要真实终端，走完整 host→agent→渲染链路）：
@@ -292,8 +301,8 @@ lib/
   stats.js    状态栏统计：token/缓存/成本/时长 折叠与格式化
   images.js   图片读取：文件 / macOS 剪贴板 / data URL 解析
 nvim/lua/dsh_tui/init.lua   nvim 侧 UI：窗口布局、prompt 输入、键位、RPC
-scripts/smoke.js            无头冒烟测试
-scripts/e2e.js              真模型端到端回归
+scripts/smoke.ts            无头冒烟测试
+scripts/e2e.ts              真模型端到端回归
 cordis.patch.yml            bundle patch：insert nvim-tui-runner 行
 ```
 
