@@ -3,6 +3,11 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## Unreleased（main）
+
+- **依赖升级**：`@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` peer 依赖
+  升至 `^0.1.1-rc.2`（与宿主 dsh 0.1.1-rc.2 对齐，类型/运行时同版本）。
+
 ## [v0.2.1（2026-08-25）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.1)
 
 覆盖提交：
