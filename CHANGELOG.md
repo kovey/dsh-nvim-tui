@@ -3,9 +3,16 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## Unreleased（main）
+## [v0.2.1（2026-08-25）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.1)
 
-### 新增：插件市场 `/market`（Phase 1）
+覆盖提交：
+[`91ca1c8`](https://github.com/kovey/dsh-nvim-tui/commit/91ca1c8) ·
+[`acb38a1`](https://github.com/kovey/dsh-nvim-tui/commit/acb38a1) ·
+[`e838214`](https://github.com/kovey/dsh-nvim-tui/commit/e838214) ·
+[`b45fae3`](https://github.com/kovey/dsh-nvim-tui/commit/b45fae3) ·
+[`7eb34e4`](https://github.com/kovey/dsh-nvim-tui/commit/7eb34e4)
+
+### 插件市场 `/market`（Phase 1 + Phase 2）
 
 - **目录**：awesome-dsh-plugin 精选注册表（2140+ 插件，客户端无关），
   codeload tarball 一次拉全量（stars.json + 逐插件 yaml：名称/分类/双语描述/
@@ -16,58 +23,49 @@
 - **操作**：安装 / 更新 / 卸载走官方 `dsh plugin --profile <p> add|update|remove`
   （pnpm + bundles 调和，多数插件重启生效并如实提示）；卸载二次确认 + 保护
   TUI 自身；`打开 GitHub 页面`；
-- **实现**：`src/market.ts`（纯客户端数据层，tar 流式解析，无宿主服务依赖），
-  运行 profile 名自动解析（argv → `config.marketProfile` → 默认 `nvim-tui`）。
-
-### 插件市场 Phase 2
-
 - **热启停**：已装插件的 loader 条目可停用/启用——写入 profile
   `cordis.patch.yml` 的 `- id: X` + `disabled: true|false` 行（幂等：替换同 id
   旧行、保留无关行），HMR ~1s 重新组合免重启；保护 `nvim-tui-runner` 自身；
 - **更新感知**：`↑latest` 标记（npm registry 查最新 vs 已装版本，5 分钟内存
   缓存，link:/URL 依赖自动跳过）+ `/market update-all`（pnpm update 全量）；
-- **进度回显**：`dsh plugin` 子进程 stdout/stderr 节流（1.5s）滚动回显；
 - **匹配修正**：目录 url 可能带 `/tree/<branch>/<subdir>` 子路径——`repoRoot()`
   归一 + 安装 spec 取发布 tarball 或仓库根；已装依赖按 名称/目录 url/仓库根
   三路匹配；
 - 状态行标记：`✓` 已装启用 / `⊘` 已装停用 / `↑` 有更新；
-- **安装后校验**：检查包声明的主入口是否落盘——源码仓（无 lib/、无 prepare，
-  pnpm≥10 默认阻止构建脚本）会装成"只有元数据"的坏状态并在下次启动拖垮整个
-  host（真实事故：dsh-context github: 源缺 lib/ 导致 profile 无法启动），
-  安装/更新后立即提示并建议改装 npm 版或预构建 tarball；
-- **弹窗统一**：所有浮窗（选择器/审批/提问/会话列表/行视图/技能/目录选择）
-  操作提示统一移到**底部固定 footer 条**（独立 1 行浮窗，随主体滚动始终
-  可见），并按功能设置边框标题（如「⚠ 审批请求」「插件市场（★ 倒序…）」）。
 - **安装前 npm 优先解析（根因修复）**：对无预构建 tarball 的条目，安装前先读
-  仓库 package.json（name/version/prepare）并核对 npm registry —— 有同版本
-  发布包则直接装 `name@version`（dshmarket 的 repo-verified 策略），否则对
-  源码包弹「无预构建产物」确认。`/market` 安装 dsh-context 实测解析为
-  `dsh-context@0.31.0`，lib/ 完整落盘。
+  仓库 package.json（name/version/prepare）并核对 npm registry——有同版本
+  发布包则直接装 `name@version`（dshmarket 的 repo-verified 策略）。
+  `/market` 安装 dsh-context 实测解析为 `dsh-context@0.31.0`，lib/ 完整落盘。
 
-### 弹窗体系定稿（本轮）
+### 弹窗体系定稿
 
 - **统一形态**：所有弹窗 = 边框功能标题 + 高度贴合内容 + **窗口外底部操作
   提示条**（独立 1 行浮窗、状态栏配色，主窗滚动时始终可见、随主窗移动/缩放
   自动重锚定）+ 普通缓冲区原生导航（`j/k`、`G`、`gg`、`Ctrl-d/u`）；`G` 直达
-  最后一条、`Enter` 取光标行；
+  最后一条、`Enter` 取光标行；子代理回放窗/`/plugins` 同步对齐（
+  [`91ca1c8`](https://github.com/kovey/dsh-nvim-tui/commit/91ca1c8)）；
+- **全部弹窗屏幕居中**：共享 `centered_row/col` 公式，垂直居中偏上、水平
+  居中；目录选择/子代理回放等动态高度窗口随内容增长保持居中
+  （[`acb38a1`](https://github.com/kovey/dsh-nvim-tui/commit/acb38a1)）；
 - **只读锁定**：弹窗缓冲区 `modifiable=false` + 编辑键全量 `<Nop>`
   （i/a/o/d/x/…/:）——按 `i` 不再进输入模式、`x`/`dd` 删不动内容，也不抛 E21；
-- **子代理回放窗对齐 sessions**：高度随回放内容自动增长（on_lines 驱动，
-  封顶 40 行）、底部提示条、`G/gg` 映射；`/plugins` 改浮窗展示
-  （`●/○ entryId · moduleName · fiberPhase`，只读）；
-- **市场安装进度浮窗**：`dsh plugin` 输出实时滚动进浮窗（日志尾部视图 +
-  底部进度条行），`q/Esc` 可隐藏、后台继续；`update-all` 同用；
-- **安装失败自动修复（智能体行为）**：失败输出分类诊断（网络 / 404 / 锁文件
-  / 缓存权限 / git 权限），自动执行对应补救——网络重试、自动换源（npm 发布版
-  ⇄ Release tarball ⇄ 仓库根）、备份 `pnpm-lock.yaml` 重试、换临时 npm 缓存
-  目录重试；**装成功但缺入口文件**（dsh-context 事故类）自动卸载改装 npm
-  发布版/预构建 tarball 并重新校验；全程写进度窗、尝试次数封顶防死循环；
 - **审批弹窗新增 `[a] 总是（自动模式）`**：dsh 审批接口只有一次性授权
   （无 allow-always），按 `a` = 本请求放行 + 会话切换审批策略 `never`
   （不再弹窗、需要审批的操作由 dsh 自动拒绝，`/yolo off` 恢复）；同步修正
   `/yolo` 文案（原「全放行」与 dsh 实际 fail-closed 行为相反）。
 
-### 自然语言命令路由（本轮）
+### 市场安装进度浮窗 + 失败自动修复（智能体行为）
+
+- **进度浮窗**：`dsh plugin` 输出实时滚动进浮窗（日志尾部视图 + 底部进度条
+  行），`q/Esc` 可隐藏、后台继续；`update-all` 同用；
+- **失败自动修复**：失败输出分类诊断（网络 / 404 / 锁文件 / 缓存权限 /
+  git 权限），自动执行对应补救——网络重试、自动换源（npm 发布版 ⇄ Release
+  tarball ⇄ 仓库根）、备份 `pnpm-lock.yaml` 重试、换临时 npm 缓存目录重试；
+  **装成功但缺入口文件**（dsh-context 事故类）自动卸载改装 npm 发布版/预构建
+  tarball 并重新校验；全程写进度窗、尝试次数封顶防死循环
+  （[`91ca1c8`](https://github.com/kovey/dsh-nvim-tui/commit/91ca1c8)）。
+
+### 自然语言命令路由
 
 - **全部命令支持自然语言调用**：`src/nlcmd.ts` 意图表（中英双语别名 + 参数
   捕获正则），普通输入命中意图即执行对应斜杠命令，并在会话里回显
@@ -76,11 +74,12 @@
   →/remember、`删除工作区 abc`→/workspace delete、`反馈 up 很好用`→/fb；
 - **防误拦截护栏**：问句（？/? 结尾）一律发给智能体；`>`/引号开头强制聊天
   逃生口；>60 字的长文本直接聊天；破坏性命令（清屏/停止/退出/重启/压缩/
-  回退）只接受精确短语；`用中文回复我` 这类句式不会被当成模型切换；
+  回退）只接受精确短语；`用中文回复我` 这类句式不会被当成模型切换
+  （[`b45fae3`](https://github.com/kovey/dsh-nvim-tui/commit/b45fae3)）；
 - `/workspace` 改为 sessions 式弹窗（工作区目录 + 目录选择新建 + 重命名/
-  删除动作）。
+  删除动作）（[`e838214`](https://github.com/kovey/dsh-nvim-tui/commit/e838214)）。
 
-### 子代理思考链 TTL 清理（本轮）
+### 子代理思考链 TTL 清理
 
 - 此前子代理思考链**永久累积**（宿主持久化无 TTL、无删除接口）——现在
   `/subagents` 打开时自动清理：已结束且超过保留期（`config.subagentTtlHours`，
@@ -88,9 +87,8 @@
   （仅保留首条事件，释放存储），id 记入
   `$DSH_HOME/dsh-nvim-tui-subagent-clean.json` 并从列表隐藏；
 - 列表行显示存续时间（`刚刚/5m前/2h前/3d前`）；顶部新增
-  `🧹 清理全部已结束思考链（N 条）` 手动清理（二次确认）；
-- 运行中的子代理不受影响；`src/subagent-clean.ts` 纯函数（ageLabel/isExpired
-  /台账读写）配套 smoke 断言。
+  `🧹 清理全部已结束思考链（N 条）` 手动清理（二次确认）；运行中的子代理
+  不受影响（[`7eb34e4`](https://github.com/kovey/dsh-nvim-tui/commit/7eb34e4)）。
 
 ## v0.2.0（2026-08-24）
 
