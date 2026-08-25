@@ -56,6 +56,15 @@ const assertFooter = async (hintPart: string, label: string) => {
   assert.ok(String(fs.text).includes(hintPart), `${label}: footer carries the operation hints`)
   assert.ok(String(fs.winhighlight).includes('DshTuiStatus'), `${label}: footer uses the statusline highlight`)
 }
+// Every popup opens centered on the editor: row = (lines - height) / 2 - 2,
+// col = (columns - width) / 2, both clamped at the top-left.
+const assertCentered = async (winLua: string, label: string) => {
+  const cfg = await lua(`return vim.api.nvim_win_get_config(${winLua})`, [])
+  const lines = await lua('return vim.o.lines', [])
+  const cols = await lua('return vim.o.columns', [])
+  assert.equal(cfg.row, Math.max(0, Math.floor((lines - cfg.height) / 2) - 2), `${label}: popup vertically centered`)
+  assert.equal(cfg.col, Math.max(0, Math.floor((cols - cfg.width) / 2)), `${label}: popup horizontally centered`)
+}
 const assertModeN = async (label: string) => {
   for (let i = 0; i < 40; i++) {
     if ((await nvim.request('nvim_get_mode', [])).mode === 'n') return
@@ -102,6 +111,7 @@ try {
   assert.ok(listLines.some((l: string) => l.includes('旧会话') && l.includes('session-hist') && l.includes('历史')), 'history kind shown')
   assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._sessWin)', []), listLines.length, 'session window exactly fits content')
   await assertFooter('[Enter]', 'session list')
+  await assertCentered('require("dsh_tui")._sessWin', 'session list')
   await lua('require("dsh_tui").close_session_list()', [])
   assert.equal(await lua('return require("dsh_tui")._sessWin', []), null, 'session list closed')
   assert.equal(await lua('return require("dsh_tui")._footer.win', []), null, 'footer closes with the session list')
@@ -470,6 +480,7 @@ description:
   const skillLines = await nvim.request('nvim_buf_get_lines', [skillBuf, 0, -1, false])
   assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._skillWin)', []), skillLines.length, 'skill window exactly fits content')
   await assertFooter('[q]', 'skill')
+  await assertCentered('require("dsh_tui")._skillWin', 'skill')
   await lua('require("dsh_tui").close_skill()', [])
   skillWins = (await lua('return vim.api.nvim_list_wins()', [])).length
   assert.equal(skillWins, baseWins, 'skill float closed')
@@ -615,6 +626,7 @@ description:
   assert.ok(approvalFCfg.height >= 4, 'long reason grows the approval window')
   assert.ok(String(await floatTitle(approvalF.win)).includes('审批请求'), 'approval float carries a function title')
   await assertFooter('[y]', 'approval')
+  await assertCentered('require("dsh_tui")._float.win', 'approval')
   assert.equal(await lua('return vim.bo[require("dsh_tui")._float.buf].modifiable', []), false, 'approval buffer is read-only')
   await lua('require("dsh_tui").approval_decide("y")', [])
   hit = await waitNote('dsh-approval-decided')
@@ -652,6 +664,7 @@ description:
   log('questions cfg:', JSON.stringify(qcfg), 'lines:', qlines.length)
   assert.ok(qcfg.height >= qlines.length, 'questions window fits all rows incl. key hints')
   await assertFooter('[Enter]', 'questions')
+  await assertCentered('require("dsh_tui")._float.win', 'questions')
   await lua('require("dsh_tui").question_move(1)', []) // q1 → option B
   await lua('require("dsh_tui").question_advance()', []) // q1 done → q2
   await lua('require("dsh_tui").question_toggle()', []) // q2 toggle x
@@ -673,6 +686,7 @@ description:
   assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._float.win)', []), pickerLines.length, 'picker window exactly fits content (no gap below)')
   assert.ok(String(await floatTitle(await lua('return require("dsh_tui")._float.win', []))).includes('选择'), 'picker float carries a function title')
   await assertFooter('[j/k]', 'picker')
+  await assertCentered('require("dsh_tui")._float.win', 'picker')
   // Read-only lock: i must not enter insert mode, x/dd must not delete.
   const pickerMaps = await lua(`local out = {}
     for _, m in ipairs(vim.api.nvim_buf_get_keymap(require("dsh_tui")._float.buf, "n")) do
@@ -739,6 +753,7 @@ description:
   // Same popup logic as /sessions: footer hint bar below the window,
   // G/gg jumps, content-fitted height that grows with the replay.
   await assertFooter('[q]', 'subagent view')
+  await assertCentered('require("dsh_tui")._subagentView.win', 'subagent view')
   const svMaps = await lua(`local out = {}
     for _, m in ipairs(vim.api.nvim_buf_get_keymap(${svIds.buf}, "n")) do
       table.insert(out, { lhs = m.lhs, rhs = m.rhs or "" })
@@ -871,6 +886,7 @@ description:
   const dirLines = await nvim.request('nvim_buf_get_lines', [dirBuf, 0, -1, false])
   assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._dirWin)', []), Math.min(14, dirLines.length), 'dir window height fits content up to its cap')
   await assertFooter('[Enter]', 'dir picker')
+  await assertCentered('require("dsh_tui")._dirWin', 'dir picker')
   // Enter derives the entry from the cursor row (native j/k/G navigation).
   await lua(`local M = require("dsh_tui") vim.api.nvim_win_set_cursor(M._dirWin, { ${dirState.idx} + 2, 0 }) M.dir_enter()`, [])
   hit = await waitNote('dsh-dir-selected')
@@ -882,6 +898,7 @@ description:
   assert.deepEqual(lfLines, ['◈ audit · 运行中', '  ─ 阶段一'], 'lines float renders rows')
   assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._linesWin)', []), lfLines.length, 'lines float window exactly fits content (no gap below)')
   await assertFooter('[q]', 'lines float')
+  await assertCentered('require("dsh_tui")._linesWin', 'lines float')
   // Without an editPath, i/o are Nop'd (read-only float must not answer an
   // edit attempt with a raw E21); with an editPath they open the file tab.
   const lfMaps = await lua(`local out = {}
@@ -907,6 +924,7 @@ description:
   // install streams into it so pnpm runs never look stuck).
   const prog = await lua('return require("dsh_tui").show_progress(...)', ['安装 demo-plugin', ['① 解析安装源…']])
   assert.ok(Number.isInteger(prog.buf) && Number.isInteger(prog.win), 'progress float opens')
+  await assertCentered('require("dsh_tui")._progress.win', 'progress')
   await lua('require("dsh_tui").progress_update(...)', [['① 解析安装源…', '· 使用 npm 发布版: x@1.0.0', '② 安装依赖…', '✓ 命令成功'], '▸ 60% 安装依赖…'])
   const progLines = await nvim.request('nvim_buf_get_lines', [prog.buf, 0, -1, false])
   assert.ok(String(progLines[progLines.length - 1]).startsWith('▸ 60%'), 'progress bar row is the last row')

@@ -39,6 +39,17 @@ local function lock_popup_buffer(buf)
   end
 end
 
+--- Every popup opens centered on the editor (a shared formula so no window
+--- drifts to a corner): vertically mid-screen (slightly above center) and
+--- horizontally centered, clamped to the top-left when space is short.
+local function centered_row(height)
+  return math.max(0, math.floor((vim.o.lines - height) / 2) - 2)
+end
+
+local function centered_col(width)
+  return math.max(0, math.floor((vim.o.columns - width) / 2))
+end
+
 -- ===========================================================================
 -- Popup footer: a 1-row floating bar OUTSIDE and directly BELOW the popup
 -- window (like a detached statusline). It survives scrolling inside the main
@@ -595,8 +606,8 @@ function M.show_skill(info)
   vim.bo[buf].modifiable = false
   local cfg = {
     relative = 'editor',
-    row = 1,
-    col = 2,
+    row = centered_row(height),
+    col = centered_col(math.min(120, math.max(40, vim.o.columns - 4))),
     width = math.min(120, math.max(40, vim.o.columns - 4)),
     height = height,
     border = 'rounded',
@@ -662,8 +673,8 @@ function M.open_subagent_view(title)
   local cap = math.min(40, math.max(8, vim.o.lines - 4))
   local cfg = {
     relative = 'editor',
-    row = 2,
-    col = 2,
+    row = centered_row(1),
+    col = centered_col(math.min(120, math.max(40, vim.o.columns - 4))),
     width = math.min(120, math.max(40, vim.o.columns - 4)),
     height = 1,
     border = 'rounded',
@@ -700,6 +711,11 @@ function M.open_subagent_view(title)
       local h = math.max(1, math.min(cap, #lines))
       if vim.api.nvim_win_get_height(sv.win) ~= h then
         vim.api.nvim_win_set_height(sv.win, h)
+        vim.api.nvim_win_set_config(sv.win, {
+          relative = 'editor', anchor = 'NW',
+          row = centered_row(h), col = centered_col(vim.api.nvim_win_get_width(sv.win)),
+          width = vim.api.nvim_win_get_width(sv.win), height = h,
+        })
         attach_footer(sv.win, '[q]/[Esc] 关闭')
       end
       return true
@@ -986,6 +1002,11 @@ local function render_dir_picker()
   vim.bo[M._dirBuf].modifiable = false
   if vim.api.nvim_win_get_height(win) ~= height then
     vim.api.nvim_win_set_height(win, height)
+    vim.api.nvim_win_set_config(win, {
+      relative = 'editor', anchor = 'NW',
+      row = centered_row(height), col = centered_col(72),
+      width = 72, height = height,
+    })
   end
   attach_footer(win, DIR_HINT)
   if M._dirIdx > 0 then
@@ -1010,8 +1031,8 @@ function M.show_dir_picker(startPath)
   M._dirIdx = 1
   M._dirWin = vim.api.nvim_open_win(buf, true, {
     relative = 'editor',
-    row = 4,
-    col = math.max(0, math.floor(vim.o.columns / 2) - 36),
+    row = centered_row(math.min(14, math.max(6, vim.o.lines - 8))),
+    col = centered_col(72),
     width = 72,
     height = math.min(14, math.max(6, vim.o.lines - 8)),
     border = 'rounded',
@@ -1122,8 +1143,8 @@ function M.show_lines_float(title, lines, editPath)
   vim.bo[buf].modifiable = false
   local cfg = {
     relative = 'editor',
-    row = 2,
-    col = 2,
+    row = centered_row(height),
+    col = centered_col(math.min(110, math.max(40, vim.o.columns - 4))),
     width = math.min(110, math.max(40, vim.o.columns - 4)),
     height = height,
     border = 'rounded',
@@ -1186,8 +1207,8 @@ function M.show_progress(title, lines)
   local cap = math.min(16, math.max(6, vim.o.lines - 12))
   local cfg = {
     relative = 'editor',
-    row = math.max(0, math.floor((vim.o.lines - cap) / 2) - 2),
-    col = math.max(0, math.floor((vim.o.columns - width) / 2)),
+    row = centered_row(cap),
+    col = centered_col(width),
     width = width,
     height = cap,
     border = 'rounded',
@@ -1761,8 +1782,8 @@ function M.show_session_list(entries)
   local height = n == 0 and 1 or math.min(cap, n + 1)
   M._sessWin = vim.api.nvim_open_win(buf, true, {
     relative = 'editor',
-    row = 3,
-    col = math.max(0, math.floor(vim.o.columns / 2) - 44),
+    row = centered_row(height),
+    col = centered_col(88),
     width = 88,
     height = height,
     border = 'rounded',
@@ -1980,8 +2001,8 @@ local function open_float(lines, opts)
   local height = float_height(lines, width)
   local cfg = {
     relative = 'editor',
-    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 2),
-    col = math.max(0, math.floor((vim.o.columns - width) / 2)),
+    row = centered_row(height),
+    col = centered_col(width),
     width = width,
     height = height,
     border = 'rounded',
@@ -2115,7 +2136,7 @@ function M.redraw_questions()
     if cfg.height ~= height then
       vim.api.nvim_win_set_config(fwin, {
         relative = cfg.relative,
-        row = math.max(0, math.floor((vim.o.lines - height) / 2) - 2),
+        row = centered_row(height),
         col = cfg.col,
         width = cfg.width,
         height = height,
@@ -2236,8 +2257,8 @@ function M.show_picker(title, items)
   vim.bo[buf].modifiable = false
   local cfg = {
     relative = 'editor',
-    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 2),
-    col = math.max(0, math.floor((vim.o.columns - width) / 2)),
+    row = centered_row(height),
+    col = centered_col(width),
     width = width,
     height = height,
     border = 'rounded',
