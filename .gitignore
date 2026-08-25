@@ -6,6 +6,9 @@ node_modules/
 # dsh test profile: local harness state, not project source
 .dsh-test/
 
+# project-local dsh memory (per-machine notes, not project source)
+.dsh/
+
 # local spec notes (kept out of version control on purpose)
 REQUIREMENTS.md
 
