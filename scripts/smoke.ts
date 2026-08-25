@@ -15,6 +15,11 @@ import { FeedRenderer } from '../lib/feed.js'
 import { foldUsage, billedInput, cacheHitRate, estimateCost, formatTokens, formatElapsed, modeLabel, escapeStatusline } from '../lib/stats.js'
 import { sniffMediaType, parseImageDataUrl, splitImageDataUrls, imageLabel } from '../lib/images.js'
 import { t, setLocale, locale } from '../lib/i18n.js'
+import {
+  parseStars, buildCatalog, searchCatalog, parsePluginYaml,
+  setDisabledRows, readDisabledIds, isNpmName, depMatchesEntry, repoRoot, installSpec,
+  classifyPnpmError, firstErrorLine, profileDir,
+} from '../lib/market.js'
 
 // console.* is async and its output can be swallowed by non-TTY capture
 // environments once the nvim child shares the pipe; write synchronously.
@@ -29,6 +34,35 @@ const nvim = await connectNvim(sockPath)
 
 /** msgpack-RPC boundary: nvim.lua results are structurally unknown by nature. */
 const lua = (code: string, args: unknown[] = []): Promise<any> => nvim.lua(code, args as never[])
+
+// The hint bar lives OUTSIDE and BELOW the popup window (M._footer): one
+// row, same width, one row under the main window's bottom border.
+const footerState = () => lua(`local f = require("dsh_tui")._footer
+  local mcfg = vim.api.nvim_win_get_config(f.mainWin)
+  local fcfg = vim.api.nvim_win_get_config(f.win)
+  return {
+    valid = vim.api.nvim_win_is_valid(f.win),
+    text = vim.api.nvim_buf_get_lines(f.buf, 0, -1, false)[1],
+    frow = fcfg.row, fcol = fcfg.col, fwidth = fcfg.width, fheight = fcfg.height,
+    mrow = mcfg.row, mheight = mcfg.height, mwidth = mcfg.width,
+    winhighlight = vim.wo[f.win].winhighlight or "",
+  }`, [])
+const assertFooter = async (hintPart: string, label: string) => {
+  const fs = await footerState()
+  assert.ok(fs.valid, `${label}: footer bar opens below the window`)
+  assert.equal(fs.fheight, 1, `${label}: footer is one row tall`)
+  assert.equal(fs.fwidth, fs.mwidth, `${label}: footer spans the main window width`)
+  assert.equal(fs.frow, fs.mrow + fs.mheight + 2, `${label}: footer sits directly under the main window`)
+  assert.ok(String(fs.text).includes(hintPart), `${label}: footer carries the operation hints`)
+  assert.ok(String(fs.winhighlight).includes('DshTuiStatus'), `${label}: footer uses the statusline highlight`)
+}
+const assertModeN = async (label: string) => {
+  for (let i = 0; i < 40; i++) {
+    if ((await nvim.request('nvim_get_mode', [])).mode === 'n') return
+    await new Promise((r) => setTimeout(r, 25))
+  }
+  assert.fail(label + ': mode stayed out of normal')
+}
 
 try {
   // 1. channel id + Lua attach
@@ -60,14 +94,17 @@ try {
     { id: 'session-bbbb', title: '会话乙', active: false, kind: 'live' },
     { id: 'session-hist', title: '旧会话', active: false, kind: 'history' },
   ]])
-  assert.equal((await nvim.request('nvim_get_mode', [])).mode, 'n', 'session list opens in normal mode')
+  await assertModeN('session list opens in normal mode')
   let sessF = await lua('return require("dsh_tui")._sessBuf', [])
   const listLines = await nvim.request('nvim_buf_get_lines', [sessF, 0, -1, false])
   log('session list float:', JSON.stringify(listLines))
   assert.ok(listLines.some((l: string) => l.includes('会话甲') && l.includes('session-aaaa')), 'full session id shown')
   assert.ok(listLines.some((l: string) => l.includes('旧会话') && l.includes('session-hist') && l.includes('历史')), 'history kind shown')
+  assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._sessWin)', []), listLines.length, 'session window exactly fits content')
+  await assertFooter('[Enter]', 'session list')
   await lua('require("dsh_tui").close_session_list()', [])
   assert.equal(await lua('return require("dsh_tui")._sessWin', []), null, 'session list closed')
+  assert.equal(await lua('return require("dsh_tui")._footer.win', []), null, 'footer closes with the session list')
 
   // active session's buffer shown in the chat window
   await lua('require("dsh_tui").set_active(...)', ['session-bbbb'])
@@ -188,6 +225,75 @@ try {
   setLocale('zh')
   assert.equal(t('无活跃会话'), '无活跃会话', 'zh locale returns the literal')
   assert.equal(locale(), 'zh', 'locale() reports the current locale')
+
+  // 4d. market data layer (pure helpers, offline fixtures).
+  const yamlA = `url: https://github.com/A/b-plugin
+name: A/b-plugin
+category: ui
+description:
+  en: Rotates status labels.
+  zh: 轮换状态标签。
+tarball: https://github.com/A/b-plugin/releases/latest/download/b.tgz`
+  const yamlB = `url: https://github.com/C/d-plugin
+name: C/d-plugin
+category: memory
+description:
+  zh: "项目记忆插件。"
+  en: "Project memory plugin."`
+  const pA = parsePluginYaml(yamlA, 'A__b-plugin.yml')
+  assert.equal(pA.name, 'A/b-plugin', 'yaml name normalized')
+  assert.equal(pA.category, 'ui', 'yaml category')
+  assert.equal(pA.descZh, '轮换状态标签。', 'yaml zh description')
+  assert.equal(pA.descEn, 'Rotates status labels.', 'yaml en description')
+  assert.equal(pA.tarball, 'https://github.com/A/b-plugin/releases/latest/download/b.tgz', 'yaml tarball kept')
+  const pB = parsePluginYaml(yamlB, 'C__d-plugin.yml')
+  assert.equal(pB.descZh, '项目记忆插件。', 'quoted zh description unquoted')
+  const stars = parseStars(JSON.stringify({
+    'https://github.com/A/b-plugin': { stars: 42, checkedAt: '2026-08-19' },
+    'https://github.com/B/c-plugin': { stars: 7, checkedAt: '2026-08-19' },
+  }))
+  assert.equal(stars.get('https://github.com/A/b-plugin'), 42, 'stars parsed')
+  const cat = buildCatalog(stars, [pA, pB, { name: 'B/c-plugin', url: 'https://github.com/B/c-plugin' }])
+  assert.equal(cat[0].name, 'A/b-plugin', 'sorted by stars desc first')
+  assert.equal(cat[0].stars, 42, 'top entry carries stars')
+  assert.ok(cat.some((e) => e.name === 'C/d-plugin' && e.stars === 0), 'yaml-only entry joins at 0 stars')
+  assert.deepEqual(searchCatalog(cat, 'rotates').map((e) => e.name), ['A/b-plugin'], 'en description search')
+  assert.deepEqual(searchCatalog(cat, '记忆').map((e) => e.name), ['C/d-plugin'], 'zh description search')
+  assert.deepEqual(searchCatalog(cat, 'MEMORY').map((e) => e.name), ['C/d-plugin'], 'category search case-insensitive')
+  // phase-2 helpers: hot-toggle patch rows, npm-name detection, dep matching
+  let patch = '- id: keep-me\n  config: { a: 1 }\n'
+  patch = setDisabledRows(patch, [{ id: 'keep-me', disabled: true }])
+  assert.ok(patch.includes('- id: keep-me\n  disabled: true'), 'toggle row appended')
+  assert.ok(!patch.includes('config: { a: 1 }'), 'managed marker pair replaces prior rows for the id')
+  assert.deepEqual([...readDisabledIds(patch)], ['keep-me'], 'disabled ids parsed')
+  patch = setDisabledRows(patch, [{ id: 'keep-me', disabled: false }])
+  assert.ok(patch.includes('disabled: false'), 'enable row written')
+  assert.deepEqual([...readDisabledIds(patch)], [], 'enabled id leaves the disabled set')
+  assert.ok(!patch.includes('disabled: true'), 'stale disable row removed idempotently')
+  assert.equal(isNpmName('dsh-market'), true, 'plain npm name detected')
+  assert.equal(isNpmName('@scope/pkg'), true, 'scoped npm name detected')
+  assert.equal(isNpmName('link:./x'), false, 'link spec rejected')
+  assert.equal(isNpmName('https://github.com/a/b'), false, 'url spec rejected')
+  assert.equal(depMatchesEntry('dshmarket', { name: 'dsh-market/dsh-market', url: 'https://github.com/dsh-market/dsh-market', stars: 1, category: 'm', descZh: '', descEn: '' }), false, 'no false positive by suffix alone')
+  assert.equal(depMatchesEntry('https://github.com/dsh-market/dsh-market', { name: 'dsh-market/dsh-market', url: 'https://github.com/dsh-market/dsh-market', stars: 1, category: 'm', descZh: '', descEn: '' }), true, 'url spec matches entry')
+  const treeEntry = { name: 'volcengine/OpenViking', url: 'https://github.com/volcengine/OpenViking/tree/main/examples/dsh-memory-plugin', stars: 1, category: 'm', descZh: '', descEn: '', tarball: 'https://github.com/volcengine/OpenViking/releases/latest/download/x.tgz' }
+  assert.equal(repoRoot(treeEntry.url), 'https://github.com/volcengine/OpenViking', 'tree subpath stripped to repo root')
+  assert.equal(depMatchesEntry('https://github.com/volcengine/OpenViking', treeEntry), true, 'repo-root dep matches tree-path entry')
+  assert.equal(installSpec(treeEntry), treeEntry.tarball, 'tarball wins as the install spec')
+  assert.equal(installSpec({ ...treeEntry, tarball: undefined }), 'https://github.com/volcengine/OpenViking', 'repo root used when no tarball')
+  // phase-3: failure classification drives the automatic remedy chains
+  assert.equal(classifyPnpmError('ERR_PNPM_FETCH_404 GET https://registry.npmjs.org/x: 404 Not Found').kind, 'notfound', '404 classified as notfound')
+  assert.equal(classifyPnpmError('ERR_PNPM_NO_MATCHING_VERSION No matching version found for x@9.9.9').kind, 'notfound', 'no-matching-version classified as notfound')
+  assert.equal(classifyPnpmError('ERR_PNPM_OUTDATED_LOCKFILE Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date').kind, 'lockfile', 'outdated lockfile classified')
+  assert.equal(classifyPnpmError(' ERR_PNPM_FETCH_501  GET https://registry.npmjs.org/x: ETIMEDOUT').kind, 'network', 'timeout classified as network')
+  assert.equal(classifyPnpmError('ERR_PNPM_FETCH_501 EAI_AGAIN registry.npmjs.org').kind, 'network', 'dns failure classified as network')
+  assert.equal(classifyPnpmError('EPERM: operation not permitted, unlink /root/.npm/_cacache').kind, 'cache', 'EPERM on cache classified as cache')
+  assert.equal(classifyPnpmError('EINTEGRITY: sha512 integrity check failed for x').kind, 'cache', 'integrity failure classified as cache')
+  assert.equal(classifyPnpmError('ERROR: Repository not found. fatal: could not read from remote repository.').kind, 'git', 'missing repo classified as git')
+  assert.equal(classifyPnpmError('git@github.com: Permission denied (publickey).').kind, 'git', 'git auth failure classified')
+  assert.equal(classifyPnpmError('some totally weird output').kind, 'other', 'unknown output classified as other')
+  assert.equal(firstErrorLine('\n\n  ERR something \nnext\n'), 'ERR something', 'first non-empty line extracted')
+  assert.ok(profileDir('nvim-tui').endsWith('/profiles/nvim-tui'), 'profileDir resolves under DSH_HOME/.dsh')
 
   // 5. /clear empties the active feed
   active = 'session-bbbb'
@@ -359,7 +465,11 @@ try {
   const baseWins = (await lua('return vim.api.nvim_list_wins()', [])).length
   await lua(`require("dsh_tui").show_skill({ name = "demo", description = "演示技能", whenToUse = "测试", content = "正文" })`, [])
   let skillWins = (await lua('return vim.api.nvim_list_wins()', [])).length
-  assert.equal(skillWins, baseWins + 1, 'skill float window opened')
+  assert.equal(skillWins, baseWins + 2, 'skill float + footer bar opened')
+  const skillBuf = await lua('return vim.api.nvim_win_get_buf(require("dsh_tui")._skillWin)', [])
+  const skillLines = await nvim.request('nvim_buf_get_lines', [skillBuf, 0, -1, false])
+  assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._skillWin)', []), skillLines.length, 'skill window exactly fits content')
+  await assertFooter('[q]', 'skill')
   await lua('require("dsh_tui").close_skill()', [])
   skillWins = (await lua('return vim.api.nvim_list_wins()', [])).length
   assert.equal(skillWins, baseWins, 'skill float closed')
@@ -369,6 +479,11 @@ try {
   const notes: Array<{ method: string; args: unknown[] }> = []
   const onNote = (method: string, args: unknown[]): void => { notes.push({ method, args }) }
   nvim.on('notification', onNote)
+  // Popup hints are pinned as the LAST row of the popup window (visible
+  // regardless of scroll); each popup carries a function title.
+  const lastLine = (buf: number) => lua('local b = ... local l = vim.api.nvim_buf_get_lines(b, 0, -1, false) return l[#l]', [buf])
+  const floatTitle = (win: number) => nvim.request('nvim_win_get_config', [win]).then((c: any) => c.title ?? '')
+
   const waitNote = async (method: string, timeoutMs = 2000) => {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
@@ -496,11 +611,33 @@ try {
   const approvalFLines = await nvim.request('nvim_buf_get_lines', [approvalF.buf, 0, -1, false])
   const approvalFVisual = approvalFLines.reduce((h: number, l: string) => h + Math.max(1, Math.ceil([...l].reduce((w, ch) => w + (/[\u2E80-\uA4CF\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF\u3000-\u303F]/u.test(ch) ? 2 : 1), 0) / approvalFCfg.width)), 0)
   log('approval cfg:', JSON.stringify(approvalFCfg), 'visual rows:', approvalFVisual)
-  assert.ok(approvalFCfg.height >= approvalFVisual, 'approval window height covers wrapped content (hints visible)')
-  assert.ok(approvalFCfg.height > 6, 'long reason grows the approval window')
+  assert.ok(approvalFCfg.height >= approvalFVisual, 'approval window height covers wrapped content')
+  assert.ok(approvalFCfg.height >= 4, 'long reason grows the approval window')
+  assert.ok(String(await floatTitle(approvalF.win)).includes('审批请求'), 'approval float carries a function title')
+  await assertFooter('[y]', 'approval')
+  assert.equal(await lua('return vim.bo[require("dsh_tui")._float.buf].modifiable', []), false, 'approval buffer is read-only')
   await lua('require("dsh_tui").approval_decide("y")', [])
   hit = await waitNote('dsh-approval-decided')
   assert.equal(hit?.args?.[0], 'y', 'approval decision routed')
+  // [a] 总是（自动模式）: routes 'always' (the runner then allows this once
+  // and switches the session approval policy to 'never').
+  await lua('require("dsh_tui").show_approval(...)', [{ toolName: 'bash', reason: 'again' }])
+  const approvalMaps = await lua(`local out = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(require("dsh_tui")._float.buf, "n")) do
+      table.insert(out, m.lhs)
+    end
+    return out`, [])
+  assert.ok(approvalMaps.includes('a'), 'approval popup maps the always key')
+  await lua('require("dsh_tui").approval_decide("always")', [])
+  const alwaysDeadline = Date.now() + 2000
+  let alwaysHit: { args?: unknown[] } | null = null
+  while (Date.now() < alwaysDeadline) {
+    const decisions = notes.filter((n) => n.method === 'dsh-approval-decided')
+    const last = decisions[decisions.length - 1]
+    if (last?.args?.[0] === 'always') { alwaysHit = last; break }
+    await new Promise((r) => setTimeout(r, 20))
+  }
+  assert.ok(alwaysHit !== null, 'always decision routed for the automatic-mode switch')
 
   // 9d. questions flow (two questions, second multi-select) — the float must
   // grow to the real content height, or the option list and the key-hint
@@ -514,7 +651,7 @@ try {
   let qlines = await nvim.request('nvim_buf_get_lines', [qfloat.buf, 0, -1, false])
   log('questions cfg:', JSON.stringify(qcfg), 'lines:', qlines.length)
   assert.ok(qcfg.height >= qlines.length, 'questions window fits all rows incl. key hints')
-  assert.ok(qlines.some((l: string) => l.includes('[j/k]') && l.includes('[Esc]')), 'questions footer shows key hints')
+  await assertFooter('[Enter]', 'questions')
   await lua('require("dsh_tui").question_move(1)', []) // q1 → option B
   await lua('require("dsh_tui").question_advance()', []) // q1 done → q2
   await lua('require("dsh_tui").question_toggle()', []) // q2 toggle x
@@ -527,10 +664,68 @@ try {
 
   // 9e. picker
   await lua(`require("dsh_tui").show_picker("选择", { { label = "m1", value = "model-a" }, { label = "m2", value = "model-b" } })`, [])
+  // Hints live in a footer bar OUTSIDE and below the window (always visible
+  // while scrolling), the function title rides the border title, and the
+  // width adapts to the longest row instead of a fixed 72.
+  let pickerBuf = await lua('return require("dsh_tui")._float.buf', [])
+  const pickerLines = await nvim.request('nvim_buf_get_lines', [pickerBuf, 0, -1, false])
+  assert.deepEqual(pickerLines, ['m1', 'm2'], 'picker buffer holds the items only')
+  assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._float.win)', []), pickerLines.length, 'picker window exactly fits content (no gap below)')
+  assert.ok(String(await floatTitle(await lua('return require("dsh_tui")._float.win', []))).includes('选择'), 'picker float carries a function title')
+  await assertFooter('[j/k]', 'picker')
+  // Read-only lock: i must not enter insert mode, x/dd must not delete.
+  const pickerMaps = await lua(`local out = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(require("dsh_tui")._float.buf, "n")) do
+      table.insert(out, { lhs = m.lhs, rhs = m.rhs or "" })
+    end
+    return out`, [])
+  const pickerKey = (k: string) => pickerMaps.find((m: any) => m.lhs === k)
+  assert.ok(pickerKey('i') && pickerKey('i').rhs !== 'i', 'picker i is Nop (no insert mode)')
+  assert.ok(pickerKey('d') && pickerKey('x') && pickerKey(':'), 'picker edit keys Nop')
+  assert.equal(await lua('return vim.bo[require("dsh_tui")._float.buf].modifiable', []), false, 'picker buffer is not modifiable')
+  await nvim.input('i')
+  assert.equal((await nvim.request('nvim_get_mode', [])).mode, 'n', 'i does not enter insert mode in the picker')
+  await nvim.input('xdd')
+  assert.deepEqual(await nvim.request('nvim_buf_get_lines', [pickerBuf, 0, -1, false]), pickerLines, 'x/dd cannot delete picker content')
+  // Plain buffer: every entry is a real line, so nvim's own navigation keys
+  // work — G must reach the LAST ENTRY, and the window caps at 22 rows on a
+  // tall editor.
+  await lua('require("dsh_tui").picker_cancel()', [])
+  const uiClient = await connectNvim(sockPath)
+  await uiClient.uiAttach(80, 50, {})
+  await new Promise((r) => setTimeout(r, 50))
+  const many = Array.from({ length: 30 }, (_, i) => ({ label: 'item-' + i, value: 'v' + i }))
+  await lua('require("dsh_tui").show_picker(...)', ['长列表', many])
+  const pickerCfg = await nvim.request('nvim_win_get_config', [(await lua('return require("dsh_tui")._float.win', []))])
+  assert.ok(pickerCfg.width >= 72, 'picker width at least the default')
+  pickerBuf = await lua('return require("dsh_tui")._float.buf', [])
+  const longLines = await nvim.request('nvim_buf_get_lines', [pickerBuf, 0, -1, false])
+  assert.equal(longLines.length, 30, 'all 30 entries are real buffer lines')
+  assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._float.win)', []), 22, 'long picker window caps at the slice cap')
+  await assertFooter('[j/k]', 'long picker')
+  // shift+G (nvim's own jump-to-bottom) must land on the last entry.
+  await nvim.input('G')
+  let pickerCursor = await lua('return vim.api.nvim_win_get_cursor(require("dsh_tui")._float.win)', [])
+  assert.deepEqual(pickerCursor, [30, 0], 'G jumps to the last entry')
+  await assertFooter('[j/k]', 'long picker after G')
+  await nvim.input('gg')
+  pickerCursor = await lua('return vim.api.nvim_win_get_cursor(require("dsh_tui")._float.win)', [])
+  assert.deepEqual(pickerCursor, [1, 0], 'gg jumps to the first entry')
+  for (let i = 0; i < 30; i++) await lua('require("dsh_tui").picker_move(1)', [])
+  pickerCursor = await lua('return vim.api.nvim_win_get_cursor(require("dsh_tui")._float.win)', [])
+  assert.deepEqual(pickerCursor, [30, 0], 'cursor clamps at the last entry')
+  await uiClient.uiTryResize(80, 24)
+  await lua('require("dsh_tui").picker_cancel()', [])
+  await lua('require("dsh_tui").show_picker(...)', ['宽', [{ label: 'x'.repeat(100), value: 'long' }]])
+  const longCfg = await nvim.request('nvim_win_get_config', [(await lua('return require("dsh_tui")._float.win', []))])
+  const cols = await lua('return vim.o.columns', [])
+  assert.ok(longCfg.width === Math.min(Math.max(72, 102), Math.max(40, cols - 4)), 'picker width adapts to the longest row (clamped to the editor)')
+  await lua('require("dsh_tui").picker_cancel()', [])
+  await lua(`require("dsh_tui").show_picker("选择", { { label = "m1", value = "model-a" }, { label = "m2", value = "model-b" } })`, [])
   // Interactive floats must hand over in NORMAL mode (the input window is in
   // insert mode when the command fires): <CR> selects, it must not type a
   // newline into the picker buffer.
-  assert.equal((await nvim.request('nvim_get_mode', [])).mode, 'n', 'picker opens in normal mode')
+  await assertModeN('picker opens in normal mode')
   await lua('require("dsh_tui").picker_move(1)', [])
   await lua('require("dsh_tui").picker_confirm()', [])
   hit = await waitNote('dsh-picker-selected')
@@ -540,7 +735,10 @@ try {
   // (方案 B: /subagents → child log replay, reasoning inline and dim).
   const svIds = await lua('return require("dsh_tui").open_subagent_view(...)', ['deepseek-code'])
   assert.ok(Number.isInteger(svIds.buf) && Number.isInteger(svIds.win), 'subagent view opens with buf+win')
-  assert.equal((await nvim.request('nvim_get_mode', [])).mode, 'n', 'subagent view opens in normal mode')
+  await assertModeN('subagent view opens in normal mode')
+  // Same popup logic as /sessions: footer hint bar below the window,
+  // G/gg jumps, content-fitted height that grows with the replay.
+  await assertFooter('[q]', 'subagent view')
   const svMaps = await lua(`local out = {}
     for _, m in ipairs(vim.api.nvim_buf_get_keymap(${svIds.buf}, "n")) do
       table.insert(out, { lhs = m.lhs, rhs = m.rhs or "" })
@@ -549,6 +747,7 @@ try {
   const svKey = (k: string) => svMaps.find((m: any) => m.lhs === k)
   assert.ok(svKey('q'), 'q closes the subagent view')
   assert.ok(svKey('<Esc>'), 'Esc closes the subagent view')
+  assert.ok(svKey('G') && svKey('gg'), 'G/gg jump keys mapped like sessions')
   // <Nop> maps are stored with an empty rhs.
   assert.ok(svKey('i') && svKey('i').rhs === '', 'insert key Nop (read-only)')
   assert.ok(svKey(':') && svKey(':').rhs === '', 'colon Nop (read-only)')
@@ -585,6 +784,11 @@ try {
   assert.ok(svLines.some((l: string) => l.startsWith('🔧 bash(')), 'tool card rendered')
   assert.ok(svLines.some((l: string) => l.startsWith('✓ bash')), 'tool result rendered')
   assert.ok(svLines.some((l: string) => l.includes('子代理结论 OK')), 'assistant text rendered')
+  // The window grew with the replay (deferred resize via on_lines): height
+  // equals the transcript line count and the footer stays anchored below.
+  await new Promise((r) => setTimeout(r, 120))
+  assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._subagentView.win)', []), svLines.length, 'subagent view height fits the replayed content')
+  await assertFooter('[q]', 'subagent view after replay')
   const svReasoningMark = (await nvim.request('nvim_buf_get_extmarks', [svIds.buf, -1, 0, -1, { details: true }]))
     .filter((m: any) => m[3]?.hl_group === 'DshTuiReasoning')
   assert.ok(svReasoningMark.length > 0, 'reasoning header dim-marked in view')
@@ -656,14 +860,19 @@ try {
 
   // 9i. directory picker: navigate to a file → dsh-dir-selected notify.
   await lua('return require("dsh_tui").show_dir_picker(...)', [process.cwd()])
-  assert.equal((await nvim.request('nvim_get_mode', [])).mode, 'n', 'dir picker opens in normal mode')
+  await assertModeN('dir picker opens in normal mode')
   const dirState = await lua(`local M = require("dsh_tui")
     for i, e in ipairs(M._dirRows) do
       if not e.dir and e.name == "package.json" then return { idx = i } end
     end
     return { idx = 0 }`, [])
   assert.ok(dirState.idx > 0, 'package.json visible in dir picker')
-  await lua(`local M = require("dsh_tui") M._dirIdx = ${dirState.idx} M.dir_enter()`, [])
+  const dirBuf = await lua('return require("dsh_tui")._dirBuf', [])
+  const dirLines = await nvim.request('nvim_buf_get_lines', [dirBuf, 0, -1, false])
+  assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._dirWin)', []), Math.min(14, dirLines.length), 'dir window height fits content up to its cap')
+  await assertFooter('[Enter]', 'dir picker')
+  // Enter derives the entry from the cursor row (native j/k/G navigation).
+  await lua(`local M = require("dsh_tui") vim.api.nvim_win_set_cursor(M._dirWin, { ${dirState.idx} + 2, 0 }) M.dir_enter()`, [])
   hit = await waitNote('dsh-dir-selected')
   assert.ok(String(hit?.args?.[0] ?? '').endsWith('/package.json'), 'dir picker selects a file path')
 
@@ -671,6 +880,8 @@ try {
   const lf = await lua('return require("dsh_tui").show_lines_float(...)', ['工作流运行', ['◈ audit · 运行中', '  ─ 阶段一']])
   const lfLines = await nvim.request('nvim_buf_get_lines', [lf.buf, 0, -1, false])
   assert.deepEqual(lfLines, ['◈ audit · 运行中', '  ─ 阶段一'], 'lines float renders rows')
+  assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._linesWin)', []), lfLines.length, 'lines float window exactly fits content (no gap below)')
+  await assertFooter('[q]', 'lines float')
   // Without an editPath, i/o are Nop'd (read-only float must not answer an
   // edit attempt with a raw E21); with an editPath they open the file tab.
   const lfMaps = await lua(`local out = {}
@@ -691,6 +902,22 @@ try {
   const lf2I = lf2Maps.find((m: any) => m.lhs === 'i')
   assert.ok(lf2I && lf2I.hasCallback, 'lines float i opens the edit file when editPath is given')
   await lua('require("dsh_tui").close_lines_float()', [])
+
+  // 9k2. install progress float: live log tail + bottom bar row (marketplace
+  // install streams into it so pnpm runs never look stuck).
+  const prog = await lua('return require("dsh_tui").show_progress(...)', ['安装 demo-plugin', ['① 解析安装源…']])
+  assert.ok(Number.isInteger(prog.buf) && Number.isInteger(prog.win), 'progress float opens')
+  await lua('require("dsh_tui").progress_update(...)', [['① 解析安装源…', '· 使用 npm 发布版: x@1.0.0', '② 安装依赖…', '✓ 命令成功'], '▸ 60% 安装依赖…'])
+  const progLines = await nvim.request('nvim_buf_get_lines', [prog.buf, 0, -1, false])
+  assert.ok(String(progLines[progLines.length - 1]).startsWith('▸ 60%'), 'progress bar row is the last row')
+  assert.ok(progLines.slice(0, -1).includes('✓ 命令成功'), 'progress window shows install log lines')
+  await lua('require("dsh_tui").progress_update(...)', [Array.from({ length: 40 }, (_, i) => 'log-' + i), 'bar-end'])
+  const progLines2 = await nvim.request('nvim_buf_get_lines', [prog.buf, 0, -1, false])
+  assert.ok(String(progLines2[progLines2.length - 1]).startsWith('bar-end'), 'bar stays the last row after a log flood')
+  assert.ok(progLines2.includes('log-39'), 'latest log line visible (tailed view)')
+  assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._progress.win)', []), progLines2.length, 'progress window holds exactly the visible tail')
+  await lua('require("dsh_tui").close_progress()', [])
+  assert.equal(await lua('return require("dsh_tui")._progress.win', []), null, 'progress float closes')
 
   // 9k. layout presets: panel opens the reasoning panel, default closes it
   // (no resident sessions window anymore).

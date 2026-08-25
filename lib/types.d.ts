@@ -439,6 +439,17 @@ export interface PermissionPresetsService {
         description?: string;
     } | undefined;
 }
+/** The cordis loader service (in-process entry listing). */
+export interface LoaderService {
+    entries?: () => Array<{
+        id: string;
+        options?: {
+            name?: string;
+            group?: string;
+        };
+        disabled?: boolean;
+    }>;
+}
 /** dsh-host-plugin-inventory (read-only loader entry projection). */
 export interface PluginInventoryService {
     list?: () => {

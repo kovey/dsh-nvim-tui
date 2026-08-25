@@ -29,6 +29,75 @@ M._activeId = nil
 M._sessionLines = {}   -- list line number -> session id
 M._ns = vim.api.nvim_create_namespace('dsh_tui')
 
+--- Interactive popups are read-only: lock the buffer and Nop the edit keys so
+--- an accidental i/x/dd can neither change the content nor raise a raw E21.
+--- (Buffers re-rendered by the API toggle 'modifiable' around set_lines.)
+local function lock_popup_buffer(buf)
+  vim.bo[buf].modifiable = false
+  for _, k in ipairs({ 'i', 'a', 'o', 'O', 'I', 'A', 'r', 'R', 's', 'S', 'c', 'C', 'd', 'D', 'x', 'X', 'p', 'P', '<Insert>', ':' }) do
+    vim.keymap.set('n', k, '<Nop>', { buffer = buf })
+  end
+end
+
+-- ===========================================================================
+-- Popup footer: a 1-row floating bar OUTSIDE and directly BELOW the popup
+-- window (like a detached statusline). It survives scrolling inside the main
+-- popup and is re-anchored whenever the main window moves/resizes.
+-- ===========================================================================
+M._footer = { win = nil, buf = nil, mainWin = nil }
+
+local function detach_footer()
+  if M._footer.win and vim.api.nvim_win_is_valid(M._footer.win) then
+    pcall(vim.api.nvim_win_close, M._footer.win, true)
+  end
+  M._footer = { win = nil, buf = nil, mainWin = nil }
+end
+
+--- Attach (or re-attach) the footer bar under `mainWin`: same width/column,
+--- one row below the main window's bottom border, styled with the StatusLine
+--- highlight group. If the main window would push the footer off-screen, the
+--- main window is first shrunk/moved up so the bar always stays visible.
+local function attach_footer(mainWin, text)
+  detach_footer()
+  if not (mainWin and vim.api.nvim_win_is_valid(mainWin)) then return end
+  local cfg = vim.api.nvim_win_get_config(mainWin)
+  local height = cfg.height
+  -- 1 footer row + 2 border rows must fit below the window's top row.
+  local avail = vim.o.lines - 3
+  if height > avail then
+    height = math.max(1, avail)
+    vim.api.nvim_win_set_height(mainWin, height)
+  end
+  local row = math.max(0, math.min(cfg.row, vim.o.lines - height - 3))
+  if row ~= cfg.row then
+    vim.api.nvim_win_set_config(mainWin, {
+      relative = 'editor', anchor = 'NW', row = row, col = cfg.col, width = cfg.width, height = height,
+    })
+  end
+  local width = cfg.width
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = 'nofile'
+  vim.bo[buf].bufhidden = 'wipe'
+  vim.bo[buf].swapfile = false
+  local pad = math.max(0, width - vim.fn.strdisplaywidth(text))
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { text .. string.rep(' ', pad) })
+  vim.bo[buf].modifiable = false
+  local win = vim.api.nvim_open_win(buf, false, {
+    relative = 'editor',
+    anchor = 'NW',
+    row = row + height + 2,
+    col = cfg.col,
+    width = width,
+    height = 1,
+    border = 'none',
+    style = 'minimal',
+    zindex = (cfg.zindex or 50) + 1,
+    focusable = false,
+  })
+  vim.wo[win].winhighlight = 'Normal:DshTuiStatus,NormalNC:DshTuiStatus'
+  M._footer = { win = win, buf = buf, mainWin = mainWin }
+end
+
 M._statuslineText = nil
 
 local function apply_statusline()
@@ -502,7 +571,11 @@ function M.abort_turn()
   end
 end
 
---- Scrollable skill-detail float (from /skills). Esc/q closes.
+--- Skill-detail float (from /skills). Esc/q closes. Plain buffer: every line
+--- is a real line so nvim's own scrolling keys (j/k/G/gg/C-d/C-u) work; the
+--- hint is the last line and the window height fits the content.
+local SKILL_HINT = '[q]/[Esc] 关闭'
+
 function M.show_skill(info)
   local lines = { '🛠 ' .. tostring(info.name or '') .. ' — ' .. tostring(info.description or '') }
   if info.whenToUse ~= nil and info.whenToUse ~= '' then
@@ -512,6 +585,8 @@ function M.show_skill(info)
   for _, l in ipairs(vim.split(tostring(info.content or ''), '\n', { plain = true })) do
     lines[#lines + 1] = l
   end
+  local cap = math.min(32, math.max(5, vim.o.lines - 4))
+  local height = math.min(cap, #lines)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = 'nofile'
   vim.bo[buf].bufhidden = 'wipe'
@@ -523,7 +598,7 @@ function M.show_skill(info)
     row = 1,
     col = 2,
     width = math.min(120, math.max(40, vim.o.columns - 4)),
-    height = math.min(32, math.max(8, vim.o.lines - 4)),
+    height = height,
     border = 'rounded',
     style = 'minimal',
   }
@@ -535,13 +610,16 @@ function M.show_skill(info)
   vim.wo[win].cursorline = true
   vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_skill()<CR>', { buffer = buf })
   vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_skill()<CR>', { buffer = buf })
+  lock_popup_buffer(buf)
   vim.api.nvim_win_set_cursor(win, { 1, 0 })
+  attach_footer(win, SKILL_HINT)
   vim.cmd('stopinsert') -- the input window hands over in insert mode
   M._skillWin = win
 end
 
 --- Close the skill-detail float (also restores focus to the input).
 function M.close_skill()
+  detach_footer()
   if M._skillWin and vim.api.nvim_win_is_valid(M._skillWin) then
     pcall(vim.api.nvim_win_close, M._skillWin, true)
   end
@@ -579,12 +657,15 @@ function M.open_subagent_view(title)
   -- is what keeps the buffer name free for the next open.
   vim.bo[buf].bufhidden = 'wipe'
   vim.bo[buf].swapfile = false
+  -- Same popup logic as /sessions: content-fitted height (grows with the
+  -- replayed transcript), footer hint bar below the window, G/gg jumps.
+  local cap = math.min(40, math.max(8, vim.o.lines - 4))
   local cfg = {
     relative = 'editor',
     row = 2,
     col = 2,
     width = math.min(120, math.max(40, vim.o.columns - 4)),
-    height = math.min(40, math.max(8, vim.o.lines - 4)),
+    height = 1,
     border = 'rounded',
     style = 'minimal',
     zindex = 45,
@@ -603,12 +684,43 @@ function M.open_subagent_view(title)
   end
   vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_subagent_view()<CR>', { buffer = buf })
   vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_subagent_view()<CR>', { buffer = buf })
+  vim.keymap.set('n', 'G', '<Cmd>lua require("dsh_tui").subagent_view_jump("last")<CR>', { buffer = buf })
+  vim.keymap.set('n', 'gg', '<Cmd>lua require("dsh_tui").subagent_view_jump("first")<CR>', { buffer = buf })
+  attach_footer(win, '[q]/[Esc] 关闭')
   M._subagentView = { buf = buf, win = win }
+  -- Grow/shrink the window with the transcript and keep the footer anchored
+  -- (deferred: window ops are restricted inside the on_lines callback).
+  vim.api.nvim_buf_attach(buf, false, {
+    on_lines = vim.schedule_wrap(function()
+      local sv = M._subagentView
+      if not (sv.win and sv.buf and vim.api.nvim_win_is_valid(sv.win) and vim.api.nvim_buf_is_valid(sv.buf)) then
+        return true
+      end
+      local lines = vim.api.nvim_buf_get_lines(sv.buf, 0, -1, false)
+      local h = math.max(1, math.min(cap, #lines))
+      if vim.api.nvim_win_get_height(sv.win) ~= h then
+        vim.api.nvim_win_set_height(sv.win, h)
+        attach_footer(sv.win, '[q]/[Esc] 关闭')
+      end
+      return true
+    end),
+  })
   return { buf = buf, win = win }
+end
+
+function M.subagent_view_jump(where)
+  local sv = M._subagentView
+  if not (sv.win and sv.buf and vim.api.nvim_win_is_valid(sv.win) and vim.api.nvim_buf_is_valid(sv.buf)) then
+    return
+  end
+  local lines = vim.api.nvim_buf_get_lines(sv.buf, 0, -1, false)
+  local row = where == 'last' and math.max(1, #lines) or 1
+  vim.api.nvim_win_set_cursor(sv.win, { row, 0 })
 end
 
 --- User-facing close (q/Esc): notify the runner so it stops routing events.
 function M.close_subagent_view()
+  detach_footer()
   local sv = M._subagentView
   if sv.win and vim.api.nvim_win_is_valid(sv.win) then
     pcall(vim.api.nvim_win_close, sv.win, true)
@@ -826,7 +938,6 @@ M._dirBuf = nil
 M._dirPath = nil
 M._dirRows = {}   -- display rows
 M._dirIdx = 1
-M._dirTop = 1
 
 local function dir_entries(path)
   local ok, names = pcall(vim.fn.readdir, path)
@@ -848,6 +959,8 @@ local function dir_entries(path)
   return out
 end
 
+local DIR_HINT = '[j/k] 移动  [Enter] 进入/选择  [BS] 上级  [Esc] 取消'
+
 local function render_dir_picker()
   local win = M._dirWin
   if not (win and vim.api.nvim_win_is_valid(win)) then return end
@@ -859,26 +972,24 @@ local function render_dir_picker()
   M._dirRows = entries
   if M._dirIdx > #entries then M._dirIdx = math.max(1, #entries) end
   if #entries == 0 then M._dirIdx = 0 end
-  local maxH = 10
-  local top = M._dirTop
-  if M._dirIdx > 0 then
-    if top > M._dirIdx then top = M._dirIdx end
-    if top <= M._dirIdx - maxH then top = M._dirIdx - maxH + 1 end
-  end
-  M._dirTop = top
+  -- Plain buffer: every entry is a real line, so nvim's own scrolling keys
+  -- (j/k/G/gg/C-d/C-u) work as expected; the hint lives in the footer bar.
   local rows = { '📁 ' .. M._dirPath .. '/', '' }
-  for i = top, math.min(#entries, top + maxH - 1) do
-    local e = entries[i]
-    local mark = i == M._dirIdx and '▸ ' or '  '
-    rows[#rows + 1] = mark .. e.name .. (e.dir and '/' or '')
+  for _, e in ipairs(entries) do
+    rows[#rows + 1] = '  ' .. e.name .. (e.dir and '/' or '')
   end
-  rows[#rows + 1] = ''
-  rows[#rows + 1] = '[j/k] 移动  [Enter] 进入/选择  [BS] 上级  [Esc] 取消'
+  local cap = math.min(14, math.max(6, vim.o.lines - 8))
+  local height = math.min(cap, #rows)
+
   vim.bo[M._dirBuf].modifiable = true
   vim.api.nvim_buf_set_lines(M._dirBuf, 0, -1, false, rows)
   vim.bo[M._dirBuf].modifiable = false
+  if vim.api.nvim_win_get_height(win) ~= height then
+    vim.api.nvim_win_set_height(win, height)
+  end
+  attach_footer(win, DIR_HINT)
   if M._dirIdx > 0 then
-    vim.api.nvim_win_set_cursor(win, { 3 + (M._dirIdx - top), 0 })
+    vim.api.nvim_win_set_cursor(win, { 2 + M._dirIdx, 0 })
   end
 end
 
@@ -897,7 +1008,6 @@ function M.show_dir_picker(startPath)
   vim.b[buf].ministatusline_disable = true
   M._dirBuf = buf
   M._dirIdx = 1
-  M._dirTop = 1
   M._dirWin = vim.api.nvim_open_win(buf, true, {
     relative = 'editor',
     row = 4,
@@ -909,16 +1019,21 @@ function M.show_dir_picker(startPath)
     title = ' 目录选择 ',
     title_pos = 'center',
   })
+  vim.wo[M._dirWin].cursorline = true
+  vim.wo[M._dirWin].number = false
+  vim.wo[M._dirWin].signcolumn = 'no'
   vim.cmd('stopinsert') -- input window hands over in insert mode
   local k = function(key, cmd)
     vim.keymap.set('n', key, '<Cmd>lua ' .. cmd .. '<CR>', { buffer = buf })
   end
-  k('j', 'require("dsh_tui").dir_move(1)')
-  k('k', 'require("dsh_tui").dir_move(-1)')
+  -- j/k/G/gg scroll the plain buffer natively; Enter picks the cursor row.
   k('<CR>', 'require("dsh_tui").dir_enter()')
   k('<BS>', 'require("dsh_tui").dir_up()')
   k('q', 'require("dsh_tui").close_dir_picker()')
   k('<Esc>', 'require("dsh_tui").close_dir_picker()')
+  k('G', 'require("dsh_tui").dir_jump("last")')
+  k('gg', 'require("dsh_tui").dir_jump("first")')
+  lock_popup_buffer(buf)
   render_dir_picker()
 end
 
@@ -928,13 +1043,23 @@ function M.dir_move(dir)
   render_dir_picker()
 end
 
+function M.dir_jump(where)
+  if #M._dirRows == 0 then return end
+  M._dirIdx = where == 'last' and #M._dirRows or 1
+  render_dir_picker()
+end
+
 function M.dir_enter()
-  local e = M._dirRows[M._dirIdx]
+  -- Derive the index from the cursor so native j/k/G/gg navigation works
+  -- (G lands on the hint row → clamp to the last entry).
+  local row = vim.api.nvim_win_get_cursor(M._dirWin)[1]
+  local idx = math.max(1, math.min(#M._dirRows, row - 2))
+  M._dirIdx = idx
+  local e = M._dirRows[idx]
   if e == nil then return end
   if e.dir then
     M._dirPath = M._dirPath .. '/' .. e.name
     M._dirIdx = 1
-    M._dirTop = 1
     render_dir_picker()
   else
     local full = M._dirPath .. '/' .. e.name
@@ -953,11 +1078,11 @@ function M.dir_up()
   end
   M._dirPath = parent
   M._dirIdx = 1
-  M._dirTop = 1
   render_dir_picker()
 end
 
 function M.close_dir_picker()
+  detach_footer()
   if M._dirWin and vim.api.nvim_win_is_valid(M._dirWin) then
     pcall(vim.api.nvim_win_close, M._dirWin, true)
   end
@@ -966,29 +1091,41 @@ function M.close_dir_picker()
   M._dirPath = nil
   M._dirRows = {}
   M._dirIdx = 1
-  M._dirTop = 1
 end
 
 -- ---------------------------------------------------------------------------
 -- Generic scrollable info float (workflow view, settings overview, …).
 -- ---------------------------------------------------------------------------
 --- Generic read-only lines float (workflow / settings / trajectory).
---- `editPath` (optional): map i/o to open that file in a new tab — the
---- settings overview's edit shortcut. Without it i/o are Nop'd so a read-only
---- float never answers an edit attempt with a raw E21 error.
+--- Plain buffer: all lines are real lines, so nvim's own scrolling keys
+--- (j/k/G/gg/C-d/C-u) work as expected; the hint is the last line and the
+--- window height fits the content. `editPath` (optional): map i/o to open
+--- that file in a new tab. Without it i/o are Nop'd so a read-only float
+--- never answers an edit attempt with a raw E21 error.
 function M.show_lines_float(title, lines, editPath)
+  local all = lines or {}
+  local hint = type(editPath) == 'string' and editPath ~= ''
+    and '[i/o] 打开文件编辑  [q]/[Esc] 关闭'
+    or '[q]/[Esc] 关闭'
+  local rows = {}
+  for _, l in ipairs(all) do
+    rows[#rows + 1] = l
+  end
+  if #rows == 0 then rows = { '（空）' } end
+  local cap = math.min(36, math.max(5, vim.o.lines - 4))
+  local height = math.min(cap, #rows)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = 'nofile'
   vim.bo[buf].bufhidden = 'wipe'
   vim.bo[buf].swapfile = false
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines or {})
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, rows)
   vim.bo[buf].modifiable = false
   local cfg = {
     relative = 'editor',
     row = 2,
     col = 2,
     width = math.min(110, math.max(40, vim.o.columns - 4)),
-    height = math.min(36, math.max(6, vim.o.lines - 4)),
+    height = height,
     border = 'rounded',
     style = 'minimal',
   }
@@ -1000,6 +1137,7 @@ function M.show_lines_float(title, lines, editPath)
   vim.wo[win].cursorline = true
   vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_lines_float()<CR>', { buffer = buf })
   vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_lines_float()<CR>', { buffer = buf })
+  lock_popup_buffer(buf) -- i/o below override the Nops when editPath is set
   if type(editPath) == 'string' and editPath ~= '' then
     vim.keymap.set('n', 'i', function()
       vim.cmd('tabedit ' .. vim.fn.fnameescape(editPath))
@@ -1016,14 +1154,99 @@ function M.show_lines_float(title, lines, editPath)
   end
   vim.cmd('stopinsert') -- input window hands over in insert mode
   M._linesWin = win
+  vim.api.nvim_win_set_cursor(win, { 1, 0 })
+  attach_footer(win, hint)
   return { buf = buf, win = win }
 end
 
 function M.close_lines_float()
+  detach_footer()
   if M._linesWin and vim.api.nvim_win_is_valid(M._linesWin) then
     pcall(vim.api.nvim_win_close, M._linesWin, true)
   end
   M._linesWin = nil
+end
+
+-- ---------------------------------------------------------------------------
+-- Live progress float (plugin install / update-all / …): the runner streams
+-- log lines + a bottom bar row; the window tails the latest lines so a long
+-- operation never looks stuck. q/Esc hide it (the operation keeps running).
+-- ---------------------------------------------------------------------------
+M._progress = { win = nil, buf = nil }
+
+function M.show_progress(title, lines)
+  M.close_progress()
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = 'nofile'
+  vim.bo[buf].bufhidden = 'wipe'
+  vim.bo[buf].swapfile = false
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines or { '' })
+  vim.bo[buf].modifiable = false
+  local width = 76
+  local cap = math.min(16, math.max(6, vim.o.lines - 12))
+  local cfg = {
+    relative = 'editor',
+    row = math.max(0, math.floor((vim.o.lines - cap) / 2) - 2),
+    col = math.max(0, math.floor((vim.o.columns - width) / 2)),
+    width = width,
+    height = cap,
+    border = 'rounded',
+    style = 'minimal',
+    zindex = 60,
+  }
+  if vim.fn.has('nvim-0.9') == 1 then
+    cfg.title = ' ' .. tostring(title or '进度') .. ' '
+    cfg.title_pos = 'center'
+  end
+  local win = vim.api.nvim_open_win(buf, true, cfg)
+  vim.wo[win].number = false
+  vim.wo[win].signcolumn = 'no'
+  vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_progress()<CR>', { buffer = buf })
+  vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_progress()<CR>', { buffer = buf })
+  lock_popup_buffer(buf)
+  vim.cmd('stopinsert')
+  M._progress = { win = win, buf = buf }
+  return { buf = buf, win = win }
+end
+
+--- Replace the visible tail with the newest log lines + the bottom bar row
+--- (styled as a statusline). The window height stays put; content tails.
+function M.progress_update(lines, bar)
+  local st = M._progress
+  if not (st and st.win and vim.api.nvim_win_is_valid(st.win)) then return end
+  local height = vim.api.nvim_win_get_height(st.win)
+  local maxLog = math.max(1, height - 1) -- last row is the bar
+  local src = lines or {}
+  local rows = {}
+  for i = math.max(1, #src - maxLog + 1), #src do
+    rows[#rows + 1] = src[i]
+  end
+  rows[#rows + 1] = bar or ''
+  vim.bo[st.buf].modifiable = true
+  vim.api.nvim_buf_set_lines(st.buf, 0, -1, false, rows)
+  vim.bo[st.buf].modifiable = false
+  local width = vim.api.nvim_win_get_width(st.win)
+  local text = rows[#rows]
+  local pad = math.max(0, width - vim.fn.strdisplaywidth(text))
+  if pad > 0 then
+    text = text .. string.rep(' ', pad)
+    -- Explicit range: nvim_buf_set_lines(-1, -1) INSERTS past the last line
+    -- instead of replacing it (negative -1 = index past the end).
+    vim.bo[st.buf].modifiable = true
+    vim.api.nvim_buf_set_lines(st.buf, #rows - 1, #rows, false, { text })
+    vim.bo[st.buf].modifiable = false
+  end
+  vim.api.nvim_buf_clear_namespace(st.buf, M._ns, 0, -1)
+  vim.api.nvim_buf_set_extmark(st.buf, M._ns, #rows - 1, 0, {
+    end_row = #rows - 1, end_col = #text, hl_group = 'DshTuiStatus', priority = 4096,
+  })
+end
+
+function M.close_progress()
+  if M._progress.win and vim.api.nvim_win_is_valid(M._progress.win) then
+    pcall(vim.api.nvim_win_close, M._progress.win, true)
+  end
+  M._progress = { win = nil, buf = nil }
 end
 
 -- ---------------------------------------------------------------------------
@@ -1297,6 +1520,9 @@ function M.applyHighlights()
   vim.cmd('highlight default link DshTuiSubagent Type')
   vim.cmd('highlight default link DshTuiWorkflow Identifier')
   vim.cmd('highlight default link DshTuiCode Special')
+  -- The popup bottom hint rows borrow the statusline look: floating windows
+  -- get no real statusline, so the hint row is styled like one.
+  vim.cmd('highlight default link DshTuiStatus StatusLine')
   vim.cmd('highlight default link DshTuiBold Bold')
   vim.cmd('highlight default link DshTuiPrompt DshTuiUser') -- input-line '❯'
   -- Slash-command completion menu: the selection reuses the pum look.
@@ -1512,15 +1738,16 @@ M._sessWin = nil
 M._sessBuf = nil
 M._sessEntries = {}
 M._sessIdx = 1
-M._sessTop = 1
 
 function M.show_session_list(entries)
   M.close_session_list()
   M._sessEntries = entries or {}
+  local n = #M._sessEntries
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = 'nofile'
   vim.bo[buf].bufhidden = 'wipe'
   vim.bo[buf].swapfile = false
+  vim.bo[buf].modifiable = false
   vim.b[buf].ministatusline_disable = true
   M._sessBuf = buf
   local idx = 1
@@ -1528,28 +1755,35 @@ function M.show_session_list(entries)
     if e.active then idx = i end
   end
   M._sessIdx = idx
-  M._sessTop = 1
+  -- Window exactly fits the content: '' + entries; the hint lives in the
+  -- footer bar below the window.
+  local cap = math.min(16, math.max(5, vim.o.lines - 6))
+  local height = n == 0 and 1 or math.min(cap, n + 1)
   M._sessWin = vim.api.nvim_open_win(buf, true, {
     relative = 'editor',
     row = 3,
     col = math.max(0, math.floor(vim.o.columns / 2) - 44),
     width = 88,
-    height = math.min(16, math.max(5, vim.o.lines - 6)),
+    height = height,
     border = 'rounded',
     style = 'minimal',
     title = ' 会话列表（/sessions） ',
     title_pos = 'center',
   })
   vim.wo[M._sessWin].cursorline = true
+  vim.wo[M._sessWin].number = false
+  vim.wo[M._sessWin].signcolumn = 'no'
   local k = function(key, cmd)
     vim.keymap.set('n', key, '<Cmd>lua ' .. cmd .. '<CR>', { buffer = buf })
   end
-  k('j', 'require("dsh_tui").session_list_move(1)')
-  k('k', 'require("dsh_tui").session_list_move(-1)')
+  -- j/k/G/gg scroll the plain buffer natively; Enter picks the cursor row.
   k('<CR>', 'require("dsh_tui").session_list_select()')
   k('<C-n>', 'require("dsh_tui").session_list_new()')
   k('q', 'require("dsh_tui").close_session_list()')
   k('<Esc>', 'require("dsh_tui").close_session_list()')
+  k('G', 'require("dsh_tui").session_list_jump("last")')
+  k('gg', 'require("dsh_tui").session_list_jump("first")')
+  lock_popup_buffer(buf)
   vim.cmd('stopinsert') -- input window hands over in insert mode
   M.render_session_list()
 end
@@ -1559,36 +1793,24 @@ function M.render_session_list()
   if not (buf and vim.api.nvim_buf_is_valid(buf)) then return end
   local entries = M._sessEntries
   local n = #entries
+  local rows = {}
   if n == 0 then
-    vim.bo[buf].modifiable = true
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { '（没有会话）', '', '[C-n] 新建会话  [Esc] 关闭' })
-    vim.bo[buf].modifiable = false
-    return
+    rows = { '（没有会话）' }
+  else
+    rows[#rows + 1] = ''
+    for i, e in ipairs(entries) do
+      local title = type(e.title) == 'string' and e.title ~= '' and e.title or '（无标题）'
+      local kind = e.kind == 'history' and ' 历史' or (e.active and ' 当前' or '')
+      rows[#rows + 1] = '  ' .. title .. ' · ' .. tostring(e.id or '') .. kind
+    end
   end
-  if M._sessIdx > n then M._sessIdx = n end
-  if M._sessIdx < 1 then M._sessIdx = 1 end
-  local maxH = 12
-  local top = M._sessTop
-  if top > M._sessIdx then top = M._sessIdx end
-  if top <= M._sessIdx - maxH then top = M._sessIdx - maxH + 1 end
-  M._sessTop = top
-  local rows = { '▸ = 当前会话 · Enter 切换 · C-n 新建 · q/Esc 关闭', '' }
-  local firstRow = 3
-  for i = top, math.min(n, top + maxH - 1) do
-    local e = entries[i]
-    local mark = i == M._sessIdx and '▸ ' or '  '
-    local title = type(e.title) == 'string' and e.title ~= '' and e.title or '（无标题）'
-    local kind = e.kind == 'history' and ' 历史' or (e.active and ' 当前' or '')
-    rows[#rows + 1] = mark .. title .. ' · ' .. tostring(e.id or '') .. kind
-    if e.active then firstRow = i - top + 2 end
-  end
-  rows[#rows + 1] = ''
-  rows[#rows + 1] = '[j/k] 移动  [Enter] 切换  [C-n] 新建  [Esc] 关闭'
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, rows)
   vim.bo[buf].modifiable = false
-  if M._sessWin and vim.api.nvim_win_is_valid(M._sessWin) then
-    vim.api.nvim_win_set_cursor(M._sessWin, { 2 + (M._sessIdx - top), 0 })
+  attach_footer(M._sessWin, n == 0 and '[C-n] 新建会话  [Esc] 关闭'
+    or '[j/k] 移动  [Enter] 切换  [C-n] 新建  [Esc] 关闭')
+  if M._sessWin and vim.api.nvim_win_is_valid(M._sessWin) and n > 0 then
+    vim.api.nvim_win_set_cursor(M._sessWin, { 1 + M._sessIdx, 0 })
   end
 end
 
@@ -1598,8 +1820,19 @@ function M.session_list_move(dir)
   M.render_session_list()
 end
 
+function M.session_list_jump(where)
+  if #M._sessEntries == 0 then return end
+  M._sessIdx = where == 'last' and #M._sessEntries or 1
+  M.render_session_list()
+end
+
 function M.session_list_select()
-  local e = M._sessEntries[M._sessIdx]
+  -- Derive the index from the cursor so native j/k/G/gg navigation works
+  -- (G lands on the hint row → clamp to the last entry).
+  local row = vim.api.nvim_win_get_cursor(M._sessWin)[1]
+  local idx = math.max(1, math.min(#M._sessEntries, row - 1))
+  M._sessIdx = idx
+  local e = M._sessEntries[idx]
   M.close_session_list()
   if e and M._channel then
     vim.rpcnotify(M._channel, 'dsh-session-select', e.id)
@@ -1614,6 +1847,7 @@ function M.session_list_new()
 end
 
 function M.close_session_list()
+  detach_footer()
   if M._sessWin and vim.api.nvim_win_is_valid(M._sessWin) then
     pcall(vim.api.nvim_win_close, M._sessWin, true)
   end
@@ -1621,7 +1855,6 @@ function M.close_session_list()
   M._sessBuf = nil
   M._sessEntries = {}
   M._sessIdx = 1
-  M._sessTop = 1
   if input_win and vim.api.nvim_win_is_valid(input_win) then
     vim.api.nvim_set_current_win(input_win)
     vim.cmd('startinsert')
@@ -1705,6 +1938,7 @@ end
 M._float = { win = nil, buf = nil, kind = nil, state = nil }
 
 local function close_float()
+  detach_footer()
   if M._float.win and vim.api.nvim_win_is_valid(M._float.win) then
     pcall(vim.api.nvim_win_close, M._float.win, true)
   end
@@ -1742,9 +1976,9 @@ local function open_float(lines, opts)
   vim.bo[buf].bufhidden = 'wipe'
   vim.bo[buf].swapfile = false
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  local width = math.max(40, math.min(100, opts.width or 64))
+  local width = math.max(40, math.min(opts.maxWidth or 100, opts.width or 64))
   local height = float_height(lines, width)
-  local win = vim.api.nvim_open_win(buf, true, {
+  local cfg = {
     relative = 'editor',
     row = math.max(0, math.floor((vim.o.lines - height) / 2) - 2),
     col = math.max(0, math.floor((vim.o.columns - width) / 2)),
@@ -1752,11 +1986,17 @@ local function open_float(lines, opts)
     height = height,
     border = 'rounded',
     style = 'minimal',
-  })
+  }
+  if vim.fn.has('nvim-0.9') == 1 and type(opts.title) == 'string' and opts.title ~= '' then
+    cfg.title = ' ' .. opts.title .. ' '
+    cfg.title_pos = 'center'
+  end
+  local win = vim.api.nvim_open_win(buf, true, cfg)
   vim.wo[win].cursorline = true
   vim.wo[win].number = false
   vim.wo[win].signcolumn = 'no'
   vim.cmd('stopinsert') -- interactive float: normal-mode keys must work
+  lock_popup_buffer(buf) -- read-only: i/x/dd must not edit or raise E21
   M._float.win = win
   M._float.buf = buf
   return buf, win
@@ -1769,25 +2009,17 @@ end
 --- Approval request (from approval/request). entry: {toolName, reason}.
 function M.show_approval(entry)
   local lines = {
-    '⚠ 审批请求',
-    '',
     '工具: ' .. tostring(entry.toolName or '?'),
     '说明: ' .. tostring(entry.reason or '无'),
     '',
-    '[y] 允许一次    [n] 拒绝    [Esc] 拒绝',
   }
-  local buf = open_float(lines, { width = 72 })
+  local buf = open_float(lines, { width = 72, title = '⚠ 审批请求' })
   M._float.kind = 'approval'
+  attach_footer(M._float.win, '[y] 允许一次  [a] 总是（自动模式）  [n] 拒绝  [Esc] 拒绝')
   float_key(buf, 'y', 'require("dsh_tui").approval_decide("y")')
+  float_key(buf, 'a', 'require("dsh_tui").approval_decide("always")')
   float_key(buf, 'n', 'require("dsh_tui").approval_decide("n")')
   float_key(buf, '<Esc>', 'require("dsh_tui").approval_decide("n")')
-  -- If the reason wrapped so much that the window is height-capped, anchor
-  -- the view at the bottom: the key hints must ALWAYS be on screen (the
-  -- full request is also echoed into the chat feed).
-  local last = vim.api.nvim_buf_line_count(buf)
-  if vim.api.nvim_win_get_height(M._float.win) < last then
-    vim.api.nvim_win_set_cursor(M._float.win, { last, 0 })
-  end
 end
 
 function M.approval_decide(value)
@@ -1817,7 +2049,7 @@ function M.show_questions(questions)
       multiSelect = q.multiSelect == true,
     })
   end
-  open_float({ '…' }, { width = 80 })
+  open_float({ '…' }, { width = 80, title = '用户提问' })
   M._float.kind = 'questions'
   M._float.state = { questions = qs, qIdx = 1, optIdx = 1, selected = {}, optRows = {} }
   M.redraw_questions()
@@ -1866,11 +2098,13 @@ function M.redraw_questions()
   if #q.options == 0 then
     table.insert(lines, '（无选项，回车继续）')
   end
-  table.insert(lines, '')
-  table.insert(lines, q.multiSelect and '[Space] 选择  [j/k] 移动  [Enter] ' ..
+  local footerText = q.multiSelect and '[Space] 选择  [j/k] 移动  [Enter] ' ..
     (st.qIdx == #st.questions and '确认' or '下一题') .. '  [Esc] 取消'
-    or '[j/k] 选择  [Enter] ' .. (st.qIdx == #st.questions and '确认' or '下一题') .. '  [Esc] 取消')
+    or '[j/k] 选择  [Enter] ' .. (st.qIdx == #st.questions and '确认' or '下一题') .. '  [Esc] 取消'
+
+  vim.bo[M._float.buf].modifiable = true -- popup buffers are locked otherwise
   vim.api.nvim_buf_set_lines(M._float.buf, 0, -1, false, lines)
+  vim.bo[M._float.buf].modifiable = false
   -- The float was created with a one-line placeholder: grow/shrink it to the
   -- question's real wrapped height, or the options and the key-hint footer
   -- stay clipped below the window (no visible hints).
@@ -1889,6 +2123,7 @@ function M.redraw_questions()
     end
   end
   st.optRows = optRows
+  attach_footer(M._float.win, footerText)
   if #optRows > 0 then
     vim.api.nvim_win_set_cursor(M._float.win, { optRows[st.optIdx], 0 })
   end
@@ -1965,43 +2200,93 @@ function M.questions_cancel()
 end
 
 --- Generic picker. items: { {label, value, active} }.
+--- Plain buffer: every entry is a REAL line, so nvim's own navigation keys
+--- (j/k, G, gg, C-d/C-u) work exactly as in any buffer — G lands on the hint
+--- row, and Enter clamps it to the last entry. The hint is the last line,
+--- flush with the window bottom because the height fits the content.
+local PICKER_HINT = '[j/k] 移动  [Enter] 选择  [Esc] 取消'
+
 function M.show_picker(title, items)
-  local lines = { title, '' }
+  close_float()
   local values = {}
-  local activeRow = 3
-  for i, it in ipairs(items or {}) do
+  local lines = {}
+  local activeRow = 1
+  for _, it in ipairs(items or {}) do
     if type(it) == 'table' and type(it.label) == 'string' then
-      table.insert(lines, (it.active and '▸ ' or '  ') .. it.label)
-      table.insert(values, it.value)
-      if it.active then
-        activeRow = #lines
-      end
+      lines[#lines + 1] = it.label
+      values[#values + 1] = it.value
+      if it.active then activeRow = #lines end
     end
   end
-  table.insert(lines, '')
-  table.insert(lines, '[j/k] 移动  [Enter] 选择  [Esc] 取消')
-  local buf = open_float(lines, { width = 72 })
-  M._float.kind = 'picker'
-  M._float.state = { values = values, idx = 1, firstRow = 3 }
-  if activeRow >= 3 then
-    M._float.state.idx = activeRow - 2
+  if #lines == 0 then lines = { '（无选项）' } end
+  -- Adaptive width: fit the longest row (CJK counts 2 cells), clamped to the
+  -- editor — long marketplace rows were clipped at the old fixed 72.
+  local width = 72
+  for _, l in ipairs(lines) do
+    width = math.max(width, vim.fn.strdisplaywidth(l) + 4)
   end
-  vim.api.nvim_win_set_cursor(M._float.win, { M._float.state.firstRow + M._float.state.idx - 1, 0 })
-  float_key(buf, 'j', 'require("dsh_tui").picker_move(1)')
-  float_key(buf, 'k', 'require("dsh_tui").picker_move(-1)')
+  width = math.min(width, math.max(40, vim.o.columns - 4))
+  local cap = math.min(22, math.max(4, vim.o.lines - 8))
+  local height = math.min(cap, #lines)
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = 'nofile'
+  vim.bo[buf].bufhidden = 'wipe'
+  vim.bo[buf].swapfile = false
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+  local cfg = {
+    relative = 'editor',
+    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 2),
+    col = math.max(0, math.floor((vim.o.columns - width) / 2)),
+    width = width,
+    height = height,
+    border = 'rounded',
+    style = 'minimal',
+  }
+  if vim.fn.has('nvim-0.9') == 1 and type(title) == 'string' and title ~= '' then
+    cfg.title = ' ' .. tostring(title) .. ' '
+    cfg.title_pos = 'center'
+  end
+  local win = vim.api.nvim_open_win(buf, true, cfg)
+  vim.wo[win].cursorline = true
+  vim.wo[win].number = false
+  vim.wo[win].signcolumn = 'no'
+  vim.cmd('stopinsert') -- input window hands over in insert mode
+  M._float.kind = 'picker'
+  M._float.state = { values = values }
+  M._float.buf = buf
+  M._float.win = win
   float_key(buf, '<CR>', 'require("dsh_tui").picker_confirm()')
   float_key(buf, '<Esc>', 'require("dsh_tui").picker_cancel()')
+  float_key(buf, 'q', 'require("dsh_tui").picker_cancel()')
+  float_key(buf, 'G', 'require("dsh_tui").picker_jump("last")')
+  float_key(buf, 'gg', 'require("dsh_tui").picker_jump("first")')
+  lock_popup_buffer(buf)
+  vim.api.nvim_win_set_cursor(win, { math.min(activeRow, #lines), 0 })
+  attach_footer(win, PICKER_HINT)
+  return buf, win
 end
 
 function M.picker_move(dir)
   local st = M._float.state
-  st.idx = math.max(1, math.min(#st.values, st.idx + dir))
-  vim.api.nvim_win_set_cursor(M._float.win, { st.firstRow + st.idx - 1, 0 })
+  if st == nil or M._float.kind ~= 'picker' or #st.values == 0 then return end
+  local row = vim.api.nvim_win_get_cursor(M._float.win)[1]
+  row = math.max(1, math.min(#st.values, row + dir))
+  vim.api.nvim_win_set_cursor(M._float.win, { row, 0 })
+end
+
+function M.picker_jump(where)
+  local st = M._float.state
+  if st == nil or M._float.kind ~= 'picker' or #st.values == 0 then return end
+  local row = where == 'last' and #st.values or 1
+  vim.api.nvim_win_set_cursor(M._float.win, { row, 0 })
 end
 
 function M.picker_confirm()
   local st = M._float.state
-  local value = st.values[st.idx]
+  local row = vim.api.nvim_win_get_cursor(M._float.win)[1]
+  row = math.max(1, math.min(#st.values, row)) -- G lands on the hint row: take the last entry
+  local value = st.values[row]
   close_float()
   if M._channel and value ~= nil then
     vim.rpcnotify(M._channel, 'dsh-picker-selected', value)

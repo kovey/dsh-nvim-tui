@@ -171,6 +171,7 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 会话 | `/locale [zh\|en]` | 界面语言切换（runner 侧字典化；Lua 按键提示保持中文） |
 | 信息 | `/context` | 上下文组成分解（≈used/capacity · system/tools/messages · claim 窗口，读 sessionProjections） |
 | 信息 | `/plugins` | 宿主插件清单（loader 条目只读投影） |
+| 信息 | `/market [关键词 \| refresh \| update-all]` | **插件市场**：awesome-dsh-plugin 精选目录（2140+ 插件）按 GitHub ★ 倒序，安装/更新/卸载（`dsh plugin` CLI，重启生效）+ **热启停**（cordis.patch.yml + HMR 免重启）+ `↑` 更新标记 + update-all，磁盘缓存 + 离线可用 |
 | 模型 | `/models` | 模型/供应商目录（活路由 + 可配置 provider 清单 + 当前选择） |
 | 会话 | `/attach [路径]` | 附加文件/目录（图片 = durable attachment，其余 = @ 路径引用）；`@` 输入即文件引用补全 |
 | 会话 | `/image <路径> [提示]` | **多模态识图**：本地图片（png/jpg/webp/gif，支持 `~/`）随提示发送；macOS 无参数时读剪贴板图片；`/image clear` 清空 `<C-v>` 队列 |

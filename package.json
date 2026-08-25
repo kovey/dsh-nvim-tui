@@ -34,7 +34,8 @@
   },
   "dependencies": {
     "neovim": "^5.4.0",
-    "string-width": "^8.2.2"
+    "string-width": "^8.2.2",
+    "tar": "^7.5.22"
   },
   "engines": {
     "node": ">=23.6"
