@@ -80,6 +80,18 @@
 - `/workspace` 改为 sessions 式弹窗（工作区目录 + 目录选择新建 + 重命名/
   删除动作）。
 
+### 子代理思考链 TTL 清理（本轮）
+
+- 此前子代理思考链**永久累积**（宿主持久化无 TTL、无删除接口）——现在
+  `/subagents` 打开时自动清理：已结束且超过保留期（`config.subagentTtlHours`，
+  默认 72h，0 = 关闭）的思考链通过 `sessionPersistence.truncateStored` 截断
+  （仅保留首条事件，释放存储），id 记入
+  `$DSH_HOME/dsh-nvim-tui-subagent-clean.json` 并从列表隐藏；
+- 列表行显示存续时间（`刚刚/5m前/2h前/3d前`）；顶部新增
+  `🧹 清理全部已结束思考链（N 条）` 手动清理（二次确认）；
+- 运行中的子代理不受影响；`src/subagent-clean.ts` 纯函数（ageLabel/isExpired
+  /台账读写）配套 smoke 断言。
+
 ## v0.2.0（2026-08-24）
 
 ### 工程形态

@@ -16,6 +16,7 @@ import { foldUsage, billedInput, cacheHitRate, estimateCost, formatTokens, forma
 import { sniffMediaType, parseImageDataUrl, splitImageDataUrls, imageLabel } from '../lib/images.js'
 import { t, setLocale, locale } from '../lib/i18n.js'
 import { matchIntent } from '../lib/nlcmd.js'
+import { ageLabel, isExpired } from '../lib/subagent-clean.js'
 import {
   parseStars, buildCatalog, searchCatalog, parsePluginYaml,
   setDisabledRows, readDisabledIds, isNpmName, depMatchesEntry, repoRoot, installSpec,
@@ -324,6 +325,17 @@ description:
   assert.equal(matchIntent('> 会话列表'), null, '> forces chat')
   assert.equal(matchIntent('这是一条很长很长的普通消息，超过六十个字符就应该直接发给智能体而不是被识别成命令，因为自然语言命令匹配必须保持克制避免误拦截。'), null, 'long input stays chat')
   assert.equal(matchIntent('清屏')?.name, 'clear', 'destructive exact phrase works')
+  // subagent thought-chain TTL helpers
+  const NOW = 1_800_000_000_000
+  assert.equal(ageLabel(NOW - 5_000, NOW), '刚刚', 'age under a minute')
+  assert.equal(ageLabel(NOW - 300_000, NOW), '5m前', 'age in minutes')
+  assert.equal(ageLabel(NOW - 7_200_000, NOW), '2h前', 'age in hours')
+  assert.equal(ageLabel(NOW - 3 * 86_400_000, NOW), '3d前', 'age in days')
+  assert.equal(ageLabel(undefined, NOW), '', 'unknown age renders empty')
+  assert.equal(isExpired(NOW - 100 * 3600 * 1000, 72, NOW), true, 'older than TTL is expired')
+  assert.equal(isExpired(NOW - 3600 * 1000, 72, NOW), false, 'younger than TTL survives')
+  assert.equal(isExpired(undefined, 72, NOW), false, 'unknown createdAt never expires')
+  assert.equal(isExpired(NOW - 999_999_999, 0, NOW), false, 'ttl 0 disables cleanup')
   assert.equal(matchIntent('帮我清屏'), null, 'destructive commands never fire on loose matches')
 
   // 5. /clear empties the active feed
