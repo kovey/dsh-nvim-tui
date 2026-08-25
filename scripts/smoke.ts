@@ -15,6 +15,7 @@ import { FeedRenderer } from '../lib/feed.js'
 import { foldUsage, billedInput, cacheHitRate, estimateCost, formatTokens, formatElapsed, modeLabel, escapeStatusline } from '../lib/stats.js'
 import { sniffMediaType, parseImageDataUrl, splitImageDataUrls, imageLabel } from '../lib/images.js'
 import { t, setLocale, locale } from '../lib/i18n.js'
+import { matchIntent } from '../lib/nlcmd.js'
 import {
   parseStars, buildCatalog, searchCatalog, parsePluginYaml,
   setDisabledRows, readDisabledIds, isNpmName, depMatchesEntry, repoRoot, installSpec,
@@ -304,6 +305,26 @@ description:
   assert.equal(classifyPnpmError('some totally weird output').kind, 'other', 'unknown output classified as other')
   assert.equal(firstErrorLine('\n\n  ERR something \nnext\n'), 'ERR something', 'first non-empty line extracted')
   assert.ok(profileDir('nvim-tui').endsWith('/profiles/nvim-tui'), 'profileDir resolves under DSH_HOME/.dsh')
+  // phase-4: natural-language command router
+  assert.deepEqual(matchIntent('会话列表'), { name: 'sessions', arg: undefined }, 'exact zh alias routes')
+  assert.deepEqual(matchIntent('help'), { name: 'help', arg: undefined }, 'exact en alias routes')
+  assert.deepEqual(matchIntent('切换模型 deepseek-chat'), { name: 'model', arg: 'deepseek-chat' }, 'model pattern captures arg')
+  assert.deepEqual(matchIntent('用 deepseek-chat'), { name: 'model', arg: 'deepseek-chat' }, 'id-like model arg without 模型 keyword')
+  assert.equal(matchIntent('用中文回复我'), null, 'bare 用 + sentence is chat, not a model switch')
+  assert.deepEqual(matchIntent('主题换成 vivid'), { name: 'theme', arg: 'vivid' }, 'theme alternation picks the longest prefix')
+  assert.deepEqual(matchIntent('语言 英文'), { name: 'locale', arg: 'en' }, 'locale arg mapped')
+  assert.deepEqual(matchIntent('中文'), { name: 'locale', arg: 'zh' }, 'bare 中文 switches language')
+  assert.deepEqual(matchIntent('删除工作区 abc123'), { name: 'workspace', arg: 'delete abc123' }, 'workspace delete composed')
+  assert.deepEqual(matchIntent('添加工作区'), { name: 'workspace', arg: undefined }, 'bare workspace add opens the popup')
+  assert.deepEqual(matchIntent('记住 明天九点开会'), { name: 'remember', arg: '明天九点开会' }, 'remember arg captured')
+  assert.deepEqual(matchIntent('状态栏显示 tokens'), { name: 'glance', arg: 'tokens' }, 'glance arg captured')
+  assert.deepEqual(matchIntent('反馈 up 很好用'), { name: 'fb', arg: 'up 很好用' }, 'fb composed')
+  assert.deepEqual(matchIntent('侧问 这个设计怎么样'), { name: 'btw', arg: '这个设计怎么样' }, 'btw arg captured')
+  assert.equal(matchIntent('怎么清空会话？'), null, 'questions always go to the agent')
+  assert.equal(matchIntent('> 会话列表'), null, '> forces chat')
+  assert.equal(matchIntent('这是一条很长很长的普通消息，超过六十个字符就应该直接发给智能体而不是被识别成命令，因为自然语言命令匹配必须保持克制避免误拦截。'), null, 'long input stays chat')
+  assert.equal(matchIntent('清屏')?.name, 'clear', 'destructive exact phrase works')
+  assert.equal(matchIntent('帮我清屏'), null, 'destructive commands never fire on loose matches')
 
   // 5. /clear empties the active feed
   active = 'session-bbbb'

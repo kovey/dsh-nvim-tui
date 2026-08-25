@@ -10,6 +10,7 @@ import type { NeovimClient } from 'neovim'
 import { spawnNvim, connectNvim } from './bridge.js'
 import { FeedRenderer } from './feed.js'
 import { t, setLocale, locale } from './i18n.js'
+import { matchIntent } from './nlcmd.js'
 import {
   MarketEntry, fetchCatalog, readCatalog, writeCatalog, isFresh, searchCatalog,
   readInstalledPlugins, runningProfileName, installSpec, openUrl, marketCachePath,
@@ -1997,7 +1998,18 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         return
       }
       const trimmed = text.trim()
-      if (trimmed) send(trimmed)
+      if (!trimmed) return
+      // Natural-language command routing: plain lines that clearly match a
+      // slash-command intent run that command (echoed into the feed); '>'
+      // prefixes force chat, questions always go to the agent.
+      const nl = matchIntent(trimmed)
+      if (nl !== null) {
+        const nlRec = activeId === null ? undefined : sessions.get(activeId)
+        nlRec?.feed.appendNotice(`→ 命令: /${nl.name}${nl.arg !== undefined ? ` ${nl.arg}` : ''}`)
+        onCommand(`/${nl.name}${nl.arg !== undefined ? ` ${nl.arg}` : ''}`)
+        return
+      }
+      send(trimmed)
     }
 
     const currentModelLabel = () => {
