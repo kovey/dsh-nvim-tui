@@ -1644,6 +1644,10 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         for (const sid of w.sessionIds) {
           inWs.add(sid)
           if (archived.has(sid)) continue
+          // Project-level sessions only: `session-` prefixed ids; subagent
+          // children (bare UUIDs / origin subagent) never appear here.
+          if (!/^session-/.test(sid)) continue
+          if (runtimeCtx.sessions.get(sid)?.header?.origin === 'subagent') continue
           const rec = sessions.get(sid)
           const hist = historyHeaders.find((h) => h.id === sid)
           const title = rec?.title ?? hist?.title ?? ''
@@ -1652,7 +1656,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       }
       rows.push({ label: '未分组', value: 'ws:none' })
       for (const s of runtimeCtx.sessions.list()) {
-        if (inWs.has(s.id) || archived.has(s.id) || s.header?.origin === 'subagent') continue
+        if (inWs.has(s.id) || archived.has(s.id) || s.header?.origin === 'subagent' || !/^session-/.test(s.id)) continue
         const rec = sessions.get(s.id)
         rows.push({ label: `    ${s.id === activeId ? '▸' : ' '} ${rec?.title ?? ''} · ${s.id}`, value: `sess:${s.id}` })
       }
@@ -3385,7 +3389,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         try {
           const all = await persistence.list()
           const cwd = process.cwd()
-          historyHeaders = all.filter((h) => h.cwd === cwd && /^session-/.test(h.id))
+          historyHeaders = all.filter((h) => h.cwd === cwd && /^session-/.test(h.id) && h.origin !== 'subagent')
         } catch {}
       }
 

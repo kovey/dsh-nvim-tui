@@ -7,6 +7,9 @@
 
 - **依赖升级**：`@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` peer 依赖
   升至 `^0.1.1-rc.2`（与宿主 dsh 0.1.1-rc.2 对齐，类型/运行时同版本）。
+- **/sessions 只列项目级会话**：列表只展示 `session-` 前缀的项目级会话，
+  子代理子会话（裸 UUID / origin subagent）在 工作区分组、未分组、历史
+  三处全部过滤，不再混入。
 
 ## [v0.2.1（2026-08-25）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.1)
 
