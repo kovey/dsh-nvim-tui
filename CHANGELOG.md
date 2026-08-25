@@ -10,6 +10,14 @@
 - **/sessions 只列项目级会话**：列表只展示 `session-` 前缀的项目级会话，
   子代理子会话（裸 UUID / origin subagent）在 工作区分组、未分组、历史
   三处全部过滤，不再混入。
+- **dsh 0.1.1-rc.2 兼容性自检与修复**：逐项核对宿主 API 与事件契约
+  （approval/questions/sessions/subagents/settings/projections/modelSelection/
+  全部渲染事件均兼容）；修复两处不兼容——
+  ① `compaction/summary.summary` 现为 ContentBlock[]，旧渲染 `.split` 会
+  崩溃，改为字符串/块数组双形状渲染；
+  ② 0.1.1-rc.2 无 `session.truncate`/`truncateStored`（日志 append-only）：
+  `/rewind` 保持守卫降级提示，子代理 TTL 清理改为**列表隐藏不依赖存储截断**
+  （台账照常生效，截断仅尽力而为）。
 
 ## [v0.2.1（2026-08-25）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.1)
 

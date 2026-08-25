@@ -1132,33 +1132,34 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       return children
     }
 
-    /** Truncate one settled chain's stored events (keep the first only) and
-     *  record the id so it disappears from the /subagents list. */
+    /** Clean one settled chain: hide it from the /subagents list (ledger),
+     *  and truncate the stored events where the host exposes it (dsh
+     *  0.1.1-rc.2 keeps logs append-only — truncation is best-effort). */
     const cleanSubagentChain = async (parentId: string, childId: string): Promise<boolean> => {
       const persistence = svc('sessionPersistence')
-      if (typeof persistence?.truncateStored !== 'function') return false
-      try {
-        const inspection = await persistence.inspect?.(childId)
-        const events = (inspection?.events ?? []) as Array<{ seq?: number }>
-        if (events.length === 0) return false
-        const first = events[0]?.seq
-        if (typeof first !== 'number') return false
-        await persistence.truncateStored(childId, first)
-        const live = runtimeCtx.sessions.get(childId)
-        if (live !== undefined && typeof (live as { truncate?: unknown }).truncate === 'function') {
-          ;(live as unknown as { truncate: (seq: number) => void }).truncate(first)
-        }
-        const cleaned = readCleanedIds()
-        const arr = cleaned[parentId] ?? []
-        if (!arr.includes(childId)) {
-          arr.push(childId)
-          cleaned[parentId] = arr
-          writeCleanedIds(cleaned)
-        }
-        return true
-      } catch {
-        return false
+      let first: number | undefined
+      if (typeof persistence?.truncateStored === 'function') {
+        try {
+          const inspection = await persistence.inspect?.(childId)
+          const events = (inspection?.events ?? []) as Array<{ seq?: number }>
+          first = events[0]?.seq
+          if (typeof first === 'number') {
+            await persistence.truncateStored(childId, first)
+            const live = runtimeCtx.sessions.get(childId)
+            if (live !== undefined && typeof (live as { truncate?: unknown }).truncate === 'function') {
+              ;(live as unknown as { truncate: (seq: number) => void }).truncate(first)
+            }
+          }
+        } catch {}
       }
+      const cleaned = readCleanedIds()
+      const arr = cleaned[parentId] ?? []
+      if (!arr.includes(childId)) {
+        arr.push(childId)
+        cleaned[parentId] = arr
+        writeCleanedIds(cleaned)
+      }
+      return true
     }
 
     /** Open a read-only replay of one subagent's session log in a float. */
@@ -1259,7 +1260,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         if (sel === null) return
         if (sel === 'act:clean') {
           const ok = await openPicker(t('清理思考链'), [
-            { label: `确认清理 ${settledCount} 条已结束思考链（保留第一条事件，列表隐藏）`, value: 'yes' },
+            { label: `确认清理 ${settledCount} 条已结束思考链（列表隐藏；存储截断视 dsh 版本支持）`, value: 'yes' },
             { label: t('取消'), value: 'no' },
           ])
           if (ok !== 'yes') return

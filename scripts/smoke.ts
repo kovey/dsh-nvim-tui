@@ -207,6 +207,9 @@ try {
   ] } })
   feedA.applyEvent({ type: 'compaction/start', time: 1600, data: { compactionId: 'c1' } })
   feedA.applyEvent({ type: 'compaction/summary', time: 1650, data: { compactionId: 'c1', shadowedSeqs: [1, 2, 3], shadowedTokenCount: 12000, summary: '前半段是环境搭建' } })
+  // dsh 0.1.1-rc.2 shape: summary is ContentBlock[] (regression: the old
+  // renderer called .split on it and crashed).
+  feedA.applyEvent({ type: 'compaction/summary', time: 1660, data: { compactionId: 'c1b', shadowedSeqs: [4, 5], shadowedTokenCount: 3000, summary: [{ type: 'text', text: '第二段压缩摘要' }] } })
   feedA.applyEvent({ type: 'llm/retry', time: 1700, data: { retryId: 'r1', retry: 2, maxRetries: 5, mode: 'normal', delayMs: 3000, failure: { message: '429 rate limited' } } })
   feedA.applyEvent({ type: 'llm/retry-started', time: 1730, data: { retryId: 'r1', retry: 2 } })
   feedA.applyEvent({ type: 'tool-workflow/run-start', time: 1800, data: { runId: 'wf-9', name: '审计' } })
@@ -222,6 +225,7 @@ try {
   assert.ok(linesA3.includes('  ✓ 设计 API') && linesA3.includes('  … 实现渲染') && linesA3.includes('  · 写测试'), 'todo items with status marks')
   assert.ok(linesA3.some((l: string) => l.includes('⋯ 上下文压缩 · 3 条历史 · ≈12.0k tokens')), 'compaction checkpoint row')
   assert.ok(linesA3.includes('    前半段是环境搭建'), 'compaction summary folded')
+  assert.ok(linesA3.includes('    第二段压缩摘要'), 'compaction ContentBlock[] summary folded (0.1.1-rc.2 shape)')
   assert.ok(linesA3.some((l: string) => l.includes('↻ 重试 #2/5') && l.includes('3s 后重试') && l.includes('429 rate limited')), 'retry status row')
   assert.ok(linesA3.includes('↻ 重试 #2 已发起'), 'retry started row')
   assert.ok(linesA3.some((l: string) => l.startsWith('◈ workflow 审计')), 'workflow run row in transcript')

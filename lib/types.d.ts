@@ -196,7 +196,10 @@ export type SessionEvent = (SessionEventBase & {
     data?: {
         compactionId?: string;
         sourceCommandId?: string;
-        summary?: string;
+        summary?: string | Array<{
+            type?: string;
+            text?: string;
+        }>;
         shadowedSeqs?: number[];
         shadowedTokenCount?: number;
     };

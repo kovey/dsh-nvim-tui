@@ -90,7 +90,7 @@ export type SessionEvent =
   | (SessionEventBase & { type: 'goal/change'; data?: { goal?: unknown } })
   | (SessionEventBase & { type: 'todo/write'; data?: { todos?: Array<{ content: string; status: string }> } })
   | (SessionEventBase & { type: 'compaction/start'; data?: { compactionId?: string; sourceCommandId?: string } })
-  | (SessionEventBase & { type: 'compaction/summary'; data?: { compactionId?: string; sourceCommandId?: string; summary?: string; shadowedSeqs?: number[]; shadowedTokenCount?: number } })
+  | (SessionEventBase & { type: 'compaction/summary'; data?: { compactionId?: string; sourceCommandId?: string; summary?: string | Array<{ type?: string; text?: string }>; shadowedSeqs?: number[]; shadowedTokenCount?: number } })
   | (SessionEventBase & { type: 'compaction/end'; data?: { compactionId?: string } })
   | (SessionEventBase & { type: 'llm/retry'; data?: { retryId?: string; retry?: number; maxRetries?: number; mode?: string; delayMs?: number; failure?: { message?: string; code?: string; [k: string]: unknown } } })
   | (SessionEventBase & { type: 'llm/retry-started'; data?: { retryId?: string; retry?: number } })

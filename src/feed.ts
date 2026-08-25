@@ -492,14 +492,24 @@ export class FeedRenderer {
         break
       case 'compaction/summary': {
         // Checkpoint row (web: one collapsed disclosure): replaced-item and
-        // estimated-token counts, summary block folded underneath.
+        // estimated-token counts, summary block folded underneath. dsh
+        // 0.1.1-rc.2 carries `summary` as ContentBlock[]; older hosts used a
+        // plain string — accept both.
         const d = event.data
         const rows = d?.shadowedSeqs?.length
         const tokens = d?.shadowedTokenCount
         this.base.push('', `${t('⋯ 上下文压缩')} · ${rows ?? '?'} ${t('条历史')}${typeof tokens === 'number' ? ` · ≈${formatTokens(tokens)} tokens` : ''}`)
-        if (d?.summary !== undefined && d.summary !== '') {
+        const raw = d?.summary
+        if (typeof raw === 'string' && raw !== '') {
           this.base.push(`  ${t('摘要')}：`)
-          for (const line of d.summary.split('\n').slice(0, 12)) this.base.push(`    ${line}`)
+          for (const line of raw.split('\n').slice(0, 12)) this.base.push(`    ${line}`)
+        } else if (Array.isArray(raw) && raw.length > 0) {
+          this.base.push(`  ${t('摘要')}：`)
+          for (const block of raw.slice(0, 12)) {
+            const b = block as { type?: string; text?: string }
+            const text = typeof b?.text === 'string' ? b.text : (b?.type !== undefined ? `[${b.type}]` : '')
+            for (const line of text.split('\n')) this.base.push(`    ${line}`)
+          }
         }
         this.schedule()
         break
