@@ -16,7 +16,6 @@ export interface WhaleRow {
 }
 export declare const WHALE_BIG: WhaleRow[];
 export declare const WHALE_SMALL: WhaleRow[];
-/** Longest display width of an art block (CJK counts 2, blocks count 1). */
 export declare function whaleMaxWidth(rows: WhaleRow[]): number;
 /**
  * Lay the art out for a window: horizontally centered, vertically centered
