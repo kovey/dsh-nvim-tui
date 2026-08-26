@@ -3016,16 +3016,27 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       await luaCall('require("dsh_tui").set_commands(...)', [entries]).catch(() => {})
     }
 
-    /** /help — every command in a sessions-style popup, one per line;
-     *  Enter fills the picked command into the input box (the command
-     *  completion menu's Enter logic: type args, a second Enter executes). */
+    /** /help — every command in a sessions-style popup, grouped like the
+     *  old chat listing and sorted alphabetically within each group; Enter
+     *  fills the picked command into the input box (the command completion
+     *  menu's Enter logic: type args, a second Enter executes). */
     const helpCommand = async () => {
-      const rows = commandSpecs.map((s) => ({
-        label: `${s.name}${s.usage ? ` ${s.usage}` : ''} · ${s.desc}`,
-        value: s.name,
-      }))
+      const groups = new Map<string, typeof commandSpecs>()
+      for (const s of commandSpecs) {
+        const group = s.group ?? t('其他')
+        const list = groups.get(group) ?? []
+        list.push(s)
+        groups.set(group, list)
+      }
+      const rows: Array<{ label: string; value: string }> = []
+      for (const [group, list] of groups) {
+        rows.push({ label: `── ${group} ──`, value: `grp:${group}` })
+        for (const s of [...list].sort((a, b) => a.name.localeCompare(b.name))) {
+          rows.push({ label: `  ${s.name}${s.usage ? ` ${s.usage}` : ''} · ${s.desc}`, value: s.name })
+        }
+      }
       const sel = await openPicker(t('全部命令（Enter 填入输入框）'), rows)
-      if (sel === null) return
+      if (sel === null || sel.startsWith('grp:')) return
       await luaCall('require("dsh_tui").fill_input(...)', [`${sel} `]).catch(() => {})
     }
 
