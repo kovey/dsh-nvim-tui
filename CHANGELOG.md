@@ -3,13 +3,22 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## Unreleased（main）
+## [v0.2.2（2026-08-26）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.2)
+
+完整修改日志见 [CHANGELOG](https://github.com/kovey/dsh-nvim-tui/blob/v0.2.2/CHANGELOG.md)。
+
+覆盖提交：
+[`3e3cb0c`](https://github.com/kovey/dsh-nvim-tui/commit/3e3cb0c) ·
+[`3b9351a`](https://github.com/kovey/dsh-nvim-tui/commit/3b9351a) ·
+[`1939f51`](https://github.com/kovey/dsh-nvim-tui/commit/1939f51)
 
 - **依赖升级**：`@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` peer 依赖
-  升至 `^0.1.1-rc.2`（与宿主 dsh 0.1.1-rc.2 对齐，类型/运行时同版本）。
+  升至 `^0.1.1-rc.2`（与宿主 dsh 0.1.1-rc.2 对齐，类型/运行时同版本）
+  （[`3e3cb0c`](https://github.com/kovey/dsh-nvim-tui/commit/3e3cb0c)）；
 - **/sessions 只列项目级会话**：列表只展示 `session-` 前缀的项目级会话，
   子代理子会话（裸 UUID / origin subagent）在 工作区分组、未分组、历史
-  三处全部过滤，不再混入。
+  三处全部过滤，不再混入
+  （[`3b9351a`](https://github.com/kovey/dsh-nvim-tui/commit/3b9351a)）；
 - **dsh 0.1.1-rc.2 兼容性自检与修复**：逐项核对宿主 API 与事件契约
   （approval/questions/sessions/subagents/settings/projections/modelSelection/
   全部渲染事件均兼容）；修复两处不兼容——
@@ -17,7 +26,9 @@
   崩溃，改为字符串/块数组双形状渲染；
   ② 0.1.1-rc.2 无 `session.truncate`/`truncateStored`（日志 append-only）：
   `/rewind` 保持守卫降级提示，子代理 TTL 清理改为**列表隐藏不依赖存储截断**
-  （台账照常生效，截断仅尽力而为）。
+  （台账照常生效，截断仅尽力而为）
+  （[`1939f51`](https://github.com/kovey/dsh-nvim-tui/commit/1939f51)）。
+
 
 ## [v0.2.1（2026-08-25）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.1)
 
