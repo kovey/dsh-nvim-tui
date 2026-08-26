@@ -50,6 +50,8 @@ export interface FeedOptions {
         win: number | null;
     } | null) | null;
     inlineReasoning?: boolean;
+    /** Blue whale wallpaper/watermark (default off; the runner enables it). */
+    whale?: boolean;
 }
 interface ToolCallRecord {
     name: string;
@@ -93,9 +95,10 @@ export declare class FeedRenderer {
     ns: number | null;
     lastView: string[];
     dense: boolean;
+    whale: boolean;
     ticker: ReturnType<typeof setTimeout> | null;
     eventTime: number;
-    constructor(nvim: NeovimClient, bufId: number, winId: number, { flushDelayMs, idsProvider, activeChecker, reasoningBuf, reasoningView, inlineReasoning, }?: FeedOptions);
+    constructor(nvim: NeovimClient, bufId: number, winId: number, { flushDelayMs, idsProvider, activeChecker, reasoningBuf, reasoningView, inlineReasoning, whale, }?: FeedOptions);
     /** Clear the transcript (the /clear command). */
     clear(): void;
     /** Notice line (runner lifecycle, status). Multi-line text (e.g. an error
@@ -169,6 +172,10 @@ export declare class FeedRenderer {
      * `#{1,6} ` headings keep their text and get the heading group.
      */
     static parseLine(raw: string, fenceOpen: boolean, quoteAware?: boolean): ParsedLine;
+    /** Toggle the whale art and re-render (the /whale command). */
+    setWhale(on: boolean): void;
+    /** Current window size via the ids provider (fallback 40×100). */
+    private winSize;
     schedule(): void;
     flush(): Promise<void>;
     /** Sync the activity panel (reasoning + tools) for this session.

@@ -12,6 +12,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { spawnNvim, connectNvim } from '../lib/bridge.js'
 import { FeedRenderer } from '../lib/feed.js'
+import { WHALE_BIG, WHALE_SMALL, whaleMaxWidth, layoutWhaleRows } from '../lib/whale.js'
 import { foldUsage, billedInput, cacheHitRate, estimateCost, formatTokens, formatElapsed, modeLabel, escapeStatusline } from '../lib/stats.js'
 import { sniffMediaType, parseImageDataUrl, splitImageDataUrls, imageLabel } from '../lib/images.js'
 import { t, setLocale, locale } from '../lib/i18n.js'
@@ -84,7 +85,7 @@ try {
   assert.equal(await lua('return require("dsh_tui").channel()', []), channelId)
 
   // VimEnter may not have fired yet (start() mounts the UI there) — poll.
-  let ids
+  let ids!: { inputBuf?: number; chatWin?: number; inputWin?: number; reasoningOpen?: boolean; sessionsBuf?: number }
   for (let i = 0; i < 50; i++) {
     ids = await lua('return require("dsh_tui").ids()', [])
     if (Number.isInteger(ids?.inputBuf) && Number.isInteger(ids?.chatWin)) break
@@ -1016,6 +1017,38 @@ description:
   }
   assert.equal(fillMode, 'i', 'fill_input hands back in insert mode')
   await lua('require("dsh_tui").fill_input(...)', [''])
+
+  // 9k4. blue whale art (A+B): centered wallpaper while empty, bottom
+  // watermark once content exists; /whale toggle removes it.
+  assert.ok(WHALE_BIG.length >= 10 && whaleMaxWidth(WHALE_BIG) > 20, 'big whale art present')
+  const laid = layoutWhaleRows(WHALE_BIG, 30, 100)
+  assert.ok(laid !== null && laid.length === WHALE_BIG.length + Math.floor((30 - WHALE_BIG.length) / 2), 'whale layout pads the top for vertical centering')
+  assert.equal(laid[0].text, '', 'vertical centering pads the top')
+  assert.equal(layoutWhaleRows(WHALE_SMALL, 3, 20), null, 'tiny window skips the art')
+  const whaleBuf = await nvim.request('nvim_create_buf', [false, true])
+  const whaleFeed = new FeedRenderer(nvim, whaleBuf, ids.chatWin!, {
+    idsProvider: async () => ({ win: ids.chatWin }),
+    activeChecker: () => false,
+    whale: true,
+  })
+  await whaleFeed.flush()
+  let whaleLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
+  assert.ok(whaleLines.some((l: string) => l.includes('〰')), 'empty state shows the big whale wallpaper')
+  assert.ok(whaleLines.some((l: string) => l.includes('▄████')), 'whale body rendered')
+  const whaleMarks = await nvim.request('nvim_buf_get_extmarks', [whaleBuf, -1, 0, -1, { details: true }])
+  const whaleGroups = new Set((whaleMarks as any[]).map((m) => (Array.isArray(m) ? (m[3]?.hl_group ?? m[4]?.hl_group) : undefined)).filter(Boolean))
+  assert.ok([...whaleGroups].some((g) => String(g).startsWith('DshTuiWhale')), 'whale rows carry blue gradient highlights')
+  whaleFeed.applyEvent({ type: 'user/message', time: 1, data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } })
+  await whaleFeed.flush()
+  whaleLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
+  assert.ok(whaleLines.some((l: string) => l.includes('> hi')), 'content renders above the whale')
+  assert.equal(whaleLines[whaleLines.length - 1], WHALE_SMALL[WHALE_SMALL.length - 1].text, 'watermark pinned as the last row')
+  whaleFeed.setWhale(false)
+  await new Promise((r) => setTimeout(r, 80))
+  await whaleFeed.flush()
+  whaleLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
+  assert.ok(!whaleLines.some((l: string) => l.includes('▄████')), 'whale off removes the art')
+  await nvim.request('nvim_buf_delete', [whaleBuf, { force: true }])
 
   // 9k. layout presets: panel opens the reasoning panel, default closes it
   // (no resident sessions window anymore).

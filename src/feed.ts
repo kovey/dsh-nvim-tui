@@ -25,6 +25,7 @@
  *  - Events arriving during a flush set `dirty`; the flush chains a follow-up.
  */
 import { NeovimClient } from 'neovim'
+import { WHALE_BIG, WHALE_SMALL, layoutWhaleRows } from './whale.js'
 
 import { transformTables } from './table.js'
 import { imageLabel } from './images.js'
@@ -77,6 +78,8 @@ export interface FeedOptions {
   reasoningBuf?: number | null
   reasoningView?: (() => { open: boolean; win: number | null } | null) | null
   inlineReasoning?: boolean
+  /** Blue whale wallpaper/watermark (default off; the runner enables it). */
+  whale?: boolean
 }
 
 interface ToolCallRecord {
@@ -121,6 +124,7 @@ export class FeedRenderer {
   ns: number | null // extmark namespace, created on first flush
   lastView: string[] // last flushed buffer text, diffed per flush
   dense: boolean // /density: compact tool cards (title line only)
+  whale: boolean // blue whale wallpaper (empty) + watermark (content)
   ticker: ReturnType<typeof setTimeout> | null
   eventTime: number
 
@@ -131,6 +135,7 @@ export class FeedRenderer {
     reasoningBuf = null,
     reasoningView = null,
     inlineReasoning = false,
+    whale = false,
   }: FeedOptions = {}) {
     this.nvim = nvim
     this.bufId = bufId
@@ -138,6 +143,7 @@ export class FeedRenderer {
     this.flushDelayMs = flushDelayMs
     this.idsProvider = idsProvider
     this.activeChecker = activeChecker ?? (() => true)
+    this.whale = whale
     this.reasoningBuf = reasoningBuf
     this.reasoningView = reasoningView ?? (() => null)
     this.inlineReasoning = inlineReasoning
@@ -639,6 +645,27 @@ export class FeedRenderer {
     return { text, spans, code: false, fenceToggled: false, group }
   }
 
+  /** Toggle the whale art and re-render (the /whale command). */
+  setWhale(on: boolean): void {
+    this.whale = on
+    this.schedule()
+  }
+
+  /** Current window size via the ids provider (fallback 40×100). */
+  private async winSize(): Promise<{ h: number; w: number }> {
+    try {
+      const ids = (await this.idsProvider?.()) as { win?: number } | null
+      if (ids !== null && ids !== undefined && typeof ids.win === 'number') {
+        const [h, w] = await Promise.all([
+          this.nvim.request('nvim_win_get_height', [ids.win]) as Promise<number>,
+          this.nvim.request('nvim_win_get_width', [ids.win]) as Promise<number>,
+        ])
+        return { h, w }
+      }
+    } catch {}
+    return { h: 40, w: 100 }
+  }
+
   schedule(): void {
     if (this.timer !== null) return
     this.timer = setTimeout(() => {
@@ -709,6 +736,30 @@ export class FeedRenderer {
       parsed.push(p)
     }
     const lines = parsed.map((p) => p.text)
+
+    // Blue whale art: centered wallpaper while the transcript is empty,
+    // persistent bottom watermark once content exists.
+    if (this.whale) {
+      const empty = lines.length === 0 || (lines.length === 1 && lines[0] === '')
+      if (empty) {
+        const { h, w } = await this.winSize()
+        const art = layoutWhaleRows(WHALE_BIG, h, w)
+        if (art !== null) {
+          lines.length = 0
+          for (const r of art) {
+            lines.push(r.text)
+            parsed.push({ text: r.text, spans: [], group: r.group === '' ? undefined : r.group })
+          }
+        }
+      } else {
+        lines.push('')
+        parsed.push({ text: '', spans: [], group: undefined })
+        for (const r of WHALE_SMALL) {
+          lines.push(r.text)
+          parsed.push({ text: r.text, spans: [], group: r.group })
+        }
+      }
+    }
 
     // Diff against the last flushed view: tables expand blocks (3 raw lines
     // → 5 bordered lines), so row positions cannot be tracked by base length.

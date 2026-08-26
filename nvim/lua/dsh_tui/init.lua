@@ -1570,6 +1570,11 @@ function M.applyHighlights()
   -- The popup bottom hint rows borrow the statusline look: floating windows
   -- get no real statusline, so the hint row is styled like one.
   vim.cmd('highlight default link DshTuiStatus StatusLine')
+  -- Blue whale art (chat wallpaper/watermark): light-to-deep blue gradient.
+  vim.cmd('highlight default DshTuiWhale1 guifg=#8fb8e8 ctermfg=111')
+  vim.cmd('highlight default DshTuiWhale2 guifg=#6a9fd8 ctermfg=75')
+  vim.cmd('highlight default DshTuiWhale3 guifg=#4a86c9 ctermfg=33')
+  vim.cmd('highlight default DshTuiWhale4 guifg=#2f6cb0 ctermfg=25')
   vim.cmd('highlight default link DshTuiBold Bold')
   vim.cmd('highlight default link DshTuiPrompt DshTuiUser') -- input-line '❯'
   -- Slash-command completion menu: the selection reuses the pum look.

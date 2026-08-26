@@ -430,6 +430,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         activeChecker: () => id === activeId,
         reasoningBuf: rids?.reasoningBuf ?? null,
         reasoningView: () => ({ open: reasoningOpen, win: reasoningWinId }),
+        whale: config.whaleArt !== 'off',
       })
       sessions.set(id, {
         id, handle, feed, title: undefined, status: undefined, modelRef,
@@ -2242,6 +2243,15 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     }
 
     /** /density — compact tool cards (title line only). */
+    /** /whale [on|off] — blue whale wallpaper/watermark toggle. */
+    const whaleCommand = (a: string | undefined) => {
+      const feed = activeFeed()
+      if (!feed) return
+      const on = a === 'on' ? true : a === 'off' ? false : !feed.whale
+      feed.setWhale(on)
+      notice(on ? '蓝鲸背景已开启（空态居中壁纸 + 有内容时底部水印）' : '蓝鲸背景已关闭')
+    }
+
     const densityCommand = () => {
       const feed = activeFeed()
       if (!feed) return
@@ -2957,6 +2967,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       { name: '/preset', desc: t('agent 预设（仅空白会话可切换）'), usage: t('[id]'), group: t('模型'), fn: (a) => presetCommand(a) },
       { name: '/yolo', desc: t('审批策略开关'), usage: t('on|off'), group: t('审批'), fn: (a) => yoloCommand(a) },
       { name: '/density', desc: t('紧凑卡片模式'), usage: t('紧凑卡片'), group: t('显示'), fn: () => densityCommand() },
+      { name: '/whale', desc: t('蓝鲸背景开关'), usage: t('on|off'), group: t('显示'), fn: (a) => whaleCommand(a) },
       { name: '/glance', desc: t('状态栏段显隐'), usage: t('<cache|context|tokens|cost|elapsed|total>'), group: t('显示'), fn: (a) => glanceCommand(a) },
       { name: '/theme', desc: t('内置主题预设'), usage: t('default|dim|vivid|contrast|mono'), group: t('显示'), fn: (a) => themeCommand(a) },
       { name: '/cost', desc: t('用量与成本'), usage: t('用量成本'), group: t('信息'), fn: () => costCommand() },
