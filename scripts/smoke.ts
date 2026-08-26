@@ -158,6 +158,25 @@ try {
   log('chat A lines:', JSON.stringify(linesA))
   assert.ok(linesA.includes('> 你好'), 'user message rendered')
   assert.ok(linesA.some((l: string) => l.includes('Hello from nvim (full) with bold and code')), 'markup stripped in buffer')
+  // Chat output is display-only: edit keys are Nop'd (i must not enter
+  // insert mode, x/dd/J must not delete or join rows) — the renderer still
+  // writes through the API.
+  const chatKeys = await lua(`local out = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(${chatA.chatBuf}, "n")) do
+      table.insert(out, { lhs = m.lhs, rhs = m.rhs or "" })
+    end
+    return out`, [])
+  const chatKey = (k: string) => chatKeys.find((m: any) => m.lhs === k)
+  assert.ok(chatKey('i') && chatKey('i').rhs !== 'i', 'chat i is Nop (no insert mode)')
+  assert.ok(chatKey('d') && chatKey('x') && chatKey('J'), 'chat edit/join keys Nop')
+  const chatLinesBefore = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  await lua('vim.api.nvim_set_current_win(...)', [ids.chatWin])
+  await nvim.input('<Esc>') // hand over from the input window's insert mode
+  assert.equal((await nvim.request('nvim_get_mode', [])).mode, 'n', 'chat window starts in normal mode')
+  await nvim.input('i')
+  assert.equal((await nvim.request('nvim_get_mode', [])).mode, 'n', 'chat buffer never enters insert mode')
+  await nvim.input('xddJ~')
+  assert.deepEqual(await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false]), chatLinesBefore, 'chat content cannot be deleted/joined')
   assert.ok(linesA.some((l: string) => l.startsWith('🔧 bash({"cmd":"ls"})')), 'tool/call card')
   assert.ok(linesA.some((l: string) => l.startsWith('✓ bash · 234ms')), 'tool/result card with elapsed')
   assert.ok(linesA.some((l: string) => l.startsWith('✗ web_search') && l.includes('TIMEOUT')), 'failed tool card')

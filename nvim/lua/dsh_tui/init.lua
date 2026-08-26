@@ -29,12 +29,29 @@ M._activeId = nil
 M._sessionLines = {}   -- list line number -> session id
 M._ns = vim.api.nvim_create_namespace('dsh_tui')
 
+--- Edit keys a read-only surface must silence (normal-mode entries plus the
+--- in-place editors: join, case toggles, increments, insert-at-position).
+local EDIT_KEYS = {
+  'i', 'a', 'o', 'O', 'I', 'A', 'r', 'R', 's', 'S', 'c', 'C', 'd', 'D',
+  'x', 'X', 'p', 'P', '<Insert>', ':', 'J', '~', 'g~', 'gu', 'gU', 'gi', 'gI',
+  '<C-a>', '<C-x>',
+}
+
 --- Interactive popups are read-only: lock the buffer and Nop the edit keys so
 --- an accidental i/x/dd can neither change the content nor raise a raw E21.
 --- (Buffers re-rendered by the API toggle 'modifiable' around set_lines.)
 local function lock_popup_buffer(buf)
   vim.bo[buf].modifiable = false
-  for _, k in ipairs({ 'i', 'a', 'o', 'O', 'I', 'A', 'r', 'R', 's', 'S', 'c', 'C', 'd', 'D', 'x', 'X', 'p', 'P', '<Insert>', ':' }) do
+  for _, k in ipairs(EDIT_KEYS) do
+    vim.keymap.set('n', k, '<Nop>', { buffer = buf })
+  end
+end
+
+--- Display-only buffers (chat / reasoning) are written by the renderer through
+--- the API, so they MUST stay modifiable — but the user must never edit them:
+--- Nop the edit keys without touching 'modifiable'.
+local function lock_display_keys(buf)
+  for _, k in ipairs(EDIT_KEYS) do
     vim.keymap.set('n', k, '<Nop>', { buffer = buf })
   end
 end
@@ -1707,6 +1724,7 @@ function M.ensure_chat(id)
     -- <C-o> toggles the reasoning panel from the chat buffer too.
     vim.api.nvim_buf_set_keymap(buf, 'n', '<C-o>',
       '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>', { noremap = true })
+    lock_display_keys(buf) -- chat output is display-only (renderer writes via API)
     M._chats[id] = buf
   end
   return { chatBuf = buf, chatWin = chat_win }
@@ -1722,6 +1740,7 @@ function M.ensure_reasoning(id)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, { '·· 思考与工具记录（<C-o> 收起）' })
     vim.api.nvim_buf_set_keymap(buf, 'n', '<C-o>',
       '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>', { noremap = true })
+    lock_display_keys(buf) -- reasoning panel is display-only
     M._reasoningBufs[id] = buf
   end
   return {
