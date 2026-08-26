@@ -206,6 +206,15 @@ end
 --- rows are applied to the CHAT window explicitly — nvim's split tree would
 --- otherwise redistribute them to the sessions window, leaving a dead gap
 --- row between the chat and the input.
+--- Fill the input line with `text` and hand back to the input in insert
+--- mode (the command-completion menu's Enter logic, reused by /help).
+function M.fill_input(text)
+  if input_buf == nil or not vim.api.nvim_buf_is_valid(input_buf) then return end
+  set_input_text(text)
+  vim.api.nvim_set_current_win(input_win)
+  vim.cmd('startinsert')
+end
+
 function M.resize_input()
   local n = math.min(6, math.max(1, vim.api.nvim_buf_line_count(input_buf)))
   if input_win and vim.api.nvim_win_is_valid(input_win) then

@@ -3,6 +3,13 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## Unreleased（main）
+
+- **/help 弹窗化**：全部命令一弹窗一行（`/name 参数 · 说明`，sessions 式
+  弹窗：标题/底部提示条/原生滚动/居中），Enter 把选中的命令**填入输入框**
+  （与命令补全的 Enter 逻辑一致：补全菜单联动、光标到行尾、插入模式，
+  二次回车执行），Esc 取消。
+
 ## [v0.2.2（2026-08-26）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.2)
 
 完整修改日志见 [CHANGELOG](https://github.com/kovey/dsh-nvim-tui/blob/v0.2.2/CHANGELOG.md)。

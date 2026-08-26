@@ -974,6 +974,19 @@ description:
   await lua('require("dsh_tui").close_progress()', [])
   assert.equal(await lua('return require("dsh_tui")._progress.win', []), null, 'progress float closes')
 
+  // 9k3. fill_input: /help popup's Enter logic — write the command into the
+  // input box and hand back in insert mode (second Enter executes it).
+  await lua('require("dsh_tui").fill_input(...)', ['/sessions '])
+  assert.equal(await lua('return vim.api.nvim_buf_get_lines(require("dsh_tui").ids().inputBuf, 0, -1, false)[1]', []), '/sessions ', 'fill_input writes the picked command')
+  let fillMode = ''
+  for (let i = 0; i < 40; i++) {
+    fillMode = (await nvim.request('nvim_get_mode', [])).mode
+    if (fillMode === 'i') break
+    await new Promise((r) => setTimeout(r, 25))
+  }
+  assert.equal(fillMode, 'i', 'fill_input hands back in insert mode')
+  await lua('require("dsh_tui").fill_input(...)', [''])
+
   // 9k. layout presets: panel opens the reasoning panel, default closes it
   // (no resident sessions window anymore).
   await lua('require("dsh_tui").apply_layout(...)', ['panel'])
