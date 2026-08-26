@@ -359,7 +359,18 @@ description:
   assert.equal(isExpired(NOW - 3600 * 1000, 72, NOW), false, 'younger than TTL survives')
   assert.equal(isExpired(undefined, 72, NOW), false, 'unknown createdAt never expires')
   assert.equal(isExpired(NOW - 999_999_999, 0, NOW), false, 'ttl 0 disables cleanup')
-  assert.equal(matchIntent('帮我清屏'), null, 'destructive commands never fire on loose matches')
+  assert.equal(matchIntent('帮我清屏')?.name, 'clear', 'lead-in stripping keeps the explicit destructive command')
+  // conversational variants: verbs/nouns stripped across three match levels
+  assert.equal(matchIntent('打开帮助面板')?.name, 'help', '打开帮助面板 → /help')
+  assert.equal(matchIntent('查看会话列表')?.name, 'sessions', '查看会话列表 → /sessions')
+  assert.equal(matchIntent('显示消息队列')?.name, 'queue', '显示消息队列 → /queue')
+  assert.equal(matchIntent('打开插件市场')?.name, 'market', '打开插件市场 → /market')
+  assert.equal(matchIntent('请打开设置')?.name, 'settings', '请打开设置 → /settings')
+  assert.equal(matchIntent('帮我切换模型 deepseek-chat')?.arg, 'deepseek-chat', '帮我切换模型 x → /model x')
+  assert.equal(matchIntent('切换到 deepseek-chat 模型')?.arg, 'deepseek-chat', '切换到 x 模型 → /model x')
+  assert.equal(matchIntent('open help panel')?.name, 'help', 'english lead-in + noun stripped')
+  assert.equal(matchIntent('我要看下我的记忆')?.name, 'memory', '我要看下我的记忆 → /memory')
+  assert.equal(matchIntent('打开设置面板改主题')?.name, 'panel', 'noun-led sentence matches the panel intent (面板 keyword)')
 
   // 5. /clear empties the active feed
   active = 'session-bbbb'
