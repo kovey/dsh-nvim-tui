@@ -1033,8 +1033,8 @@ description:
   })
   await whaleFeed.flush()
   let whaleLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
-  assert.ok(whaleLines.some((l: string) => l.includes('〰')), 'empty state shows the big whale wallpaper')
-  assert.ok(whaleLines.some((l: string) => l.includes('▄████')), 'whale body rendered')
+  assert.ok(whaleLines.some((l: string) => l.includes('<o>')), 'empty state shows the big whale wallpaper (eye)')
+  assert.ok(whaleLines.some((l: string) => l.includes('--.._')), 'whale body rendered')
   const whaleMarks = await nvim.request('nvim_buf_get_extmarks', [whaleBuf, -1, 0, -1, { details: true }])
   const whaleGroups = new Set((whaleMarks as any[]).map((m) => (Array.isArray(m) ? (m[3]?.hl_group ?? m[4]?.hl_group) : undefined)).filter(Boolean))
   assert.ok([...whaleGroups].some((g) => String(g).startsWith('DshTuiWhale')), 'whale rows carry blue gradient highlights')
@@ -1047,7 +1047,7 @@ description:
   await new Promise((r) => setTimeout(r, 80))
   await whaleFeed.flush()
   whaleLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
-  assert.ok(!whaleLines.some((l: string) => l.includes('▄████')), 'whale off removes the art')
+  assert.ok(!whaleLines.some((l: string) => l.includes('<o>')), 'whale off removes the art')
   await nvim.request('nvim_buf_delete', [whaleBuf, { force: true }])
 
   // 9k. layout presets: panel opens the reasoning panel, default closes it
