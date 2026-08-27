@@ -831,13 +831,23 @@ export class FeedRenderer {
           fenceLang = /^```(\S*)/.exec(entry.raw)?.[1] ?? ''
           fenceRow = parsed.length + 1 // the code starts on the NEXT row
           fenceCode = []
-        } else if (fenceLang !== '' && fenceCode.length > 0 &&
-          fenceCode.length <= 200 &&
-          fenceCode.reduce((n, l) => n + l.length, 0) <= 20000) {
-          codeBlocks.push({ lang: fenceLang, row: fenceRow, col: 0, lines: fenceCode })
+          // Raw ``` markers never reach the chat: the opening fence renders
+          // as a dim language chip, the closing one as a blank row
+          // (Claude-style) — the code itself stays a verbatim highlighted
+          // block between them.
+          parsed.push({ text: fenceLang !== '' ? `▸ ${fenceLang}` : '', spans: [], group: 'DshTuiNotice' })
+        } else {
+          if (fenceLang !== '' && fenceCode.length > 0 &&
+            fenceCode.length <= 200 &&
+            fenceCode.reduce((n, l) => n + l.length, 0) <= 20000) {
+            codeBlocks.push({ lang: fenceLang, row: fenceRow, col: 0, lines: fenceCode })
+          }
+          parsed.push({ text: '', spans: [], group: undefined })
         }
         fenceOpen = !fenceOpen
-      } else if (fenceOpen) {
+        continue
+      }
+      if (fenceOpen) {
         fenceCode.push(entry.raw)
       }
       p.group = p.code

@@ -1290,6 +1290,14 @@ description:
   assert.equal(await lua('return require("dsh_tui").syntax_ft("php")', []), 'php_only', 'php maps to the code grammar (php = phpdoc)')
   assert.ok(ftMap.empty == null, 'empty lang → nil')
   assert.ok(ftMap.junk == null, 'unknown lang without parser → nil')
+  // fenced blocks render markdown-style: no raw ``` markers in the chat, the
+  // opening fence becomes a dim language chip
+  feedA.applyEvent({ type: 'assistant/chunk', data: { chunk: { type: 'text-delta', text: '\nsee:\n```ts\nconst x: number = 1\n```\n' } } })
+  await new Promise((r) => setTimeout(r, 250))
+  const fencedLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(!fencedLines.includes('```ts') && !fencedLines.includes('```'), 'raw fence markers stripped from the chat')
+  assert.ok(fencedLines.includes('▸ ts'), 'opening fence renders as a language chip')
+  assert.ok(fencedLines.includes('const x: number = 1'), 'fenced code content kept')
   const hlOk = await lua(`local ok, err = pcall(require("dsh_tui").highlight_syntax,
     vim.api.nvim_get_current_buf(), vim.api.nvim_create_namespace('smoke-ts'),
     {{ lang = 'python', row = 0, col = 0, lines = { 'def f():' } }})
