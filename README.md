@@ -42,16 +42,24 @@ dsh --profile nvim-tui
 
 ## 安装 / 运行
 
-**一键安装**（npm 发布后，或私有 registry）：
+**一键安装**（官方推荐命令）：
 
 ```bash
-dsh plugin --profile nvim-tui add dsh-nvim-tui   # 安装 + 自动加入 bundles
-dsh --profile nvim-tui                            # 启动（真实终端里）
+dsh plugin --profile tui add kovey/dsh-nvim-tui   # 安装 + 自动加入 bundles
+dsh --profile tui                                 # 启动（真实终端里）
 ```
 
 `dsh plugin add` 会自动把声明了 `dsh.bundle` 的依赖调和进 profile 的
 bundles 层栈（无需手改 package.json）。首个 profile 首次使用时自动初始化
 （bundle 层为 `@deepseek-ai/dsh-base`，从 dsh 安装锚点解析）。
+
+## 更新
+
+**一键安装**（官方推荐命令）：
+
+```bash
+dsh plugin --profile tui update kovey/dsh-nvim-tui 
+```
 
 **开发安装**（本地仓库直链）：
 
