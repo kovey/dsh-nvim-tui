@@ -38,12 +38,33 @@ const nvim = await connectNvim(sockPath)
 /** msgpack-RPC boundary: nvim.lua results are structurally unknown by nature. */
 const lua = (code: string, args: unknown[] = []): Promise<any> => nvim.lua(code, args as never[])
 
-// The hint bar lives OUTSIDE and BELOW the popup window (M._footer): one
-// row, same width, one row under the main window's bottom border.
+// Popup operation hints: nvim >= 0.10 embeds them INTO the popup's bottom
+// border (native `footer` config, like the title in the top border); older
+// nvim gets the legacy detached 1-row bar below the window (M._footer.win).
 const footerState = () => lua(`local f = require("dsh_tui")._footer
   local mcfg = vim.api.nvim_win_get_config(f.mainWin)
+  if vim.fn.has('nvim-0.10') == 1 then
+    -- footer normalizes to [text, hl] tuples: flatten to the text
+    local parts = {}
+    if type(mcfg.footer) == 'string' then
+      parts = { mcfg.footer }
+    elseif type(mcfg.footer) == 'table' then
+      for _, t in ipairs(mcfg.footer) do
+        table.insert(parts, type(t) == 'table' and t[1] or tostring(t))
+      end
+    end
+    return {
+      embedded = true,
+      valid = vim.api.nvim_win_is_valid(f.mainWin),
+      text = table.concat(parts),
+      fpos = mcfg.footer_pos,
+      detWin = f.win,
+      mheight = mcfg.height,
+    }
+  end
   local fcfg = vim.api.nvim_win_get_config(f.win)
   return {
+    embedded = false,
     valid = vim.api.nvim_win_is_valid(f.win),
     text = vim.api.nvim_buf_get_lines(f.buf, 0, -1, false)[1],
     frow = fcfg.row, fcol = fcfg.col, fwidth = fcfg.width, fheight = fcfg.height,
@@ -52,11 +73,16 @@ const footerState = () => lua(`local f = require("dsh_tui")._footer
   }`, [])
 const assertFooter = async (hintPart: string, label: string) => {
   const fs = await footerState()
-  assert.ok(fs.valid, `${label}: footer bar opens below the window`)
+  assert.ok(fs.valid, `${label}: footer attached to the popup`)
+  assert.ok(String(fs.text).includes(hintPart), `${label}: footer carries the operation hints`)
+  if (fs.embedded) {
+    assert.equal(fs.fpos, 'left', `${label}: hints sit at the left of the bottom border`)
+    assert.equal(fs.detWin ?? null, null, `${label}: no detached footer window`)
+    return
+  }
   assert.equal(fs.fheight, 1, `${label}: footer is one row tall`)
   assert.equal(fs.fwidth, fs.mwidth, `${label}: footer spans the main window width`)
   assert.equal(fs.frow, fs.mrow + fs.mheight + 2, `${label}: footer sits directly under the main window`)
-  assert.ok(String(fs.text).includes(hintPart), `${label}: footer carries the operation hints`)
   assert.ok(String(fs.winhighlight).includes('DshTuiStatus'), `${label}: footer uses the statusline highlight`)
 }
 // Every popup opens centered on the editor: row = (lines - height) / 2 - 2,
@@ -117,7 +143,7 @@ try {
   await assertCentered('require("dsh_tui")._sessWin', 'session list')
   await lua('require("dsh_tui").close_session_list()', [])
   assert.equal(await lua('return require("dsh_tui")._sessWin', []), null, 'session list closed')
-  assert.equal(await lua('return require("dsh_tui")._footer.win', []), null, 'footer closes with the session list')
+  assert.equal((await lua('return require("dsh_tui")._footer.win', [])) ?? null, null, 'footer closes with the session list')
 
   // active session's buffer shown in the chat window
   await lua('require("dsh_tui").set_active(...)', ['session-bbbb'])
@@ -551,7 +577,8 @@ description:
   const baseWins = (await lua('return vim.api.nvim_list_wins()', [])).length
   await lua(`require("dsh_tui").show_skill({ name = "demo", description = "演示技能", whenToUse = "测试", content = "正文" })`, [])
   let skillWins = (await lua('return vim.api.nvim_list_wins()', [])).length
-  assert.equal(skillWins, baseWins + 2, 'skill float + footer bar opened')
+  const footerEmbedded = await lua('return vim.fn.has("nvim-0.10") == 1', [])
+  assert.equal(skillWins, baseWins + (footerEmbedded ? 1 : 2), 'skill float opened (footer embedded in border on nvim 0.10+)')
   const skillBuf = await lua('return vim.api.nvim_win_get_buf(require("dsh_tui")._skillWin)', [])
   const skillLines = await nvim.request('nvim_buf_get_lines', [skillBuf, 0, -1, false])
   assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._skillWin)', []), skillLines.length, 'skill window exactly fits content')
@@ -1181,6 +1208,8 @@ description:
   for (const g of ['DshTuiAssistant', 'DshTuiReasoning', 'DshTuiNotice', 'DshTuiDivider', 'DshTuiCmdDesc']) {
     assert.equal(dims[g].link, 'Comment', g + ' follows the theme Comment link')
   }
+  const ffHl = await lua('return vim.api.nvim_get_hl(0, { name = "FloatFooter" })', [])
+  assert.equal(ffHl.link, 'DshTuiStatus', 'embedded popup footer keeps the statusline look')
   const inputWinhl = await lua('return vim.wo[require("dsh_tui").ids().inputWin].winhl', [])
   assert.ok(inputWinhl.includes('Normal:DshTuiDim'), 'input window dims typed text')
   // terminal title: nvim owns the terminal and emits the OSC 2 title itself

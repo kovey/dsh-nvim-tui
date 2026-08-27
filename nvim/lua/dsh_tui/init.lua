@@ -68,9 +68,11 @@ local function centered_col(width)
 end
 
 -- ===========================================================================
--- Popup footer: a 1-row floating bar OUTSIDE and directly BELOW the popup
--- window (like a detached statusline). It survives scrolling inside the main
--- popup and is re-anchored whenever the main window moves/resizes.
+-- Popup footer: the operation hints for popups. nvim >= 0.10 embeds them
+-- INTO the popup's bottom border via the native `footer` config (like the
+-- title in the top border) — no detached bar, no extra row, and the float
+-- stays self-contained on terminal resize. Older nvim gets the legacy
+-- 1-row floating bar below the window.
 -- ===========================================================================
 M._footer = { win = nil, buf = nil, mainWin = nil }
 
@@ -81,16 +83,26 @@ local function detach_footer()
   M._footer = { win = nil, buf = nil, mainWin = nil }
 end
 
---- Attach (or re-attach) the footer bar under `mainWin`: same width/column,
---- one row below the main window's bottom border, styled with the StatusLine
---- highlight group. If the main window would push the footer off-screen, the
---- main window is first shrunk/moved up so the bar always stays visible.
+--- Attach (or update) the hint footer on `mainWin`: hints live in the bottom
+--- border (left-aligned, like the title in the top border) on nvim >= 0.10.
 local function attach_footer(mainWin, text)
   detach_footer()
   if not (mainWin and vim.api.nvim_win_is_valid(mainWin)) then return end
+  if vim.fn.has('nvim-0.10') == 1 then
+    local ok, err = pcall(vim.api.nvim_win_set_config, mainWin, {
+      footer = text,
+      footer_pos = 'left',
+    })
+    if ok then
+      M._footer = { win = nil, buf = nil, mainWin = mainWin }
+      return
+    end
+    M._footerErr = err
+  end
+  -- Legacy detached bar (nvim < 0.10, or set_config footer unsupported):
+  -- 1 footer row + 2 border rows must fit below the window's top row.
   local cfg = vim.api.nvim_win_get_config(mainWin)
   local height = cfg.height
-  -- 1 footer row + 2 border rows must fit below the window's top row.
   local avail = vim.o.lines - 3
   if height > avail then
     height = math.max(1, avail)
@@ -1667,6 +1679,9 @@ function M.applyHighlights()
   -- The popup bottom hint rows borrow the statusline look: floating windows
   -- get no real statusline, so the hint row is styled like one.
   vim.cmd('highlight default link DshTuiStatus StatusLine')
+  -- Embedded popup footers (hints in the bottom border, nvim >= 0.10) keep
+  -- the same statusline look instead of the default dim border color.
+  vim.cmd('highlight default link FloatFooter DshTuiStatus')
   -- The input frame (winbar / statuscolumn / right-edge marks / statusline).
   vim.cmd('highlight default link DshTuiBorder WinSeparator')
   -- Blue whale pixel art (chat wallpaper/watermark): one group per
