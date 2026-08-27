@@ -488,6 +488,24 @@ description:
   assert.equal(idsT.reasoningOpen, true)
   assert.equal(await lua('return vim.api.nvim_win_get_buf(...)', [idsT.reasoningWin]), reasonB.reasoningBuf,
     'panel shows active session reasoning')
+  // popup panel: editor-relative float hugging the RIGHT edge (chat keeps
+  // its full width), below menus/approvals in z-order
+  const panelCfg = await nvim.request('nvim_win_get_config', [idsT.reasoningWin])
+  assert.equal(panelCfg.relative, 'editor', 'reasoning panel is a float')
+  assert.equal(panelCfg.anchor, 'NE', 'panel anchors to the top-right')
+  assert.equal(panelCfg.col, (await lua('return vim.o.columns', [])) - 1, 'panel right edge sits at the screen edge')
+  assert.ok(panelCfg.width >= 30 && panelCfg.width <= 52, 'panel width clamped')
+  assert.ok(panelCfg.zindex < 50, 'panel sits below menus/approvals')
+  assert.ok(String(panelCfg.title).includes('思考'), 'panel carries a title')
+  if (await lua('return vim.fn.has("nvim-0.10") == 1', [])) {
+    assert.ok(JSON.stringify(panelCfg.footer).includes('C-o'), 'panel bottom border carries the operation hints')
+  }
+  const chatWBefore = await lua('return vim.api.nvim_win_get_width(require("dsh_tui").ids().chatWin)', [])
+  assert.equal(await lua('return vim.api.nvim_win_get_width(require("dsh_tui").ids().chatWin)', []), chatWBefore,
+    'chat keeps its full width while the panel is open')
+  // the panel spans 3/4 of the screen height (a panel, not a full column)
+  const lines0 = await lua('return vim.o.lines', [])
+  assert.equal(panelCfg.height, Math.max(3, Math.floor(lines0 * 0.75)), 'panel spans 3/4 of the screen height')
   const closed = await lua('return require("dsh_tui").toggle_reasoning()', [])
   assert.equal(closed, false, 'panel closes')
   idsT = await lua('return require("dsh_tui").ids()', [])

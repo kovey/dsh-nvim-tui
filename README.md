@@ -23,10 +23,10 @@ dsh --profile nvim-tui
 - **Neovim 原生体验**：聊天区就是普通 nvim buffer——搜索、复制、可视模式选择、
   你自己的 colorscheme / statusline / LSP 全部生效；```lang 代码块与 diff
   内容直接用你的 nvim 配置（treesitter + 配色方案）做语法高亮
-- **流式渲染**：`·· thinking · 12.3s` 浮动活动指示 + `<C-o>` 右侧面板收思考与
-  工具记录；工具卡片、subagent/workflow 卡片、GFM 表格框线渲染；markdown
-  代码块按 Claude 风格渲染（隐藏 ``` 围栏、语言小标 + 语法高亮）；
-  子代理思考链回放**边思考边实时输出**
+- **流式渲染**：`·· thinking · 12.3s` 浮动活动指示 + `<C-o>` 思考与工具面板
+  （紧贴右缘的浮动弹窗，聊天区保持全宽）；工具卡片、subagent/workflow
+  卡片、GFM 表格框线渲染；markdown 代码块按 Claude 风格渲染
+  （隐藏 ``` 围栏、语言小标 + 语法高亮）；子代理思考链回放**边思考边实时输出**
 - **状态栏**：权限模式 · 模型 · effort · 缓存命中% · 上下文占用 · Σ token ·
   TTFT/吞吐 · 时长 · 预估成本 · provider 路由 · ⏳ 排队 / ⚙ jobs / 📋 待办 ·
   `⇢` 子代理寻址

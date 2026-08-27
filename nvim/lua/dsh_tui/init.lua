@@ -1719,6 +1719,18 @@ local function install_autocmds()
       M.reschedule_statusline()
     end,
   })
+  -- Terminal resize: the panel float is editor-relative — re-anchor it to
+  -- the new right edge / height.
+  vim.api.nvim_create_autocmd('VimResized', {
+    callback = function()
+      if M._reasoningWin and vim.api.nvim_win_is_valid(M._reasoningWin) then
+        local cfg = M.reasoning_panel_geometry()
+        cfg.border = 'rounded'
+        cfg.style = 'minimal'
+        pcall(vim.api.nvim_win_set_config, M._reasoningWin, cfg)
+      end
+    end,
+  })
   -- A colorscheme (re)applied after start() — lazy setups, mid-session
   -- switches — must not wash the highlights back to pure white.
   vim.api.nvim_create_autocmd('ColorScheme', {
@@ -1731,6 +1743,9 @@ end
 --- Claim the UI: drop windows/buffers opened by the user's config or a
 --- dashboard plugin, then rebuild our layout.
 local function takeover()
+  if M._reasoningWin and vim.api.nvim_win_is_valid(M._reasoningWin) then
+    pcall(vim.api.nvim_win_close, M._reasoningWin, true)
+  end
   pcall(vim.cmd, 'silent! only')
   M._reasoningWin = nil
   M._reasoningOpen = false
@@ -2015,6 +2030,10 @@ function M.ensure_reasoning(id)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, { '·· 思考与工具记录（<C-o> 收起）' })
     vim.api.nvim_buf_set_keymap(buf, 'n', '<C-o>',
       '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>', { noremap = true })
+    vim.api.nvim_buf_set_keymap(buf, 'n', 'q',
+      '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>', { noremap = true })
+    vim.api.nvim_buf_set_keymap(buf, 'n', '<Esc>',
+      '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>', { noremap = true })
     lock_display_keys(buf) -- reasoning panel is display-only
     vim.api.nvim_buf_set_name(buf, 'dsh-reasoning-' .. tostring(id))
     M._reasoningBufs[id] = buf
@@ -2026,23 +2045,55 @@ function M.ensure_reasoning(id)
   }
 end
 
---- Open/close the reasoning panel (right of the chat window). Keymap <C-o>.
+--- Reasoning panel float geometry: hugs the RIGHT screen edge, spanning
+--- three quarters of the screen height (a panel, not a full-height column —
+--- it may overlay the input area only when multi-line input grows tall).
+--- The chat keeps its full width (the panel overlays its right side, like
+--- the other popups).
+function M.reasoning_panel_geometry()
+  local width = math.max(30, math.min(52, math.floor(vim.o.columns * 0.45)))
+  local height = math.max(3, math.floor(vim.o.lines * 0.75))
+  local cfg = {
+    relative = 'editor',
+    anchor = 'NE',
+    row = 0,
+    col = vim.o.columns - 1,
+    width = width,
+    height = height,
+  }
+  if vim.fn.has('nvim-0.9') == 1 then
+    cfg.title = ' 思考与工具记录 '
+    cfg.title_pos = 'center'
+  end
+  -- Bottom operation hints embedded in the border (like the popups).
+  if vim.fn.has('nvim-0.10') == 1 then
+    cfg.footer = ' C-o 收起面板 · q 关闭 '
+    cfg.footer_pos = 'left'
+  end
+  return cfg
+end
+
+--- Open/close the reasoning panel (a popup hugging the right edge). <C-o>.
 function M.toggle_reasoning()
   if M._reasoningWin and vim.api.nvim_win_is_valid(M._reasoningWin) then
     pcall(vim.api.nvim_win_close, M._reasoningWin, true)
     M._reasoningWin = nil
     M._reasoningOpen = false
   else
-    vim.api.nvim_set_current_win(chat_win)
-    vim.cmd('rightbelow 52vsplit')
-    M._reasoningWin = vim.api.nvim_get_current_win()
     local buf = M._activeId and M._reasoningBufs[M._activeId]
-    if buf and vim.api.nvim_buf_is_valid(buf) then
-      vim.api.nvim_win_set_buf(M._reasoningWin, buf)
+    if not (buf and vim.api.nvim_buf_is_valid(buf)) then
+      buf = vim.api.nvim_create_buf(false, true)
+      chat_buffer_options(buf)
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { '·· 思考与工具记录（<C-o> 收起）' })
     end
-    window_options(M._reasoningWin)
-    vim.api.nvim_win_set_option(M._reasoningWin, 'winfixwidth', true)
-    vim.api.nvim_win_set_option(M._reasoningWin, 'statusline', '%#Normal# ')
+    local cfg = M.reasoning_panel_geometry()
+    cfg.border = 'rounded'
+    cfg.style = 'minimal'
+    cfg.zindex = 30 -- above the chat, below menus/approvals
+    M._reasoningWin = vim.api.nvim_open_win(buf, false, cfg)
+    vim.wo[M._reasoningWin].number = false
+    vim.wo[M._reasoningWin].signcolumn = 'no'
+    vim.wo[M._reasoningWin].cursorline = false
     M._reasoningOpen = true
     -- Focus back on typing.
     if input_win and vim.api.nvim_win_is_valid(input_win) then
