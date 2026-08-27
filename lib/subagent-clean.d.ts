@@ -13,6 +13,12 @@
 export declare function ageLabel(createdAt: number | undefined, now?: number): string;
 /** Whether a settled chain has passed the retention window (0 = disabled). */
 export declare function isExpired(createdAt: number | undefined, ttlHours: number, now?: number): boolean;
+/** /subagents list ordering: running children first (the live work is what
+ *  matters), then newest-first within each group. */
+export declare function orderSubagentChildren<T extends {
+    running?: boolean;
+    createdAt?: number;
+}>(children: T[]): T[];
 /** Read the cleaned-id ledger: parentSessionId -> childIds. */
 export declare function readCleanedIds(): Record<string, string[]>;
 /** Persist the cleaned-id ledger (best-effort). */

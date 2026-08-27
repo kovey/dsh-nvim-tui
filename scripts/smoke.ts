@@ -18,7 +18,7 @@ import { sniffMediaType, parseImageDataUrl, splitImageDataUrls, imageLabel } fro
 import { diffTexts, fileDiffsFromMeta } from '../lib/diff.js'
 import { t, setLocale, locale } from '../lib/i18n.js'
 import { matchIntent } from '../lib/nlcmd.js'
-import { ageLabel, isExpired } from '../lib/subagent-clean.js'
+import { ageLabel, isExpired, orderSubagentChildren } from '../lib/subagent-clean.js'
 import {
   parseStars, buildCatalog, searchCatalog, parsePluginYaml,
   setDisabledRows, readDisabledIds, isNpmName, depMatchesEntry, repoRoot, installSpec,
@@ -1016,6 +1016,15 @@ description:
   setLocale('en')
   assert.equal(t('修改'), 'Modified', 'diff action label translated')
   setLocale(prev)
+  // /subagents ordering: running children first, then newest-first
+  const ordered = orderSubagentChildren([
+    { id: 'old1', running: false, createdAt: 100 },
+    { id: 'run2', running: true, createdAt: 200 },
+    { id: 'run1', running: true, createdAt: 100 },
+    { id: 'new1', running: false, createdAt: 300 },
+  ])
+  assert.deepEqual(ordered.map((c) => c.id), ['run2', 'run1', 'new1', 'old1'],
+    'running subagents first, newest-first within groups')
 
   // 9h. @-file-reference menu: accept replaces the token in the input line.
   await nvim.request('nvim_buf_set_lines', [ids.inputBuf, 0, -1, false, ['请读 @fi']])

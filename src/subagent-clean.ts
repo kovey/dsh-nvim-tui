@@ -36,6 +36,15 @@ function cleanStatePath(): string {
   return join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'dsh-nvim-tui-subagent-clean.json')
 }
 
+/** /subagents list ordering: running children first (the live work is what
+ *  matters), then newest-first within each group. */
+export function orderSubagentChildren<T extends { running?: boolean; createdAt?: number }>(children: T[]): T[] {
+  return [...children].sort((a, b) => {
+    if ((a.running ?? false) !== (b.running ?? false)) return a.running ? -1 : 1
+    return (b.createdAt ?? 0) - (a.createdAt ?? 0)
+  })
+}
+
 /** Read the cleaned-id ledger: parentSessionId -> childIds. */
 export function readCleanedIds(): Record<string, string[]> {
   try {

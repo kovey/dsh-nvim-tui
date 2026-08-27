@@ -14,7 +14,7 @@ import { diffTexts, fileDiffsFromMeta } from './diff.js'
 import { t, setLocale, locale } from './i18n.js'
 import { matchIntent } from './nlcmd.js'
 import { WHALE_EMOJI_FRAMES } from './whale.js'
-import { ageLabel, isExpired, readCleanedIds, writeCleanedIds } from './subagent-clean.js'
+import { ageLabel, isExpired, readCleanedIds, writeCleanedIds, orderSubagentChildren } from './subagent-clean.js'
 import {
   MarketEntry, fetchCatalog, readCatalog, writeCatalog, isFresh, searchCatalog,
   readInstalledPlugins, runningProfileName, installSpec, openUrl,
@@ -1303,12 +1303,18 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
           notice(t('该会话没有子代理（workflow/subagent 运行后此处可回放其思考链）'))
           return
         }
+        // Running children first, then newest-first — the live work leads.
+        children = orderSubagentChildren(children)
         const settledCount = children.filter((c) => !c.running).length
         const rows: Array<{ label: string; value: string }> = []
-        if (settledCount > 0) {
-          rows.push({ label: `🧹 清理全部已结束思考链（${settledCount} 条）`, value: 'act:clean' })
-        }
+        let cleanRowInserted = false
         for (const c of children) {
+          if (!c.running && !cleanRowInserted) {
+            cleanRowInserted = true
+            if (settledCount > 0) {
+              rows.push({ label: `🧹 清理全部已结束思考链（${settledCount} 条）`, value: 'act:clean' })
+            }
+          }
           rows.push({
             label: `${c.label}${c.running ? ' · 运行中' : ` · 已结束${ageLabel(c.createdAt) !== '' ? ` · ${ageLabel(c.createdAt)}` : ''}`}`,
             value: c.id,
