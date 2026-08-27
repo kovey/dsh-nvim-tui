@@ -5,6 +5,16 @@
 
 ## Unreleased（main）
 
+## [v0.2.4（2026-08-27）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.4)
+
+覆盖提交：
+[`e378590`](https://github.com/kovey/dsh-nvim-tui/commit/e378590) ·
+[`45f6c02`](https://github.com/kovey/dsh-nvim-tui/commit/45f6c02) ·
+[`6f1faf6`](https://github.com/kovey/dsh-nvim-tui/commit/6f1faf6) ·
+[`af63b2d`](https://github.com/kovey/dsh-nvim-tui/commit/af63b2d) ·
+[`2fc76da`](https://github.com/kovey/dsh-nvim-tui/commit/2fc76da) ·
+[`9c4ebb8`](https://github.com/kovey/dsh-nvim-tui/commit/9c4ebb8)
+
 - **思考面板弹窗化**：`<C-o>` 面板从右侧分屏改为**紧贴右缘的浮动弹窗**
   （复用弹窗样式：圆角边框 + 居中标题「思考与工具记录」+ 底部操作提示
   `C-o 收起面板 · q 关闭`、editor 相对锚点 NE、宽 45% 钳制 30–52 列、
@@ -35,6 +45,10 @@
   缺失时回退到工具执行前快照 + 执行后重读；LCS 差异、2 行上下文、40 行
   截断，绿色 `+` / 红色 `-` **始终直接渲染进聊天流**（思考面板保持紧凑
   活动日志）；大文件/二进制跳过。
+
+- **diff 行主题背景色**：`+`/`-` 行整行填充背景色（Claude 式）——前景与
+  背景取自主题的 DiffAdd/DiffDelete 高亮组，主题缺背景时按比例混入
+  编辑器背景；换主题随 ColorScheme 事件自动重算。
 
 ## [v0.2.3（2026-08-27）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.3)
 
