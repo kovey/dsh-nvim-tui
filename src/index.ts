@@ -11,6 +11,7 @@ import { spawnNvim, connectNvim } from './bridge.js'
 import { FeedRenderer } from './feed.js'
 import { t, setLocale, locale } from './i18n.js'
 import { matchIntent } from './nlcmd.js'
+import { WHALE_EMOJI_FRAMES } from './whale.js'
 import { ageLabel, isExpired, readCleanedIds, writeCleanedIds } from './subagent-clean.js'
 import {
   MarketEntry, fetchCatalog, readCatalog, writeCatalog, isFresh, searchCatalog,
@@ -38,7 +39,7 @@ import type {
 } from './types.js'
 
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
-export const BUILD_VERSION = '0.2.0'
+export const BUILD_VERSION = '0.2.2'
 export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 export const name = 'dsh-nvim-tui'
@@ -266,8 +267,8 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         .catch(() => { pickerSettle = null; resolve(null) })
     })
 
-    // Spinner animation for the statusline while the active agent is running.
-    const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+    // Statusline animation while the active agent is running: the mini
+    // whale (bubble + tail flip) instead of a braille spinner.
     let spinnerTimer: ReturnType<typeof setInterval> | null = null
     let spinnerIndex = 0
     let idleRefreshTimer: ReturnType<typeof setInterval> | null = null
@@ -276,9 +277,9 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       const running = rec?.status === '● running'
       if (running && spinnerTimer === null) {
         spinnerTimer = setInterval(() => {
-          spinnerIndex = (spinnerIndex + 1) % SPINNER.length
+          spinnerIndex = (spinnerIndex + 1) % WHALE_EMOJI_FRAMES.length
           updateStatusline()
-        }, 180)
+        }, 450)
       } else if (!running && spinnerTimer !== null) {
         clearInterval(spinnerTimer)
         spinnerTimer = null
@@ -300,7 +301,8 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
 
       // -- right: live statistics
       const right = []
-      if (running) right.push(escapeStatusline(`${SPINNER[spinnerIndex]} ${rec.status}`))
+      // The fat whale emoji + bubble cycle replaces the braille spinner.
+      if (running) right.push(`${WHALE_EMOJI_FRAMES[spinnerIndex]} ${escapeStatusline(rec.status)}`)
       else right.push(escapeStatusline(rec?.status ?? '○ idle'))
       if (running && rec?.runningSince) {
         right.push(escapeStatusline(`${((Date.now() - rec.runningSince) / 1000).toFixed(1)}s`))
@@ -431,6 +433,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         reasoningBuf: rids?.reasoningBuf ?? null,
         reasoningView: () => ({ open: reasoningOpen, win: reasoningWinId }),
         whale: config.whaleArt !== 'off',
+        welcome: welcomeLines,
       })
       sessions.set(id, {
         id, handle, feed, title: undefined, status: undefined, modelRef,
@@ -452,6 +455,49 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       // Boot banner: version + build stamp + channel (proves which code runs).
       feed.appendNotice(`dsh-nvim-tui ${BUILD_VERSION} (build ${BUILD_STAMP}) · channel ${channelIdValue}`)
       return id
+    }
+
+    /** Empty-state hero: big DSH·TUI banner + title ABOVE the whale, usage
+     *  hints BELOW it (the feed centers the whole block). */
+    const welcomeLines = (): { above: Array<{ text: string; group?: string }>; below: Array<{ text: string; group?: string }> } => {
+      // 4×6 block font — bigger than the old 3×5, with real letter spacing.
+      const font: Record<string, string[]> = {
+        D: ['███▌', '█  █', '█  █', '█  █', '█  █', '███▌'],
+        S: ['▄███▄', '███▀ ', '▀███▄', '▀  █', '▀  █', '▄███▀'],
+        H: ['█  █', '█  █', '████', '█  █', '█  █', '█  █'],
+        N: ['█  █', '██ █', '█ ██', '█  █', '█  █', '█  █'],
+        V: ['█  █', '█  █', '█  █', '█  █', ' ██ ', ' ██ '],
+        I: [' ██ ', ' ██ ', ' ██ ', ' ██ ', ' ██ ', ' ██ '],
+        M: ['█▌ ▐█', '██ ██', '█ █ █', '█ █ █', '█   █', '█   █'],
+        T: ['████', ' ██ ', ' ██ ', ' ██ ', ' ██ ', ' ██ '],
+        U: ['█  █', '█  █', '█  █', '█  █', '█  █', '▀███▀'],
+        ' ': ['  ', '  ', '  ', '  ', '  ', '  '],
+      }
+      const word = 'DSH NVIM TUI'
+      const banner: string[] = ['', '', '', '', '', '']
+      for (const ch of word) {
+        const glyph = font[ch] ?? font[' ']
+        for (let i = 0; i < 6; i++) banner[i] += (banner[i] === '' ? '' : ' ') + glyph[i]
+      }
+      const BLUE = 'DshTuiWhaleB-'
+      const TITLE = 'DshTuiUser'
+      return {
+        above: [
+          ...banner.map((text) => ({ text, group: BLUE })),
+          { text: '' },
+          { text: `${t('Neovim 风格的 DeepSeek Harness 终端客户端')} · v${BUILD_VERSION}`, group: TITLE },
+          { text: '' },
+        ],
+        below: [
+          { text: t('直接输入问题开始对话，命令以 / 开头，自然语言也可以') },
+          { text: '' },
+          { text: `  /help ${t('全部命令')} · /new ${t('新建会话')} · /sessions ${t('切换会话')} · /market ${t('插件市场')}` },
+          { text: '' },
+          { text: `  /skills ${t('技能')} · /model ${t('切换模型')} · /whale off ${t('关闭背景鲸鱼')}` },
+          { text: '' },
+          { text: `  @${t('文件')} ${t('引用文件')} · Ctrl+O ${t('思考面板')} · Ctrl+P ${t('历史输入')} · Ctrl+C ${t('停止')}` },
+        ],
+      }
     }
 
     /** Create a fresh session+agent and switch to it. `cwdPath` (optional)

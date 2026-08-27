@@ -1,6 +1,6 @@
 import net from 'node:net'
 import { spawn } from 'node:child_process'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -49,10 +49,28 @@ export async function spawnNvim({
 } = {}): Promise<SpawnedNvim> {
   const dir = await mkdtemp(join(tmpdir(), 'dsh-nvim-tui-'))
   const sockPath = join(dir, 'nvim.sock')
+  // A scratch file as the startup argument: nvim opens it INSTEAD of the
+  // intro screen (which flashes [No Name] before the TUI mounts), and
+  // dashboard plugins that skip when a file was given stay dormant too.
+  const scratchPath = join(dir, 'scratch')
+  await writeFile(scratchPath, '')
   const args = [
     ...(loadUserConfig ? [] : ['-u', 'NONE', '-i', 'NONE']),
     '--listen', sockPath,
+    '--cmd', 'set shortmess+=I',
+    // The terminal tab/title would otherwise flash the startup buffer name
+    // ([No Name] / scratch) before the runner pushes 'dsh': pin it now.
+    '--cmd', 'set title titlestring=dsh iconstring=dsh',
     '--cmd', `set rtp^=${nvimRtpDir}`,
+    // No chrome flash during startup: tabline/statusline are off from the
+    // very first frame, and OptionSet snaps any later `set …` (user config /
+    // bufferline / statusline plugins) straight back — before a single frame
+    // can draw them. NOTE: winbar is NOT snapped here — `:set winbar=` would
+    // blank the CURRENT window's winbar, which after the TUI layout is the
+    // input window's own frame top edge; the Lua enforcement re-asserts it
+    // instead.
+    '--cmd', 'set showtabline=0 laststatus=2 tabline= winbar=',
+    '--cmd', 'autocmd OptionSet showtabline,laststatus,tabline ++nested set showtabline=0 laststatus=2 tabline=',
     // Register dsh_tui in package.preload (dofile on an absolute path) so
     // require() works even when the user's config rebuilds runtimepath or
     // vim.loader's cache_loader never scanned our rtp entry (lazy.nvim etc.).
@@ -60,8 +78,13 @@ export async function spawnNvim({
     // package.loaded caches the result — the VimEnter autocmd and the Node
     // side both get the same module instance.
     '--cmd', `lua package.preload['dsh_tui'] = function() return dofile(${JSON.stringify(dshTuiModulePath)}) end`,
-    // Mount the UI on VimEnter so the user's config/plugins load first.
-    '--cmd', "lua vim.api.nvim_create_autocmd('VimEnter', { once = true, callback = function() require('dsh_tui').start() end })",
+    // Mount the TUI layout at UIEnter — BEFORE the user's config runs — so the
+    // very first drawn frame is already our chat+input layout, not nvim's
+    // startup screen with its [No Name] placeholder (the visible "flash").
+    // VimEnter re-asserts for configs/plugins that reshape things later.
+    '--cmd', "lua vim.api.nvim_create_autocmd('UIEnter', { once = true, callback = function() pcall(require, 'dsh_tui'); require('dsh_tui').start() end })",
+    '--cmd', "lua vim.api.nvim_create_autocmd('VimEnter', { once = true, callback = function() pcall(require, 'dsh_tui'); require('dsh_tui').start() end })",
+    scratchPath,
     ...extraArgs,
   ]
   const child = spawn('nvim', args, {

@@ -25,7 +25,7 @@
  *  - Events arriving during a flush set `dirty`; the flush chains a follow-up.
  */
 import { NeovimClient } from 'neovim'
-import { WHALE_BIG, WHALE_SMALL, layoutWhaleRows } from './whale.js'
+import { whaleFrames, whaleRowsIndented } from './whale.js'
 
 import { transformTables } from './table.js'
 import { imageLabel } from './images.js'
@@ -80,6 +80,14 @@ export interface FeedOptions {
   inlineReasoning?: boolean
   /** Blue whale wallpaper/watermark (default off; the runner enables it). */
   whale?: boolean
+  /** Empty-state welcome block: lines ABOVE the whale (big banner + title)
+   *  and lines BELOW it (usage hints); rows may carry a highlight group. */
+  welcome?: () => { above?: WelcomeLine[]; below?: WelcomeLine[] }
+}
+
+export interface WelcomeLine {
+  text: string
+  group?: string
 }
 
 interface ToolCallRecord {
@@ -125,6 +133,9 @@ export class FeedRenderer {
   lastView: string[] // last flushed buffer text, diffed per flush
   dense: boolean // /density: compact tool cards (title line only)
   whale: boolean // blue whale wallpaper (empty) + watermark (content)
+  welcome: (() => { above?: WelcomeLine[]; below?: WelcomeLine[] }) | null // empty-state hero block
+  whaleFrame: number // animation frame index (wallpaper only)
+  whaleTicker: ReturnType<typeof setInterval> | null
   ticker: ReturnType<typeof setTimeout> | null
   eventTime: number
 
@@ -136,6 +147,7 @@ export class FeedRenderer {
     reasoningView = null,
     inlineReasoning = false,
     whale = false,
+    welcome,
   }: FeedOptions = {}) {
     this.nvim = nvim
     this.bufId = bufId
@@ -144,6 +156,9 @@ export class FeedRenderer {
     this.idsProvider = idsProvider
     this.activeChecker = activeChecker ?? (() => true)
     this.whale = whale
+    this.welcome = welcome ?? null
+    this.whaleFrame = 0
+    this.whaleTicker = null
     this.reasoningBuf = reasoningBuf
     this.reasoningView = reasoningView ?? (() => null)
     this.inlineReasoning = inlineReasoning
@@ -648,7 +663,30 @@ export class FeedRenderer {
   /** Toggle the whale art and re-render (the /whale command). */
   setWhale(on: boolean): void {
     this.whale = on
+    if (!on) this.stopWhaleTicker()
     this.schedule()
+  }
+
+  /** Animate the wallpaper: advance one frame and re-render (empty only). */
+  private ensureWhaleTicker(): void {
+    if (this.whaleTicker !== null) return
+    this.whaleTicker = setInterval(() => {
+      if (!this.whale) {
+        this.stopWhaleTicker()
+        return
+      }
+      this.whaleFrame = (this.whaleFrame + 1) % 4
+      // Skip hidden buffers (inactive sessions) — the frame still advances so
+      // the animation is fresh whenever the feed becomes visible again.
+      if (this.activeChecker()) void this.flush().catch(() => {})
+    }, 450)
+  }
+
+  private stopWhaleTicker(): void {
+    if (this.whaleTicker !== null) {
+      clearInterval(this.whaleTicker)
+      this.whaleTicker = null
+    }
   }
 
   /** Current window size via the ids provider (fallback 40×100). */
@@ -737,28 +775,44 @@ export class FeedRenderer {
     }
     const lines = parsed.map((p) => p.text)
 
-    // Blue whale art: centered wallpaper while the transcript is empty,
-    // persistent bottom watermark once content exists.
+    // Blue whale pixel art: the empty state is a hero block — big banner +
+    // title ABOVE, the animated whale (wink / bubbles / bob cycle) in the
+    // MIDDLE, usage hints BELOW — vertically centered as one unit. Once
+    // content exists there is NO watermark; the statusline running badge
+    // carries the emoji animation instead (its own timer). Each half-block
+    // glyph carries a per-span color group (fg/bg pixel pair).
     if (this.whale) {
       const empty = lines.length === 0 || (lines.length === 1 && lines[0] === '')
       if (empty) {
         const { h, w } = await this.winSize()
-        const art = layoutWhaleRows(WHALE_BIG, h, w)
-        if (art !== null) {
-          lines.length = 0
-          for (const r of art) {
-            lines.push(r.text)
-            parsed.push({ text: r.text, spans: [], group: r.group === '' ? undefined : r.group })
-          }
+        const hero = this.welcome?.() ?? {}
+        const above = hero.above ?? []
+        const below = hero.below ?? []
+        const art = whaleRowsIndented(w, whaleFrames()[this.whaleFrame])
+        const whaleRows = art ?? []
+        const block: Array<{ text: string; spans: Span[]; group?: string }> = []
+        for (const l of above) block.push({ text: l.text, spans: [], group: l.group })
+        if (above.length > 0 && whaleRows.length > 0) block.push({ text: '', spans: [], group: undefined })
+        for (const r of whaleRows) block.push({ text: r.text, spans: r.spans, group: undefined })
+        if (below.length > 0 && (above.length > 0 || whaleRows.length > 0)) block.push({ text: '', spans: [], group: undefined })
+        for (const l of below) block.push({ text: l.text, spans: [], group: 'DshTuiNotice' })
+        // Vertical centering of the whole block (whale sits mid-screen).
+        const topPad = Math.max(0, Math.floor((h - block.length) / 2))
+        lines.length = 0
+        for (let i = 0; i < topPad; i++) {
+          lines.push('')
+          parsed.push({ text: '', spans: [], group: undefined })
         }
+        for (const b of block) {
+          lines.push(b.text)
+          parsed.push({ text: b.text, spans: b.spans, group: b.group })
+        }
+        this.ensureWhaleTicker()
       } else {
-        lines.push('')
-        parsed.push({ text: '', spans: [], group: undefined })
-        for (const r of WHALE_SMALL) {
-          lines.push(r.text)
-          parsed.push({ text: r.text, spans: [], group: r.group })
-        }
+        this.stopWhaleTicker()
       }
+    } else {
+      this.stopWhaleTicker()
     }
 
     // Diff against the last flushed view: tables expand blocks (3 raw lines

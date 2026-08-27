@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { spawnNvim, connectNvim } from '../lib/bridge.js'
 import { FeedRenderer } from '../lib/feed.js'
-import { WHALE_BIG, WHALE_SMALL, whaleMaxWidth, layoutWhaleRows } from '../lib/whale.js'
+import { WHALE_RENDER_ROWS, whaleFrames, WHALE_EMOJI_FRAMES, layoutWhaleRows, WHALE_ROWS } from '../lib/whale.js'
 import { foldUsage, billedInput, cacheHitRate, estimateCost, formatTokens, formatElapsed, modeLabel, escapeStatusline } from '../lib/stats.js'
 import { sniffMediaType, parseImageDataUrl, splitImageDataUrls, imageLabel } from '../lib/images.js'
 import { t, setLocale, locale } from '../lib/i18n.js'
@@ -125,6 +125,14 @@ try {
 
   // 3. chat buffer must not be undoable
   assert.equal(await nvim.request('nvim_buf_get_option', [chatA.chatBuf, 'undolevels']), -1)
+  // tabline hygiene: hidden unless multiple tabs; chat buffers carry names.
+  assert.equal(await lua('return vim.o.showtabline', []), 0, 'tabline always hidden in the TUI')
+  assert.equal(await lua('return vim.o.laststatus', []), 2, 'statuslines stay on (chat stats + input hints)')
+  assert.equal(await lua('return vim.o.titlestring', []), 'dsh', 'terminal title pinned to dsh from the first frame (no scratch/[No Name] flash)')
+  // OptionSet guard: even a plugin forcing showtabline=2 gets snapped back.
+  await lua('vim.o.showtabline = 2', [])
+  assert.equal(await lua('return vim.o.showtabline', []), 0, 'showtabline changes are neutralized instantly (no flash)')
+  assert.ok(String(await lua('return vim.api.nvim_buf_get_name(...)', [chatA.chatBuf])).endsWith('dsh-chat-session-aaaa'), 'chat buffer named (no [No Name] tab)')
 
   // 4. FeedRenderer transcript → chat buffer; inactive feed must not move cursor
   let active = 'session-aaaa'
@@ -1020,34 +1028,72 @@ description:
 
   // 9k4. blue whale art (A+B): centered wallpaper while empty, bottom
   // watermark once content exists; /whale toggle removes it.
-  assert.ok(WHALE_BIG.length >= 10 && whaleMaxWidth(WHALE_BIG) > 20, 'big whale art present')
-  const laid = layoutWhaleRows(WHALE_BIG, 30, 100)
-  assert.ok(laid !== null && laid.length === WHALE_BIG.length + Math.floor((30 - WHALE_BIG.length) / 2), 'whale layout pads the top for vertical centering')
+  assert.equal(WHALE_RENDER_ROWS.length, 8, 'whale pixel art has 8 text rows')
+  assert.ok(WHALE_RENDER_ROWS.some((r) => r.text.includes('▀') && r.spans.length > 0), 'whale art renders half-block glyphs with color spans')
+
+  const frames = whaleFrames()
+  assert.equal(frames.length, 4, 'whale animation has a 4-frame cycle')
+  assert.ok(frames.every((f) => f.length === 8), 'every animation frame renders 8 rows')
+  assert.notDeepEqual(frames[0], frames[1], 'frame 1 differs (both eyes open + bubbles up)')
+  assert.notDeepEqual(frames[2], frames[1], 'frame 2 differs (right wink + bob)')
+  assert.equal(WHALE_EMOJI_FRAMES.length, 2, 'emoji watermark cycles the spouting whale + bubble')
+  assert.ok(WHALE_EMOJI_FRAMES.every((f) => f.endsWith('🐳')), 'every frame carries the spouting whale emoji')
+  assert.ok(WHALE_EMOJI_FRAMES.some((f) => f.includes('🫧')), 'bubble frame leads the cycle')
+  const laid = layoutWhaleRows(30, 100)
+  assert.ok(laid !== null && laid.length === WHALE_ROWS + Math.floor((30 - WHALE_ROWS) / 2), 'whale layout pads the top for vertical centering')
   assert.equal(laid[0].text, '', 'vertical centering pads the top')
-  assert.equal(layoutWhaleRows(WHALE_SMALL, 3, 20), null, 'tiny window skips the art')
+  assert.equal(layoutWhaleRows(3, 20), null, 'tiny window skips the art')
   const whaleBuf = await nvim.request('nvim_create_buf', [false, true])
   const whaleFeed = new FeedRenderer(nvim, whaleBuf, ids.chatWin!, {
     idsProvider: async () => ({ win: ids.chatWin }),
-    activeChecker: () => false,
+    activeChecker: () => true,
     whale: true,
   })
   await whaleFeed.flush()
   let whaleLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
-  assert.ok(whaleLines.some((l: string) => l.includes('<o>')), 'empty state shows the big whale wallpaper (eye)')
-  assert.ok(whaleLines.some((l: string) => l.includes('--.._')), 'whale body rendered')
+  assert.ok(whaleLines.some((l: string) => l.includes('▀')), 'empty state shows the whale wallpaper (half-block body)')
+  assert.ok(whaleLines.some((l: string) => l.includes('█')), 'whale body rendered')
   const whaleMarks = await nvim.request('nvim_buf_get_extmarks', [whaleBuf, -1, 0, -1, { details: true }])
   const whaleGroups = new Set((whaleMarks as any[]).map((m) => (Array.isArray(m) ? (m[3]?.hl_group ?? m[4]?.hl_group) : undefined)).filter(Boolean))
-  assert.ok([...whaleGroups].some((g) => String(g).startsWith('DshTuiWhale')), 'whale rows carry blue gradient highlights')
+  assert.ok([...whaleGroups].some((g) => String(g).startsWith('DshTuiWhale')), 'whale glyphs carry per-pixel color groups')
+  // Animation: while the wallpaper is up, the ticker advances frames and the
+  // buffer changes on its own (wink/bubble/bob cycle).
+  const whaleSnapshot = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
+  await new Promise((r) => setTimeout(r, 1100))
+  const whaleAnimated = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
+  assert.notDeepEqual(whaleAnimated, whaleSnapshot, 'wallpaper animates (ticker advances frames)')
   whaleFeed.applyEvent({ type: 'user/message', time: 1, data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } })
   await whaleFeed.flush()
   whaleLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
   assert.ok(whaleLines.some((l: string) => l.includes('> hi')), 'content renders above the whale')
-  assert.equal(whaleLines[whaleLines.length - 1], WHALE_SMALL[WHALE_SMALL.length - 1].text, 'watermark pinned as the last row')
+  assert.ok(!whaleLines.some((l: string) => l.includes('🐳') || l.includes('🫧')), 'no emoji watermark once content exists')
   whaleFeed.setWhale(false)
   await new Promise((r) => setTimeout(r, 80))
   await whaleFeed.flush()
   whaleLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
-  assert.ok(!whaleLines.some((l: string) => l.includes('<o>')), 'whale off removes the art')
+  assert.ok(!whaleLines.some((l: string) => l.includes('▀')), 'whale off removes the art')
+  // Welcome lines (project intro + usage) render under the whale while empty.
+  const welcomeBuf = await nvim.request('nvim_create_buf', [false, true])
+  const welcomeFeed = new FeedRenderer(nvim, welcomeBuf, ids.chatWin!, {
+    idsProvider: async () => ({ win: ids.chatWin }),
+    activeChecker: () => false,
+    whale: true,
+    welcome: () => ({
+      above: [{ text: '███▌', group: 'DshTuiWhaleB-' }, { text: 'Neovim 风格的终端客户端 · v0.2.2', group: 'DshTuiUser' }],
+      below: [{ text: '直接输入问题开始对话' }, { text: '  /help 全部命令 · /new 新建会话' }],
+    }),
+  })
+  await welcomeFeed.flush()
+  const welcomeLines0 = await nvim.request('nvim_buf_get_lines', [welcomeBuf, 0, -1, false])
+  assert.ok(welcomeLines0.some((l: string) => l.includes('▀')), 'welcome state still shows the whale wallpaper')
+  assert.ok(welcomeLines0.some((l: string) => l.includes('███▌')), 'welcome shows the big banner letters')
+  assert.ok(welcomeLines0.some((l: string) => l.includes('Neovim 风格的终端客户端')), 'welcome shows the project title')
+  assert.ok(welcomeLines0.some((l: string) => l.includes('/help 全部命令')), 'welcome shows usage commands')
+  welcomeFeed.applyEvent({ type: 'user/message', time: 1, data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } })
+  await welcomeFeed.flush()
+  const welcomeLines1 = await nvim.request('nvim_buf_get_lines', [welcomeBuf, 0, -1, false])
+  assert.ok(!welcomeLines1.some((l: string) => l.includes('/help')), 'welcome hides once content arrives')
+  await nvim.request('nvim_buf_delete', [welcomeBuf, { force: true }])
   await nvim.request('nvim_buf_delete', [whaleBuf, { force: true }])
 
   // 9k. layout presets: panel opens the reasoning panel, default closes it
@@ -1102,19 +1148,27 @@ description:
   const g = await lua('return vim.g.ministatusline_disable', [])
   assert.equal(g, true, 'global mini.statusline disable set')
 
-  // 12. window statuslines: input styled, reasoning seamless
+  // 12. window statuslines: input framed, reasoning seamless
   const ids12 = await lua('return require("dsh_tui").ids()', [])
   const slInput = await lua('return vim.api.nvim_win_get_option(require("dsh_tui").ids().inputWin, "statusline")', [])
   assert.ok(slInput.includes('Enter 发送'), 'input window has a styled helper bar')
   assert.ok(!slInput.includes('❯'), 'prompt moved OUT of the input statusline')
   assert.ok(!slInput.includes('StatusLineNC'), 'no raw StatusLineNC block')
-  // hints sit at the LEFT edge (aligned with the input box), not the far right
-  assert.ok(slInput.startsWith('%#DshTuiStatus# Enter 发送'), 'hints are left-aligned (no %= right split)')
-  assert.ok(!slInput.includes('%='), 'no right-alignment split in the hint bar')
+  // input FRAME: the hint bar doubles as the bottom edge — ╰ corner first
+  // (hints stay left-aligned with the input box), ─╯ at the far right.
+  assert.ok(slInput.startsWith('%#DshTuiBorder#╰─%#DshTuiStatus# Enter 发送'), 'hint bar opens the frame bottom edge (╰─ connects to the hints)')
+  assert.ok(slInput.includes('%#DshTuiStatus# Enter 发送'), 'hints are left-aligned (aligned with the input box)')
+  assert.ok(slInput.includes('%#DshTuiBorder#%=─╯'), 'frame bottom-right corner sits at the far right edge')
+  const inputFill = await lua('return vim.wo[require("dsh_tui").ids().inputWin].fillchars', [])
+  assert.ok(String(inputFill).includes('stl:─'), 'bottom edge fills the gap with ─ (continuous border)')
   // The '❯' prompt lives in the status COLUMN: visual only, never part of
-  // the submitted text, never deletable.
+  // the submitted text, never deletable. The column also carries the frame's
+  // LEFT edge (│), and the winbar draws the TOP edge (╭─╮).
   const promptCol = await lua('return vim.wo[require("dsh_tui").ids().inputWin].statuscolumn', [])
   assert.ok(promptCol.includes('❯'), 'input status column carries the ❯ prompt')
+  assert.ok(promptCol.includes('│'), 'input status column carries the frame left edge')
+  const winbar = await lua('return vim.api.nvim_win_get_option(require("dsh_tui").ids().inputWin, "winbar")', [])
+  assert.ok(winbar.includes('╭') && winbar.includes('╮'), 'input winbar draws the frame top edge')
   assert.equal(ids12.sessionsWin, undefined, 'no sessions window in ids (float only)')
   // Plain-content groups FOLLOW the theme's Comment (the pre-regression dim
   // tone); a bright Comment triggers the blend fallback instead.
@@ -1151,7 +1205,48 @@ description:
   await lua(`vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "" }); require("dsh_tui").resize_input()`, [])
   const layoutAfter = await layoutProbe()
   assert.equal(layoutAfter.inputTop - layoutAfter.chatEnd, 1, 'no dead row after input grow/shrink round-trip')
-  assert.equal(layoutAfter.inputH, 1, 'input back to one row after round-trip')
+  assert.equal(layoutAfter.inputH, 2, 'input back to one text row after round-trip (winbar + text)')
+  // frame RIGHT edge: one right-aligned │ mark per input row, re-synced on
+  // row changes (multi-line input grows the frame, not the gutter).
+  const frameMarks = () => lua(`return vim.api.nvim_buf_get_extmarks(require("dsh_tui").ids().inputBuf, require("dsh_tui")._frameNs, 0, -1, { details = false })`, [])
+  let fm = await frameMarks()
+  assert.equal(fm.length, 1, 'one right-edge frame mark per input row')
+  await lua(`vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "a", "b" }); require("dsh_tui").resize_input()`, [])
+  fm = await frameMarks()
+  assert.equal(fm.length, 2, 'frame marks follow multi-line input')
+  // viewport: after a grow, the topline snaps back to 1 — the new row must
+  // render inside the frame, not as a leftover `~` beyond-EOF row without │❯
+  const w0 = await lua(`local ids = require('dsh_tui').ids()
+    return vim.api.nvim_win_call(ids.inputWin, function() return vim.fn.line('w0') end)`, [])
+  assert.equal(w0, 1, 'input viewport snaps to the first line after a grow')
+  await lua(`vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "" }); require("dsh_tui").resize_input()`, [])
+  // tabline flash regression: a plugin flipping showtabline=2 mid-startup
+  // (bufferline) used to redistribute a row into the input window — the
+  // extra blank row that vanished on the first keystroke — and the old
+  // OptionSet guard blanked the input's winbar (the frame's top edge).
+  await lua('vim.o.showtabline = 2', [])
+  await new Promise((r) => setTimeout(r, 150))
+  const flashProbe = await lua(`local ids = require('dsh_tui').ids()
+    local ip = vim.api.nvim_win_get_position(ids.inputWin)
+    return {
+      showtabline = vim.o.showtabline,
+      inputH = vim.api.nvim_win_get_height(ids.inputWin),
+      winbar = vim.api.nvim_win_get_option(ids.inputWin, 'winbar'),
+      slack = vim.o.lines - vim.o.cmdheight - (ip[1] + vim.api.nvim_win_get_height(ids.inputWin) + 1),
+      winfixheight = vim.wo[ids.inputWin].winfixheight,
+    }`, [])
+  assert.equal(flashProbe.showtabline, 0, 'tabline flash snapped back to hidden')
+  assert.equal(flashProbe.inputH, 2, 'input keeps its rows through a tabline flash')
+  assert.ok(String(flashProbe.winbar).includes('╭'), 'input winbar survives a tabline flash')
+  assert.equal(flashProbe.slack, 0, 'no stray rows below the input after a tabline flash')
+  assert.equal(flashProbe.winfixheight, true, 'input window height is fixed')
+  // empty-Enter regression: the <Cmd> mapping's hidden cmdline clears the
+  // last screen row (the helper bar, cmdheight=0) — submit() must leave the
+  // window chrome intact (the scheduled redraw re-paints it)
+  await lua('require("dsh_tui").submit()', [])
+  await new Promise((r) => setTimeout(r, 80))
+  const slAfterEmptySubmit = await lua('return vim.api.nvim_win_get_option(require("dsh_tui").ids().inputWin, "statusline")', [])
+  assert.ok(String(slAfterEmptySubmit).includes('Enter 发送'), 'empty submit keeps the helper bar option')
   const dimHl = await lua('return vim.api.nvim_get_hl(0, { name = "DshTuiDim" })', [])
   assert.equal(dimHl.link, 'Comment', 'DshTuiDim follows the theme Comment')
   // a colorscheme (re)applied late must not wash the palette back to white

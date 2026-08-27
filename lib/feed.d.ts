@@ -52,6 +52,16 @@ export interface FeedOptions {
     inlineReasoning?: boolean;
     /** Blue whale wallpaper/watermark (default off; the runner enables it). */
     whale?: boolean;
+    /** Empty-state welcome block: lines ABOVE the whale (big banner + title)
+     *  and lines BELOW it (usage hints); rows may carry a highlight group. */
+    welcome?: () => {
+        above?: WelcomeLine[];
+        below?: WelcomeLine[];
+    };
+}
+export interface WelcomeLine {
+    text: string;
+    group?: string;
 }
 interface ToolCallRecord {
     name: string;
@@ -96,9 +106,15 @@ export declare class FeedRenderer {
     lastView: string[];
     dense: boolean;
     whale: boolean;
+    welcome: (() => {
+        above?: WelcomeLine[];
+        below?: WelcomeLine[];
+    }) | null;
+    whaleFrame: number;
+    whaleTicker: ReturnType<typeof setInterval> | null;
     ticker: ReturnType<typeof setTimeout> | null;
     eventTime: number;
-    constructor(nvim: NeovimClient, bufId: number, winId: number, { flushDelayMs, idsProvider, activeChecker, reasoningBuf, reasoningView, inlineReasoning, whale, }?: FeedOptions);
+    constructor(nvim: NeovimClient, bufId: number, winId: number, { flushDelayMs, idsProvider, activeChecker, reasoningBuf, reasoningView, inlineReasoning, whale, welcome, }?: FeedOptions);
     /** Clear the transcript (the /clear command). */
     clear(): void;
     /** Notice line (runner lifecycle, status). Multi-line text (e.g. an error
@@ -174,6 +190,9 @@ export declare class FeedRenderer {
     static parseLine(raw: string, fenceOpen: boolean, quoteAware?: boolean): ParsedLine;
     /** Toggle the whale art and re-render (the /whale command). */
     setWhale(on: boolean): void;
+    /** Animate the wallpaper: advance one frame and re-render (empty only). */
+    private ensureWhaleTicker;
+    private stopWhaleTicker;
     /** Current window size via the ids provider (fallback 40×100). */
     private winSize;
     schedule(): void;

@@ -232,18 +232,51 @@ function M.fill_input(text)
   vim.cmd('startinsert')
 end
 
+--- The input frame's RIGHT edge: one right-aligned `│` mark per input row.
+--- Splits take no borders, so the vertical edges are the statuscolumn on the
+--- left and these marks on the right. Refreshed on every text change (cheap:
+--- the input never exceeds a handful of rows).
+M._frameNs = vim.api.nvim_create_namespace('dsh_tui_input_frame')
+function M.refresh_input_frame()
+  if input_buf == nil or not vim.api.nvim_buf_is_valid(input_buf) then return end
+  vim.api.nvim_buf_clear_namespace(input_buf, M._frameNs, 0, -1)
+  local n = math.max(1, vim.api.nvim_buf_line_count(input_buf))
+  for i = 0, n - 1 do
+    pcall(vim.api.nvim_buf_set_extmark, input_buf, M._frameNs, i, 0, {
+      virt_text = { { '│', 'DshTuiBorder' } },
+      virt_text_pos = 'right_align',
+      hl_mode = 'combine',
+      priority = 4096,
+    })
+  end
+end
+
 function M.resize_input()
-  local n = math.min(6, math.max(1, vim.api.nvim_buf_line_count(input_buf)))
+  local lc = vim.api.nvim_buf_line_count(input_buf)
+  local n = math.min(6, math.max(1, lc))
   if input_win and vim.api.nvim_win_is_valid(input_win) then
-    -- Input window occupies n content rows + its statusline (the hint bar).
-    vim.api.nvim_win_set_height(input_win, n)
+    -- The window height counts the winbar row too: n text rows + winbar,
+    -- plus the statusline hint bar below (the frame's bottom edge).
+    vim.api.nvim_win_set_height(input_win, n + 1)
+    -- Growing the window leaves nvim's leftover viewport offset from the
+    -- pre-grow scroll (the cursor was on the bottom row, so the new text row
+    -- renders as a bare `~` beyond-EOF row without the frame's │❯). When the
+    -- buffer fits, snap the topline back to 1 — the cursor stays put.
+    if lc <= n then
+      vim.api.nvim_win_call(input_win, function()
+        pcall(vim.fn.winrestview, { topline = 1 })
+      end)
+    end
     if chat_win and vim.api.nvim_win_is_valid(chat_win) then
-      local chatH = vim.o.lines - vim.o.cmdheight - (n + 1)
+      -- Row budget: chat text + chat statusline + input (winbar+n) + input
+      -- statusline = lines - cmdheight.
+      local chatH = vim.o.lines - vim.o.cmdheight - (n + 3)
       if chatH >= 1 then
         vim.api.nvim_win_set_height(chat_win, chatH)
       end
     end
   end
+  M.refresh_input_frame()
 end
 
 --- Submit the input buffer (keymap <CR>): route slash commands, else send.
@@ -254,6 +287,15 @@ function M.submit()
   if text == '' then
     M.close_cmd_menu()
     M.close_at_menu()
+    -- The <Cmd>lua mapping draws the (hidden, cmdheight=0) cmdline over the
+    -- input's statusline row — the hint bar IS the last screen row. With no
+    -- buffer change on this path nothing redraws it, leaving the bottom bar
+    -- blank until some unrelated redraw. The blanking happens when the
+    -- hidden cmdline CLOSES (after this handler returns), so the redraw must
+    -- be scheduled to run after the whole keypress batch.
+    vim.schedule(function()
+      vim.cmd('redraw')
+    end)
     return
   end
   if M.at_menu_open() then
@@ -1378,20 +1420,34 @@ local function layout()
   vim.api.nvim_win_set_buf(input_win, input_buf)
   window_options(input_win)
   vim.api.nvim_win_set_option(input_win, 'showmode', false)
+  -- The input box keeps its exact rows: tabline flashes (bufferline sets
+  -- showtabline=2 mid-startup) and startup plugins opening/closing windows
+  -- otherwise redistribute a row INTO the input window (the extra blank row
+  -- that disappeared on the first keystroke). Fixed height, always.
+  vim.wo[input_win].winfixheight = true
   -- Typed text follows the dim palette too — the '❯' prompt (DshTuiPrompt)
   -- keeps its accent and stays the visual anchor.
   vim.wo[input_win].winhl = 'Normal:DshTuiDim'
-  -- An empty statusline renders as a StatusLineNC block (a bright bar in
-  -- most themes). The input window gets a styled helper bar instead; the
-  -- hints start at the LEFT edge (aligned with the input box) so the eye
-  -- doesn't have to jump to the far right.
-  vim.api.nvim_win_set_option(input_win, 'statusline',
-    '%#DshTuiStatus# Enter 发送 · C-cr 换行 · C-c 停止 · / 命令菜单 · C-o 面板 ')
+  -- INPUT FRAME: nvim split windows take no float-style borders, so the
+  -- frame is window furniture — winbar = top edge, statuscolumn = left edge,
+  -- right-aligned extmarks = right edge (refresh_input_frame), statusline =
+  -- bottom edge + hint bar. An empty statusline would render as a
+  -- StatusLineNC block (a bright bar in most themes), so the hints start at
+  -- the LEFT edge, aligned with the input box.
+  M._inputWinbar = '%#DshTuiBorder#╭%{%repeat("─", max([winwidth(0)-2, 0]))%}╮'
+  pcall(vim.api.nvim_win_set_option, input_win, 'winbar', M._inputWinbar)
+  -- The bottom edge is one continuous line: the statusline's %= gap is
+  -- filled with `─` (window-local fillchars, the chat stats bar is
+  -- unaffected) so the border runs from the hints all the way to ╯.
+  M._inputStatusline = '%#DshTuiBorder#╰─%#DshTuiStatus# Enter 发送 · C-cr 换行 · C-c 停止 · / 命令菜单 · C-o 面板 %#DshTuiBorder#%=─╯'
+  vim.api.nvim_win_set_option(input_win, 'statusline', M._inputStatusline)
+  M._inputFillchars = 'stl:─,stlnc:─'
+  pcall(vim.api.nvim_win_set_option, input_win, 'fillchars', M._inputFillchars)
   -- REPL-style prompt: the '❯' lives in the window's STATUS COLUMN, outside
   -- the editable text — it can never be typed over, deleted, or submitted as
   -- message content. (nvim < 0.9: inline virtual-text fallback.)
   if vim.fn.has('nvim-0.9') == 1 then
-    vim.wo[input_win].statuscolumn = '%#DshTuiPrompt#❯ '
+    vim.wo[input_win].statuscolumn = '%#DshTuiBorder#│%s%#DshTuiPrompt#❯ '
   else
     vim.api.nvim_buf_set_extmark(input_buf, M._ns, 0, 0, {
       virt_text = { { '❯ ', 'DshTuiPrompt' } },
@@ -1524,8 +1580,42 @@ local function install_autocmds()
       end, 50)
     end,
   })
-  vim.api.nvim_create_autocmd({ 'WinEnter', 'BufEnter', 'TabEnter' }, {
-    callback = function() M.reschedule_statusline() end,
+  -- Keep the frame's right edge in sync with the input rows (typing, undo,
+  -- paste, history) — clearing and re-adding a handful of extmarks.
+  vim.api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI' }, {
+    buffer = input_buf,
+    callback = function() M.refresh_input_frame() end,
+  })
+  -- The input window's winbar IS the frame's top edge: any plugin that sets
+  -- `winbar` (its own or ours) gets snapped back to the TUI's on the input
+  -- window. (The --cmd OptionSet guard deliberately does NOT blank winbar —
+  -- `:set winbar=` would erase this very frame edge.)
+  vim.api.nvim_create_autocmd('OptionSet', {
+    pattern = 'winbar',
+    callback = function()
+      if M._inputWinbar ~= nil then
+        vim.schedule(function()
+          pcall(function() vim.wo[input_win].winbar = M._inputWinbar end)
+        end)
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd({ 'WinEnter', 'BufEnter', 'TabEnter', 'VimEnter' }, {
+    callback = function()
+      -- User configs / lazy plugins keep flipping showtabline back to 2:
+      -- re-assert the TUI's no-tabline stance on every window event.
+      if vim.o.showtabline ~= 0 then vim.o.showtabline = 0 end
+      -- Plugins like mini.statusline keep rewriting our windows' statuslines
+      -- (rendering the startup buffer name): re-assert the TUI's own — blank
+      -- chat line until the runner pushes the real one, helper bar on input.
+      pcall(function() vim.wo[chat_win].statusline = M._statuslineText or '' end)
+      pcall(function() vim.wo[input_win].statusline = M._inputStatusline end)
+      pcall(function() vim.wo[input_win].fillchars = M._inputFillchars end)
+      if M._inputWinbar ~= nil then
+        pcall(function() vim.wo[input_win].winbar = M._inputWinbar end)
+      end
+      M.reschedule_statusline()
+    end,
   })
   -- A colorscheme (re)applied after start() — lazy setups, mid-session
   -- switches — must not wash the highlights back to pure white.
@@ -1542,9 +1632,16 @@ local function takeover()
   pcall(vim.cmd, 'silent! only')
   M._reasoningWin = nil
   M._reasoningOpen = false
-  local current = vim.api.nvim_get_current_buf()
+  -- Swap the current window to a fresh unnamed nofile buffer, THEN wipe every
+  -- listed buffer — the startup scratch-file buffer included. Otherwise the
+  -- file name keeps rendering in window statuslines (mini.statusline et al.)
+  -- until the runner attaches: the startup "label flash".
+  local fresh = vim.api.nvim_create_buf(false, true)
+  vim.bo[fresh].buftype = 'nofile'
+  vim.bo[fresh].bufhidden = 'wipe'
+  pcall(vim.api.nvim_win_set_buf, 0, fresh)
   for _, b in ipairs(vim.api.nvim_list_bufs()) do
-    if b ~= current and vim.bo[b].buflisted then
+    if b ~= fresh and vim.bo[b].buflisted then
       pcall(vim.api.nvim_buf_delete, b, { force = true })
     end
   end
@@ -1570,12 +1667,20 @@ function M.applyHighlights()
   -- The popup bottom hint rows borrow the statusline look: floating windows
   -- get no real statusline, so the hint row is styled like one.
   vim.cmd('highlight default link DshTuiStatus StatusLine')
-  -- Blue whale art (chat wallpaper/watermark): DeepSeek-blue gradient
-  -- (official brand blue #4D6BFE, light spout → deep body).
-  vim.cmd('highlight default DshTuiWhale1 guifg=#8ea5ff ctermfg=111')
-  vim.cmd('highlight default DshTuiWhale2 guifg=#4D6BFE ctermfg=63')
-  vim.cmd('highlight default DshTuiWhale3 guifg=#3f56d4 ctermfg=62')
-  vim.cmd('highlight default DshTuiWhale4 guifg=#3143a8 ctermfg=61')
+  -- The input frame (winbar / statuscolumn / right-edge marks / statusline).
+  vim.cmd('highlight default link DshTuiBorder WinSeparator')
+  -- Blue whale pixel art (chat wallpaper/watermark): one group per
+  -- half-block color pair (fg=top pixel, bg=bottom pixel) — brand blue
+  -- #4d6bfe body, near-white belly, dark eye, blush.
+  vim.cmd('highlight default DshTuiWhale-B guifg=NONE guibg=#4d6bfe ctermfg=NONE ctermbg=63')
+  vim.cmd('highlight default DshTuiWhaleB- guifg=#4d6bfe guibg=NONE ctermfg=63 ctermbg=NONE')
+  vim.cmd('highlight default DshTuiWhaleBB guifg=#4d6bfe guibg=#4d6bfe ctermfg=63 ctermbg=63')
+  vim.cmd('highlight default DshTuiWhaleBW guifg=#4d6bfe guibg=#f2f5fa ctermfg=63 ctermbg=255')
+  vim.cmd('highlight default DshTuiWhaleEE guifg=#14204a guibg=#14204a ctermfg=17 ctermbg=17')
+  vim.cmd('highlight default DshTuiWhalePP guifg=#f5a8b8 guibg=#f5a8b8 ctermfg=217 ctermbg=217')
+  vim.cmd('highlight default DshTuiWhaleW- guifg=#f2f5fa guibg=NONE ctermfg=255 ctermbg=NONE')
+  vim.cmd('highlight default DshTuiWhaleWB guifg=#f2f5fa guibg=#4d6bfe ctermfg=255 ctermbg=63')
+  vim.cmd('highlight default DshTuiWhaleWW guifg=#f2f5fa guibg=#f2f5fa ctermfg=255 ctermbg=255')
   vim.cmd('highlight default link DshTuiBold Bold')
   vim.cmd('highlight default link DshTuiPrompt DshTuiUser') -- input-line '❯'
   -- Slash-command completion menu: the selection reuses the pum look.
@@ -1655,6 +1760,13 @@ function M.applyDimPalette()
     bg = normal_bg,
     bold = true,
   })
+  -- The frame around the input box: dim neutral on the editor background so
+  -- the border reads as a frame, never as a bright bar, and the '❯' accent
+  -- still pops. Theme-adaptive: blends Normal toward its background.
+  local border_fg = nil
+  if normal_fg then border_fg = blend24(normal_fg, normal_bg, 0.45) end
+  if border_fg == nil and status_fg then border_fg = blend24(status_fg, normal_bg, 0.6) end
+  vim.api.nvim_set_hl(0, 'DshTuiBorder', { fg = border_fg or 0x8a8a8a, bg = normal_bg })
   local function setDimGroup(group, ratio)
     if plain_fg == nil then
       vim.cmd('highlight default link ' .. group .. ' Comment')
@@ -1690,6 +1802,9 @@ function M.start()
   if vim.fn.has('nvim-0.9') == 1 then
     vim.o.cmdheight = 0
   end
+  -- No tabline chrome in the TUI at all: the chat never renders a stray
+  -- [No Name] label, and file tabs (open_file_tab) stay reachable via gt/gT.
+  vim.o.showtabline = 0
   M.applyHighlights()
   takeover()
   make_input_buffer()
@@ -1697,6 +1812,31 @@ function M.start()
   install_keymaps()
   install_autocmds()
 
+  -- Startup flash guard: plugins drawing right after VimEnter (alpha
+  -- dashboard, filetree, …) open a window in our freshly built layout. Close
+  -- any NON-floating window that is not part of the TUI in the SAME event
+  -- cycle, so their UI never gets a frame. Active for a few seconds only.
+  M._bootGuardUntil = vim.uv.now() + 3000
+  vim.api.nvim_create_autocmd({ 'WinNew', 'BufWinEnter' }, {
+    callback = function()
+      -- Deferred: during WinNew the float's config is not applied yet, so a
+      -- same-cycle check would misread our own floats as normal windows and
+      -- close them. By the scheduled tick the config is final.
+      vim.schedule(function()
+        if M._bootGuardUntil == nil or vim.uv.now() > M._bootGuardUntil then return end
+        local w = vim.api.nvim_get_current_win()
+        local ok, cfg = pcall(vim.api.nvim_win_get_config, w)
+        local isFloat = ok and cfg.relative ~= '' and cfg.relative ~= nil
+        if not isFloat and w ~= chat_win and w ~= input_win then
+          pcall(vim.api.nvim_win_close, w, true)
+        end
+        local b = vim.api.nvim_get_current_buf()
+        if b ~= chat_buf and b ~= input_buf and vim.bo[b].buflisted then
+          pcall(vim.api.nvim_buf_delete, b, { force = true })
+        end
+      end)
+    end,
+  })
   -- Some plugins open windows asynchronously after VimEnter (dashboards…).
   -- Re-claim the layout if one of our windows got replaced.
   local function reclaim()
@@ -1731,6 +1871,7 @@ function M.ensure_chat(id)
     vim.api.nvim_buf_set_keymap(buf, 'n', '<C-o>',
       '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>', { noremap = true })
     lock_display_keys(buf) -- chat output is display-only (renderer writes via API)
+    vim.api.nvim_buf_set_name(buf, 'dsh-chat-' .. tostring(id))
     M._chats[id] = buf
   end
   return { chatBuf = buf, chatWin = chat_win }
@@ -1747,6 +1888,7 @@ function M.ensure_reasoning(id)
     vim.api.nvim_buf_set_keymap(buf, 'n', '<C-o>',
       '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>', { noremap = true })
     lock_display_keys(buf) -- reasoning panel is display-only
+    vim.api.nvim_buf_set_name(buf, 'dsh-reasoning-' .. tostring(id))
     M._reasoningBufs[id] = buf
   end
   return {

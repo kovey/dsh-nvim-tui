@@ -1,31 +1,50 @@
 /**
- * Blue whale background art for the chat window.
- * The big whale is the classic terminal whale by SSt ("The Pines of Rome"),
- * sourced from the ascii.co.uk whale art archive (https://ascii.co.uk/art/whale).
+ * Blue whale pixel art for the chat window — the DeepSeek brand whale
+ * (rounded body, white belly, eye + blush, upturned tail) with nvim-tui
+ * flavor on top of the base silhouette: the left eye winks, two bubbles
+ * rise above the head, and a white sparkle sits in the sky.
  *
- * Two layouts, per the chosen UX:
- *  - WHALE_BIG: centered empty-state wallpaper (shown while the transcript
- *    has no content);
- *  - WHALE_SMALL: persistent bottom watermark once content exists.
- *
- * Rows carry their highlight group (DshTuiWhale1..4 = a blue gradient from
- * light spout to deep body); layout helpers indent/center them for any
- * window size.
+ * 16×24 pixel grid rendered with half-block glyphs (▀/▄/█), one highlight
+ * group per cell color pair so the nvim extmark pass can color each glyph
+ * with foreground/background (truecolor + 256-color).
+ * Ported from the tianshu-tui welcome whale (huiliyi37/dsh-tianshu-tui,
+ * src/format/whale.ts — the user's previous TUI).
  */
-export interface WhaleRow {
+export interface WhaleRenderRow {
     text: string;
-    group: string;
+    spans: Array<{
+        s: number;
+        e: number;
+        group: string;
+    }>;
 }
+export declare const WHALE_COLS = 24;
+export declare const WHALE_ROWS = 8;
+/** Pre-rendered pixel rows (text + per-glyph color spans). */
+export declare const WHALE_RENDER_ROWS: WhaleRenderRow[];
 /**
- * Big whale: the classic terminal whale drawing ("The Pines of Rome" by SSt,
- * from the ascii.co.uk whale archive) — a detailed line-art whale with
- * splashes, 15 rows × 64 cols.
+ * One-line statusline animation (replaces the running spinner): a 6-cell
+ * mini whale — white bubble pops above the head, eye fixed, tail fluke
+ * flips ▖↔▘. Inline `%#Group#` markers let the statusline color each glyph
+ * with the same pixel-pair highlight groups as the wallpaper.
  */
-export declare const WHALE_BIG: WhaleRow[];
-export declare const WHALE_SMALL: WhaleRow[];
-export declare function whaleMaxWidth(rows: WhaleRow[]): number;
+export declare const WHALE_STATUS_FRAMES: readonly string[];
+/** Full-size animation frames (8 text rows × 24 cols). */
+export declare function whaleFrames(): WhaleRenderRow[][];
 /**
- * Lay the art out for a window: horizontally centered, vertically centered
- * via leading empty rows. Returns null when the window is too small.
+ * Watermark animation: the terminal's own emoji font renders the whale
+ * (2 cells wide), so frames cycle the spouting whale ↔ plain whale — the
+ * spout appears to pulse. No highlight groups: emoji carry their colors.
  */
-export declare function layoutWhaleRows(rows: WhaleRow[], height: number, width: number): WhaleRow[] | null;
+export declare const WHALE_EMOJI_FRAMES: readonly string[];
+/**
+ * Horizontally indented whale rows (no vertical padding — the caller composes
+ * the whole empty-state block and centers it as one unit).
+ */
+export declare function whaleRowsIndented(width: number, rows?: WhaleRenderRow[]): WhaleRenderRow[] | null;
+/**
+ * Center the whale for a window: leading empty rows for vertical centering
+ * and a horizontal indent baked into the text. Returns null when the window
+ * is too small (min 40×22, like tianshu).
+ */
+export declare function layoutWhaleRows(height: number, width: number, rows?: WhaleRenderRow[]): WhaleRenderRow[] | null;
