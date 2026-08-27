@@ -5,6 +5,16 @@
 
 ## Unreleased（main）
 
+- **代码语法高亮**：聊天区的 ```lang 代码块与文件变更 diff 的行内容使用
+  **用户自己的 nvim 配置**高亮——treesitter 在隐藏 scratch 缓冲上解析
+  （无需窗口、不动聊天布局），捕获名映射到用户配色方案的 @xxx 组
+  （@keyword.function/@string/@comment…）；无 treesitter/无对应 parser 时
+  保持原有平色，绝不报错；diff 块按 ✎ 标题路径扩展名推断语言
+  （含 nvim-treesitter 语法改名映射：php→php_only 等）。
+- **diff 块重启保留**：会话恢复/分叉/回退重放历史事件时，按持久化事件
+  自带的 meta.diffs 重新生成 ✎ 对比块（重启不再丢失）；按 callId 去重，
+  重放与实时事件重叠也不会渲染两次。
+
 - **输入即回显**：发送消息后用户气泡立即渲染进聊天区（不再等宿主的
   user/message 事件回环造成可见卡顿）；按会话 FIFO 去重队列保证事件到达时
   不重复渲染，带图消息不走回显（由事件渲染 📎 标签）。

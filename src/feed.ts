@@ -131,6 +131,7 @@ export class FeedRenderer {
   subagents: Map<string, { provider: string; startedAt: number }> // runId -> …
   timer: ReturnType<typeof setTimeout> | null
   flushing: Promise<void> | null
+  tokenNs: number | null // treesitter highlight marks (feed ns + separate)
   dirty: boolean
   ns: number | null // extmark namespace, created on first flush
   lastView: string[] // last flushed buffer text, diffed per flush
@@ -180,6 +181,7 @@ export class FeedRenderer {
     this.subagents = new Map()
     this.timer = null
     this.flushing = null
+    this.tokenNs = null
     this.dirty = false
     this.ns = null
     this.lastView = []
@@ -766,7 +768,30 @@ export class FeedRenderer {
     // is the stripped text with consistent spans. Markdown tables become
     // bordered, aligned blocks (Claude-TUI style).
     const parsed: Array<{ text: string; spans: Span[]; group?: string | null }> = []
+    // Syntax-highlight sources: fenced code (```lang) and diff blocks (lang
+    // inferred from the ✎ header path). Rows = final buffer rows (0-based).
+    const codeBlocks: Array<{ lang: string; row: number; col: number; lines: string[] }> = []
     let fenceOpen = false
+    let fenceLang = ''
+    let fenceRow = -1
+    let fenceCode: string[] = []
+    let lastDiffPath = ''
+    let diffRow = -1
+    let diffCode: string[] = []
+    let diffHasChange = false // a real +/- line was collected (stripped code
+    // rarely starts with +/-, so the code itself cannot be the signal)
+    const closeDiffBlock = (): void => {
+      if (diffRow >= 0 && diffHasChange) {
+        const lang = lastDiffPath.match(/\.([A-Za-z0-9_+-]+)$/)?.[1] ?? ''
+        if (lang !== '' && diffCode.length <= 200 &&
+          diffCode.reduce((n, l) => n + l.length, 0) <= 20000) {
+          codeBlocks.push({ lang, row: diffRow, col: 2, lines: diffCode })
+        }
+      }
+      diffRow = -1
+      diffCode = []
+      diffHasChange = false
+    }
     // streamOpen: the last line may still grow — the answer tail, or the
     // inline reasoning tail in read-only replays (an open table block there
     // must keep its bottom border off until the stream closes).
@@ -779,28 +804,48 @@ export class FeedRenderer {
       }
       // File-change diff lines: verbatim text (file content IS code — no
       // markdown stripping) with a whole-line add/del/tool color group.
-      if (entry.raw.startsWith('+ ')) {
-        parsed.push({ text: entry.raw, spans: [], group: 'DshTuiDiffAdd' })
-        continue
-      }
-      if (entry.raw.startsWith('- ')) {
-        parsed.push({ text: entry.raw, spans: [], group: 'DshTuiDiffDel' })
+      if (entry.raw.startsWith('+ ') || entry.raw.startsWith('- ')) {
+        if (diffRow === -1) diffRow = parsed.length
+        diffHasChange = true
+        diffCode.push(entry.raw.slice(2))
+        parsed.push({ text: entry.raw, spans: [], group: entry.raw.startsWith('+ ') ? 'DshTuiDiffAdd' : 'DshTuiDiffDel' })
         continue
       }
       if (entry.raw.startsWith('✎ ')) {
+        closeDiffBlock()
+        lastDiffPath = /^✎ \S+ (.+) \(\+\d+ −\d+\)$/.exec(entry.raw)?.[1] ?? ''
         parsed.push({ text: entry.raw, spans: [], group: 'DshTuiTool' })
         continue
+      }
+      if (entry.raw.startsWith('  ') && diffRow !== -1) {
+        diffCode.push(entry.raw.slice(2))
+      } else if (diffRow !== -1) {
+        closeDiffBlock()
       }
       // Role from the RAW line (markup stripping must not erase the prefix);
       // assistant-only lines are quote-aware (blockquote `> ` → DshTuiQuote).
       const role = ROLE_BY_PREFIX.find(([re]) => re.test(entry.raw))?.[1]
       const p = FeedRenderer.parseLine(entry.raw, fenceOpen, role === undefined)
-      fenceOpen = p.fenceToggled ? !fenceOpen : fenceOpen
+      if (p.fenceToggled) {
+        if (!fenceOpen) {
+          fenceLang = /^```(\S*)/.exec(entry.raw)?.[1] ?? ''
+          fenceRow = parsed.length + 1 // the code starts on the NEXT row
+          fenceCode = []
+        } else if (fenceLang !== '' && fenceCode.length > 0 &&
+          fenceCode.length <= 200 &&
+          fenceCode.reduce((n, l) => n + l.length, 0) <= 20000) {
+          codeBlocks.push({ lang: fenceLang, row: fenceRow, col: 0, lines: fenceCode })
+        }
+        fenceOpen = !fenceOpen
+      } else if (fenceOpen) {
+        fenceCode.push(entry.raw)
+      }
       p.group = p.code
         ? 'DshTuiCode'
         : (p.group ?? role ?? 'DshTuiAssistant')
       parsed.push(p)
     }
+    closeDiffBlock()
     const lines = parsed.map((p) => p.text)
 
     // Blue whale pixel art: the empty state is a hero block — big banner +
@@ -894,6 +939,17 @@ export class FeedRenderer {
             end
           end
         `, [this.bufId, this.ns, inPlaceRow, p.group ?? '', p.spans])
+        const tokenBlocks = codeBlocks.filter((b) => b.row === inPlaceRow)
+        if (tokenBlocks.length > 0) {
+          if (this.tokenNs === null) {
+            this.tokenNs = await this.nvim.request('nvim_create_namespace', ['dsh-tui-feed-ts']) as number
+          }
+          await this.nvim.lua(`
+            local buf, ns, row, blocks = ...
+            vim.api.nvim_buf_clear_namespace(buf, ns, row, row + 1)
+            require("dsh_tui").highlight_syntax(buf, ns, blocks)
+          `, [this.bufId, this.tokenNs, inPlaceRow, tokenBlocks])
+        }
         // The line count did not change — no cursor move, nothing else to do.
         return
       }
@@ -911,6 +967,7 @@ export class FeedRenderer {
       // intersection), so same-row ranges are the one geometry that both
       // renders and survives clearing.
       if (startRow < lines.length) {
+        const tokenBlocks = codeBlocks.filter((b) => b.row >= startRow)
         const rows = parsed.slice(startRow).map((p) => ({
           group: p.group ?? '',
           spans: p.spans,
@@ -933,6 +990,16 @@ export class FeedRenderer {
             end
           end
         `, [this.bufId, this.ns, startRow, rows])
+        if (tokenBlocks.length > 0) {
+          if (this.tokenNs === null) {
+            this.tokenNs = await this.nvim.request('nvim_create_namespace', ['dsh-tui-feed-ts']) as number
+          }
+          await this.nvim.lua(`
+            local buf, ns, start, blocks = ...
+            vim.api.nvim_buf_clear_namespace(buf, ns, start, -1)
+            require("dsh_tui").highlight_syntax(buf, ns, blocks)
+          `, [this.bufId, this.tokenNs, startRow, tokenBlocks])
+        }
       }
 
       if (this.activeChecker()) {

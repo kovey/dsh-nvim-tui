@@ -1271,9 +1271,35 @@ description:
   }
   const ffHl = await lua('return vim.api.nvim_get_hl(0, { name = "FloatFooter" })', [])
   assert.equal(ffHl.link, 'DshTuiStatus', 'embedded popup footer keeps the statusline look')
+  // syntax highlighting helpers: fence-language → filetype normalization +
+  // no-crash without treesitter (headless smoke env has no user config)
+  const ftMap = await lua(`local M = require("dsh_tui")
+    return {
+      py = M.syntax_ft('py'), js = M.syntax_ft('js'), ts = M.syntax_ft('ts'),
+      yml = M.syntax_ft('yml'), sh = M.syntax_ft('bash'), md = M.syntax_ft('markdown'),
+      empty = M.syntax_ft(''), junk = M.syntax_ft('zzz-nope'),
+    }`, [])
+  assert.equal(ftMap.py, 'python', 'py fence → python')
+  assert.equal(ftMap.js, 'javascript', 'js fence → javascript')
+  assert.equal(ftMap.ts, 'typescript', 'ts fence → typescript')
+  assert.equal(ftMap.yml, 'yaml', 'yml fence → yaml')
+  assert.equal(ftMap.sh, 'sh', 'bash fence → sh')
+  assert.equal(ftMap.md, 'markdown', 'markdown fence → markdown')
+  assert.equal(await lua('return require("dsh_tui").syntax_ft("python")', []), 'python', 'full python name maps')
+  assert.equal(await lua('return require("dsh_tui").syntax_ft("typescript")', []), 'typescript', 'full typescript name maps')
+  assert.equal(await lua('return require("dsh_tui").syntax_ft("php")', []), 'php_only', 'php maps to the code grammar (php = phpdoc)')
+  assert.ok(ftMap.empty == null, 'empty lang → nil')
+  assert.ok(ftMap.junk == null, 'unknown lang without parser → nil')
+  const hlOk = await lua(`local ok, err = pcall(require("dsh_tui").highlight_syntax,
+    vim.api.nvim_get_current_buf(), vim.api.nvim_create_namespace('smoke-ts'),
+    {{ lang = 'python', row = 0, col = 0, lines = { 'def f():' } }})
+    return { ok = ok, err = tostring(err) }`, [])
+  assert.equal(hlOk.ok, true, 'highlight_syntax never throws (no treesitter → flat fallback)')
   const diffHl = await lua('return { add = vim.api.nvim_get_hl(0, { name = "DshTuiDiffAdd" }), del = vim.api.nvim_get_hl(0, { name = "DshTuiDiffDel" }) }', [])
   assert.equal(typeof diffHl.add.fg, 'number', 'diff add group defined')
   assert.equal(typeof diffHl.del.fg, 'number', 'diff del group defined')
+  assert.equal(typeof diffHl.add.bg, 'number', 'diff add row carries a background fill')
+  assert.equal(typeof diffHl.del.bg, 'number', 'diff del row carries a background fill')
   const inputWinhl = await lua('return vim.wo[require("dsh_tui").ids().inputWin].winhl', [])
   assert.ok(inputWinhl.includes('Normal:DshTuiDim'), 'input window dims typed text')
   // terminal title: nvim owns the terminal and emits the OSC 2 title itself

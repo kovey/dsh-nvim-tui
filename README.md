@@ -21,7 +21,8 @@ dsh --profile nvim-tui
 ## 特性速览
 
 - **Neovim 原生体验**：聊天区就是普通 nvim buffer——搜索、复制、可视模式选择、
-  你自己的 colorscheme / statusline / LSP 全部生效
+  你自己的 colorscheme / statusline / LSP 全部生效；```lang 代码块与 diff
+  内容直接用你的 nvim 配置（treesitter + 配色方案）做语法高亮
 - **流式渲染**：`·· thinking · 12.3s` 浮动活动指示 + `<C-o>` 右侧面板收思考与
   工具记录；工具卡片、subagent/workflow 卡片、GFM 表格框线渲染；子代理思考链
   回放**边思考边实时输出**

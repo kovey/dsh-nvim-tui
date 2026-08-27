@@ -242,6 +242,94 @@ function M.fill_input(text)
   vim.cmd('startinsert')
 end
 
+-- ===========================================================================
+-- Chat code syntax highlighting: the user's own nvim setup (nvim-treesitter +
+-- their colorscheme) colors fenced code and diff blocks. Treesitter runs on a
+-- HIDDEN scratch buffer (parsers need no window), so the chat keeps its own
+-- extmark pipeline; capture names map to the colorscheme's @xxx groups.
+-- Any failure (no treesitter / no parser / no query) leaves the block on its
+-- flat code color — the chat must never error on a highlight.
+-- ===========================================================================
+M._syntaxScratch = nil
+
+--- Fence language / file extension → nvim filetype (nil = unsupported).
+function M.syntax_ft(lang)
+  if type(lang) ~= 'string' then return nil end
+  local l = lang:lower():gsub('[^%w_+-]', '')
+  if l == '' then return nil end
+  local aliases = {
+    -- short/alias forms
+    js = 'javascript', jsx = 'javascriptreact', ts = 'typescript', tsx = 'typescriptreact',
+    py = 'python', rb = 'ruby', sh = 'sh', bash = 'sh', zsh = 'sh',
+    yml = 'yaml', yaml = 'yaml', json = 'json', jsonc = 'jsonc',
+    md = 'markdown', markdown = 'markdown', html = 'html', css = 'css', scss = 'scss',
+    vue = 'vue', svelte = 'svelte', go = 'go', rs = 'rust', c = 'c', h = 'c',
+    cpp = 'cpp', hpp = 'cpp', java = 'java', kt = 'kotlin', lua = 'lua', vim = 'vim',
+    sql = 'sql', toml = 'toml', ini = 'ini', dockerfile = 'dockerfile',
+    -- nvim-treesitter renamed grammars: `php` IS the phpdoc parser; the real
+    -- PHP code grammar is `php_only`.
+    php = 'php_only', php_only = 'php_only',
+    swift = 'swift', zig = 'zig', tf = 'terraform', hcl = 'hcl',
+    cs = 'csharp', fs = 'fsharp', scala = 'scala', r = 'r', dart = 'dart',
+    perl = 'perl', elixir = 'elixir', erl = 'erlang', hs = 'haskell',
+    -- full filetype names (fences spell the language, e.g. ```python)
+    python = 'python', javascript = 'javascript', javascriptreact = 'javascriptreact',
+    typescript = 'typescript', typescriptreact = 'typescriptreact', ruby = 'ruby',
+    rust = 'rust', kotlin = 'kotlin', csharp = 'csharp', fsharp = 'fsharp',
+    haskell = 'haskell', erlang = 'erlang', terraform = 'terraform',
+  }
+  if aliases[l] then return aliases[l] end
+  -- Unknown language: no highlight (the flat code color stays) — the real
+  -- parser gate happens inside highlight_syntax's pcall anyway.
+  return nil
+end
+
+--- Apply treesitter highlight marks for code blocks onto `bufnr` (ns must be
+--- the feed's token namespace). blocks = {{ lang, row, col, lines }} — row/col
+--- are the block's origin in the TARGET buffer; lines are the code strings.
+function M.highlight_syntax(bufnr, ns, blocks)
+  if not (bufnr and vim.api.nvim_buf_is_valid(bufnr)) then return end
+  local okSetup = pcall(require, 'nvim-treesitter')
+  if not okSetup then return end -- no treesitter: keep the flat code color
+  local scratch = M._syntaxScratch
+  if not (scratch and vim.api.nvim_buf_is_valid(scratch)) then
+    scratch = vim.api.nvim_create_buf(false, true)
+    M._syntaxScratch = scratch
+  end
+  local targetLines = vim.api.nvim_buf_line_count(bufnr)
+  for _, blk in ipairs(blocks or {}) do
+    local lang, row, col, lines = blk and blk.lang, blk and blk.row, blk and blk.col, blk and blk.lines
+    if type(lang) == 'string' and type(row) == 'number' and type(lines) == 'table'
+      and #lines > 0 and row >= 0 and row < targetLines then
+      local ft = M.syntax_ft(lang)
+      if ft ~= nil then
+        pcall(function()
+          vim.bo[scratch].filetype = ft
+          vim.api.nvim_buf_set_lines(scratch, 0, -1, false, lines)
+          local parser = vim.treesitter.get_parser(scratch, ft)
+          parser:parse(true)
+          local query = vim.treesitter.query.get(ft, 'highlights')
+          if query == nil then return end
+          local root = parser:parse()[1]:root()
+          local col0 = col or 0
+          for id, node in query:iter_captures(root, scratch, 0, -1) do
+            local r1, c1, r2, c2 = node:range()
+            local lineText = lines[r1 + 1]
+            if lineText ~= nil and row + r1 < targetLines then
+              local s = col0 + c1
+              local e = math.min(col0 + #lineText, col0 + c2)
+              if e > s then
+                pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row + r1, s,
+                  { end_col = e, hl_group = '@' .. query.captures[id], priority = 4097 })
+              end
+            end
+          end
+        end)
+      end
+    end
+  end
+end
+
 --- The input frame's RIGHT edge: one right-aligned `│` mark per input row.
 --- Splits take no borders, so the vertical edges are the statuscolumn on the
 --- left and these marks on the right. Refreshed on every text change (cheap:
@@ -1687,10 +1775,10 @@ function M.applyHighlights()
   -- The input frame (winbar / statuscolumn / right-edge marks / statusline).
   vim.cmd('highlight default link DshTuiBorder WinSeparator')
   -- File-change diff blocks (✎ header + +/− lines): GitHub-style add/del
-  -- foregrounds with NO background — loud red/green fills would fight the
-  -- chat palette.
-  vim.cmd('highlight default DshTuiDiffAdd guifg=#3fb950 ctermfg=71')
-  vim.cmd('highlight default DshTuiDiffDel guifg=#f85149 ctermfg=203')
+  -- foregrounds; the row FILLS (theme-blended backgrounds) are applied in
+  -- applyDimPalette so they adapt to the colorscheme's editor background.
+  vim.cmd('highlight default DshTuiDiffAdd guifg=#3fb950 guibg=#16301e ctermfg=71 ctermbg=22')
+  vim.cmd('highlight default DshTuiDiffDel guifg=#f85149 guibg=#3a1d1b ctermfg=203 ctermbg=52')
   -- Blue whale pixel art (chat wallpaper/watermark): one group per
   -- half-block color pair (fg=top pixel, bg=bottom pixel) — brand blue
   -- #4d6bfe body, near-white belly, dark eye, blush.
@@ -1789,6 +1877,24 @@ function M.applyDimPalette()
   if normal_fg then border_fg = blend24(normal_fg, normal_bg, 0.45) end
   if border_fg == nil and status_fg then border_fg = blend24(status_fg, normal_bg, 0.6) end
   vim.api.nvim_set_hl(0, 'DshTuiBorder', { fg = border_fg or 0x8a8a8a, bg = normal_bg })
+  -- Diff row colors FOLLOW THE THEME: read the colorscheme's own DiffAdd /
+  -- DiffDelete (the user's normal diff look) so switching themes re-tints
+  -- the +/− rows too. Only when the theme leaves a background empty do we
+  -- blend the foreground into the editor bg (Claude-style filled rows on
+  -- ANY theme). Token syntax marks (priority 4097) keep their fg and fall
+  -- through to this row fill for their background.
+  local diffAddHl = vim.api.nvim_get_hl(0, { name = 'DiffAdd', link = false })
+  local diffDelHl = vim.api.nvim_get_hl(0, { name = 'DiffDelete', link = false })
+  local function diffRow(theme, fallbackFg, ratio)
+    local fg = color24(theme.fg) or fallbackFg
+    local bg = color24(theme.bg)
+    if bg == nil then
+      bg = blend24(normal_bg, fg, ratio)
+    end
+    return { fg = fg, bg = bg }
+  end
+  vim.api.nvim_set_hl(0, 'DshTuiDiffAdd', diffRow(diffAddHl, 0x3fb950, 0.20))
+  vim.api.nvim_set_hl(0, 'DshTuiDiffDel', diffRow(diffDelHl, 0xf85149, 0.18))
   local function setDimGroup(group, ratio)
     if plain_fg == nil then
       vim.cmd('highlight default link ' .. group .. ' Comment')

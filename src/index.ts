@@ -144,6 +144,67 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     // the ✓ result line can render an accurate +/− block (a write against
     // its real old version, not an all-green wall).
     const pendingFileSnaps = new Map<string, { display: string; before: string | null }>()
+
+    /** Read a file as a diff snapshot (null when absent/unreadable/binary/
+     *  oversized — those cases render no diff block). */
+    const readFileSnapshot = async (p: string): Promise<string | null> => {
+      try {
+        const abs = resolve(p)
+        const st = await stat(abs)
+        if (!st.isFile() || st.size > 256 * 1024) return null
+        const text = await readFile(abs, 'utf8')
+        return text.includes('\0') ? null : text
+      } catch {
+        return null
+      }
+    }
+
+    /** Per-feed set of already-rendered tool call ids (replay/live overlap). */
+    const renderedDiffCalls = new WeakMap<FeedRenderer, Set<string>>()
+
+    /** tool/result: render ✎ diff blocks into the feed that rendered the
+     *  tool line. Primary source = the tool's official presentationMeta
+     *  (`meta.diffs = [{ path, oldText, newText }]` — exact, cwd-immune);
+     *  falls back to the pre-call file snapshot for flows the meta misses
+     *  (creates, deletes). Also runs during history REPLAYS: the persisted
+     *  events carry the same meta, so diff blocks survive restarts. */
+    const maybePushFileDiff = (feed: FeedRenderer, event: SessionEvent): void => {
+      if (event.type !== 'tool/result') return
+      const callId = event.data?.message?.source?.callId
+      // One diff render per tool call per feed: replay loops and live event
+      // re-emission must never stack the same ✎ block twice.
+      const seenCalls = renderedDiffCalls.get(feed) ?? new Set<string>()
+      const callKey = typeof callId === 'string' ? callId : ''
+      if (callKey !== '' && seenCalls.has(callKey)) return
+      if (callKey !== '') seenCalls.add(callKey)
+      renderedDiffCalls.set(feed, seenCalls)
+      const metaDiffs = fileDiffsFromMeta((event.data as { meta?: unknown } | undefined)?.meta)
+      if (metaDiffs !== null) {
+        if (callKey !== '') pendingFileSnaps.delete(callKey)
+        for (const d of metaDiffs.slice(0, 4)) {
+          const block = diffTexts(d.oldText ?? null, d.newText ?? null)
+          if (block.stats.added === 0 && block.stats.removed === 0) continue
+          const action = d.oldText === undefined
+            ? t('新增')
+            : d.newText === undefined
+              ? t('删除')
+              : t('修改')
+          feed.pushDiff(`✎ ${action} ${d.path} (+${block.stats.added} −${block.stats.removed})`, block.lines)
+        }
+        return
+      }
+      if (typeof callId !== 'string' || callId === '') return
+      const snap = pendingFileSnaps.get(callId)
+      if (snap === undefined) return
+      pendingFileSnaps.delete(callId)
+      void readFileSnapshot(snap.display).then((after) => {
+        if (disposed) return
+        const block = diffTexts(snap.before, after)
+        if (block.stats.added === 0 && block.stats.removed === 0) return
+        const action = snap.before === null ? t('新增') : after === null ? t('删除') : t('修改')
+        feed.pushDiff(`✎ ${action} ${snap.display} (+${block.stats.added} −${block.stats.removed})`, block.lines)
+      })
+    }
     // Optimistic user-bubble echo: each direct submit renders immediately
     // (the host's user/message event round-trip used to delay it visibly);
     // the matching event is skipped when it arrives. FIFO per session — a
@@ -567,6 +628,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       for (const event of events) {
         foldEvent(rec, event)
         rec.feed.applyEvent(event, { history: true })
+        maybePushFileDiff(rec.feed, event)
       }
       await switchTo(sid)
       refreshList()
@@ -1257,12 +1319,16 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         inlineReasoning: true,
       })
       subagentView = { childId, feed }
-      for (const e of events) feed.applyEvent(e, { history: true })
+      for (const e of events) {
+        feed.applyEvent(e, { history: true })
+        maybePushFileDiff(feed, e)
+      }
       // Close the snapshot/live gap: events appended while the view opened.
       if (live) {
         const liveEvents = live.events ?? []
         for (let i = events.length; i < liveEvents.length; i++) {
           feed.applyEvent(liveEvents[i], { history: true })
+          maybePushFileDiff(feed, liveEvents[i])
         }
       }
       await feed.flush()
@@ -2078,6 +2144,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         for (const e of session.events ?? []) {
           foldEvent(rec, e)
           rec.feed.applyEvent(e, { history: true })
+          maybePushFileDiff(rec.feed, e)
         }
         void rec.feed.flush()
         notice(`已回退到 #${target.seq}（其后内容已截断）`)
@@ -3250,55 +3317,6 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
 
 
 
-      /** Read a file as a diff snapshot (null when absent/unreadable/binary/
-       *  oversized — those cases render no diff block). */
-      const readFileSnapshot = async (p: string): Promise<string | null> => {
-        try {
-          const abs = resolve(p)
-          const st = await stat(abs)
-          if (!st.isFile() || st.size > 256 * 1024) return null
-          const text = await readFile(abs, 'utf8')
-          return text.includes('\0') ? null : text
-        } catch {
-          return null
-        }
-      }
-
-      /** tool/result: render ✎ diff blocks into the feed that rendered the
-       *  tool line. Primary source = the tool's official presentationMeta
-       *  (`meta.diffs = [{ path, oldText, newText }]` — exact, cwd-immune);
-       *  falls back to the pre-call file snapshot for flows the meta misses
-       *  (creates, deletes). */
-      const maybePushFileDiff = (feed: FeedRenderer, event: SessionEvent): void => {
-        if (event.type !== 'tool/result') return
-        const callId = event.data?.message?.source?.callId
-        const metaDiffs = fileDiffsFromMeta((event.data as { meta?: unknown } | undefined)?.meta)
-        if (metaDiffs !== null) {
-          if (typeof callId === 'string' && callId !== '') pendingFileSnaps.delete(callId)
-          for (const d of metaDiffs.slice(0, 4)) {
-            const block = diffTexts(d.oldText ?? null, d.newText ?? null)
-            if (block.stats.added === 0 && block.stats.removed === 0) continue
-            const action = d.oldText === undefined
-              ? t('新增')
-              : d.newText === undefined
-                ? t('删除')
-                : t('修改')
-            feed.pushDiff(`✎ ${action} ${d.path} (+${block.stats.added} −${block.stats.removed})`, block.lines)
-          }
-          return
-        }
-        if (typeof callId !== 'string' || callId === '') return
-        const snap = pendingFileSnaps.get(callId)
-        if (snap === undefined) return
-        pendingFileSnaps.delete(callId)
-        void readFileSnapshot(snap.display).then((after) => {
-          if (disposed) return
-          const block = diffTexts(snap.before, after)
-          if (block.stats.added === 0 && block.stats.removed === 0) return
-          const action = snap.before === null ? t('新增') : after === null ? t('删除') : t('修改')
-          feed.pushDiff(`✎ ${action} ${snap.display} (+${block.stats.added} −${block.stats.removed})`, block.lines)
-        })
-      }
 
       /** Produced-file heuristic for /deliverables: mutation tools whose args
        *  carry a follow-along path (official render intents: diff / edit). */
