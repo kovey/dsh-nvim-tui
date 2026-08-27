@@ -41,7 +41,7 @@ export interface MarketCatalog {
 }
 
 /** Resolve the registry base (configurable for mirrors / self-hosting). */
-export function registryBase(override: string | undefined): string {
+function registryBase(override: string | undefined): string {
   return override ?? 'https://raw.githubusercontent.com/awesome-dsh-plugin/awesome-dsh-plugin/main'
 }
 
@@ -55,7 +55,7 @@ function codeloadUrl(base: string): string {
 }
 
 /** Default TTL: 6 hours. */
-export const DEFAULT_TTL_MS = 6 * 3600 * 1000
+const DEFAULT_TTL_MS = 6 * 3600 * 1000
 
 /** Cache path under the runner's DSH_HOME. */
 export function marketCachePath(): string {

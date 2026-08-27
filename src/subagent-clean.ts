@@ -32,7 +32,7 @@ export function isExpired(createdAt: number | undefined, ttlHours: number, now: 
 }
 
 /** Cleaned-id ledger path under DSH_HOME. */
-export function cleanStatePath(): string {
+function cleanStatePath(): string {
   return join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'dsh-nvim-tui-subagent-clean.json')
 }
 

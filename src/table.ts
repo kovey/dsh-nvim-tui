@@ -55,7 +55,7 @@ interface RenderedRow {
  * @param {string[]} block raw table lines (block[1] is the separator)
  * @param {boolean} closed whether to draw the bottom border
  */
-export function renderTable(block: string[], closed: boolean): RenderedRow[] {
+function renderTable(block: string[], closed: boolean): RenderedRow[] {
   const header = splitCells(block[0] ?? '') ?? []
   const seps = splitCells(block[1] ?? '') ?? []
   const body = block.slice(2).map((l) => splitCells(l) ?? [])

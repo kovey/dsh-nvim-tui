@@ -13,8 +13,6 @@
 export declare function ageLabel(createdAt: number | undefined, now?: number): string;
 /** Whether a settled chain has passed the retention window (0 = disabled). */
 export declare function isExpired(createdAt: number | undefined, ttlHours: number, now?: number): boolean;
-/** Cleaned-id ledger path under DSH_HOME. */
-export declare function cleanStatePath(): string;
 /** Read the cleaned-id ledger: parentSessionId -> childIds. */
 export declare function readCleanedIds(): Record<string, string[]>;
 /** Persist the cleaned-id ledger (best-effort). */

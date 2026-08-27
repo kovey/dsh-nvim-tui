@@ -16,10 +16,6 @@ export interface MarketCatalog {
     fetchedAt: number;
     entries: MarketEntry[];
 }
-/** Resolve the registry base (configurable for mirrors / self-hosting). */
-export declare function registryBase(override: string | undefined): string;
-/** Default TTL: 6 hours. */
-export declare const DEFAULT_TTL_MS: number;
 /** Cache path under the runner's DSH_HOME. */
 export declare function marketCachePath(): string;
 /** Parse one plugins/<owner>__<name>.yml body into a partial entry. */

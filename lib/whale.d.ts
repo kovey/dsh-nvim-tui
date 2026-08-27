@@ -18,17 +18,9 @@ export interface WhaleRenderRow {
         group: string;
     }>;
 }
-export declare const WHALE_COLS = 24;
 export declare const WHALE_ROWS = 8;
 /** Pre-rendered pixel rows (text + per-glyph color spans). */
 export declare const WHALE_RENDER_ROWS: WhaleRenderRow[];
-/**
- * One-line statusline animation (replaces the running spinner): a 6-cell
- * mini whale — white bubble pops above the head, eye fixed, tail fluke
- * flips ▖↔▘. Inline `%#Group#` markers let the statusline color each glyph
- * with the same pixel-pair highlight groups as the wallpaper.
- */
-export declare const WHALE_STATUS_FRAMES: readonly string[];
 /** Full-size animation frames (8 text rows × 24 cols). */
 export declare function whaleFrames(): WhaleRenderRow[][];
 /**

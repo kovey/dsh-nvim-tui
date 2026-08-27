@@ -16,7 +16,7 @@ export interface WhaleRenderRow {
   spans: Array<{ s: number; e: number; group: string }>
 }
 
-export const WHALE_COLS = 24
+const WHALE_COLS = 24
 export const WHALE_ROWS = 8
 
 const GRID: readonly string[] = [
@@ -76,12 +76,6 @@ export const WHALE_RENDER_ROWS: WhaleRenderRow[] = renderRows(GRID)
  * flips ▖↔▘. Inline `%#Group#` markers let the statusline color each glyph
  * with the same pixel-pair highlight groups as the wallpaper.
  */
-export const WHALE_STATUS_FRAMES: readonly string[] = [
-  '%#DshTuiWhaleW-#▀%#DshTuiWhaleEE#●%#DshTuiWhaleB-#▀▀▀▖%#DshTuiStatus#',
-  '%#DshTuiWhaleEE#●%#DshTuiWhaleB-#▀▀▀▀▘%#DshTuiStatus#',
-  '%#DshTuiWhaleEE#●%#DshTuiWhaleB-#▀▀▀▀▖%#DshTuiStatus#',
-  '%#DshTuiWhaleW-#▀%#DshTuiWhaleEE#●%#DshTuiWhaleB-#▀▀▀▘%#DshTuiStatus#',
-]
 
 // ---------------------------------------------------------------------------
 // Animation: a 4-frame cycle — eyes wink alternately, bubbles rise, and the

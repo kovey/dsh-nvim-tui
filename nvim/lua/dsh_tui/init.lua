@@ -26,7 +26,6 @@ M._reasoningBufs = {}  -- session id -> reasoning buffer
 M._reasoningWin = nil  -- the (optional) reasoning panel window
 M._reasoningOpen = false
 M._activeId = nil
-M._sessionLines = {}   -- list line number -> session id
 M._ns = vim.api.nvim_create_namespace('dsh_tui')
 
 --- Edit keys a read-only surface must silence (normal-mode entries plus the
@@ -89,7 +88,7 @@ local function attach_footer(mainWin, text)
   detach_footer()
   if not (mainWin and vim.api.nvim_win_is_valid(mainWin)) then return end
   if vim.fn.has('nvim-0.10') == 1 then
-    local ok, err = pcall(vim.api.nvim_win_set_config, mainWin, {
+    local ok = pcall(vim.api.nvim_win_set_config, mainWin, {
       footer = text,
       footer_pos = 'left',
     })
@@ -97,7 +96,6 @@ local function attach_footer(mainWin, text)
       M._footer = { win = nil, buf = nil, mainWin = mainWin }
       return
     end
-    M._footerErr = err
   end
   -- Legacy detached bar (nvim < 0.10, or set_config footer unsupported):
   -- 1 footer row + 2 border rows must fit below the window's top row.
@@ -272,13 +270,17 @@ function M.resize_input()
     vim.api.nvim_win_set_height(input_win, n + 1)
     -- Growing the window leaves nvim's leftover viewport offset from the
     -- pre-grow scroll (the cursor was on the bottom row, so the new text row
-    -- renders as a bare `~` beyond-EOF row without the frame's │❯). When the
-    -- buffer fits, snap the topline back to 1 — the cursor stays put.
-    if lc <= n then
-      vim.api.nvim_win_call(input_win, function()
-        pcall(vim.fn.winrestview, { topline = 1 })
-      end)
-    end
+    -- renders as a bare `~` beyond-EOF row without the frame's │❯). Clamp
+    -- the topline into the viewable range: snap to 1 when the buffer fits,
+    -- keep the last n rows visible when it overflows the 6-row cap (a pasted
+    -- block must not hide its own earlier lines).
+    vim.api.nvim_win_call(input_win, function()
+      local w0 = vim.fn.line('w0')
+      local top = math.max(1, math.min(w0, lc - n + 1))
+      if top ~= w0 then
+        pcall(vim.fn.winrestview, { topline = top })
+      end
+    end)
     if chat_win and vim.api.nvim_win_is_valid(chat_win) then
       -- Row budget: chat text + chat statusline + input (winbar+n) + input
       -- statusline = lines - cmdheight.

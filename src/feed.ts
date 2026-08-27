@@ -31,7 +31,7 @@ import { transformTables } from './table.js'
 import { imageLabel } from './images.js'
 import { formatElapsed, formatTokens } from './stats.js'
 import { t } from './i18n.js'
-import type { AssistantChunk, ChatMessage, ImageAttachmentRef, MessageContent, SessionEvent } from './types.js'
+import type { ChatMessage, ImageAttachmentRef, MessageContent, SessionEvent } from './types.js'
 
 const INLINE_RE = /(\*\*[^*]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\n]+\))/g
 const FENCE_RE = /^\s*```/
@@ -818,7 +818,6 @@ export class FeedRenderer {
     // Diff against the last flushed view: tables expand blocks (3 raw lines
     // → 5 bordered lines), so row positions cannot be tracked by base length.
     const lastView = this.lastView ?? []
-    const lastViewLength = lastView.length
     let startRow = 0
     while (startRow < lines.length && startRow < lastView.length &&
       lines[startRow] === lastView[startRow]) {

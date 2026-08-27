@@ -8,13 +8,13 @@ import { attach, NeovimClient } from 'neovim'
 
 const here = dirname(fileURLToPath(import.meta.url))
 /** Bundle root: one level up from lib/. */
-export const bundleRoot = join(here, '..')
+const bundleRoot = join(here, '..')
 /** Directory added to nvim's runtimepath (contains lua/dsh_tui/). */
-export const nvimRtpDir = join(bundleRoot, 'nvim')
+const nvimRtpDir = join(bundleRoot, 'nvim')
 /** Absolute path of the dsh_tui Lua module entry. */
-export const dshTuiModulePath = join(nvimRtpDir, 'lua', 'dsh_tui', 'init.lua')
+const dshTuiModulePath = join(nvimRtpDir, 'lua', 'dsh_tui', 'init.lua')
 
-export const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 export interface SpawnedNvim {
   child: ReturnType<typeof spawn>

@@ -595,7 +595,6 @@ description:
   nvim.on('notification', onNote)
   // Popup hints are pinned as the LAST row of the popup window (visible
   // regardless of scroll); each popup carries a function title.
-  const lastLine = (buf: number) => lua('local b = ... local l = vim.api.nvim_buf_get_lines(b, 0, -1, false) return l[#l]', [buf])
   const floatTitle = (win: number) => nvim.request('nvim_win_get_config', [win]).then((c: any) => c.title ?? '')
 
   const waitNote = async (method: string, timeoutMs = 2000) => {

@@ -1,12 +1,5 @@
 import { spawn } from 'node:child_process';
 import { NeovimClient } from 'neovim';
-/** Bundle root: one level up from lib/. */
-export declare const bundleRoot: string;
-/** Directory added to nvim's runtimepath (contains lua/dsh_tui/). */
-export declare const nvimRtpDir: string;
-/** Absolute path of the dsh_tui Lua module entry. */
-export declare const dshTuiModulePath: string;
-export declare const sleep: (ms: number) => Promise<void>;
 export interface SpawnedNvim {
     child: ReturnType<typeof spawn>;
     sockPath: string;

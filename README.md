@@ -42,26 +42,44 @@ dsh --profile nvim-tui
 
 ## 安装 / 运行
 
-**一键安装**（官方推荐命令）：
+**方式一：官方 tui profile**（dsh 官方安装 TUI 的方式）：
 
 ```bash
 dsh plugin --profile tui add kovey/dsh-nvim-tui   # 安装 + 自动加入 bundles
 dsh --profile tui                                 # 启动（真实终端里）
 ```
 
-`dsh plugin add` 会自动把声明了 `dsh.bundle` 的依赖调和进 profile 的
-bundles 层栈（无需手改 package.json）。首个 profile 首次使用时自动初始化
-（bundle 层为 `@deepseek-ai/dsh-base`，从 dsh 安装锚点解析）。
+**方式二：自定义 profile（nvim-tui）**：
+
+```bash
+dsh plugin --profile nvim-tui add kovey/dsh-nvim-tui   # 安装 + 自动加入 bundles
+dsh --profile nvim-tui                                  # 启动（真实终端里）
+```
+
+两种方式等价：`dsh plugin add` 会把声明了 `dsh.bundle` 的依赖调和进该
+profile 的 bundles 层栈（无需手改 package.json）；profile 首次使用时自动
+初始化（bundle 层为 `@deepseek-ai/dsh-base`，从 dsh 安装锚点解析）。
 
 ## 更新
 
-**一键安装**（官方推荐命令）：
+对应安装方式执行：
 
 ```bash
-dsh plugin --profile tui update kovey/dsh-nvim-tui 
+dsh plugin --profile tui update kovey/dsh-nvim-tui      # 官方 tui profile
+dsh plugin --profile nvim-tui update kovey/dsh-nvim-tui # 自定义 profile
 ```
 
-**开发安装**（本地仓库直链）：
+## 运行依赖
+
+| 依赖 | 最低版本 | 说明 |
+|---|---|---|
+| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | **0.1.1-rc.2** | peer 依赖 `@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` `^0.1.1-rc.2`，由 profile 的 dsh 安装锚点提供 |
+| [Neovim](https://neovim.io) | **0.9**（推荐 **0.10+**） | 0.10+ 完整体验（输入框四边边框、弹窗提示嵌入边框）；0.9 可运行但降级（`❯` 提示列与左边框以虚拟文本呈现、弹窗提示为分离提示条） |
+| Node.js | 23.6+ | 由 dsh 提供（`engines` 声明），一般无需单独安装 |
+
+> 开发与 CI 实测：dsh 0.1.1-rc.2 / nvim 0.12.4。
+
+## 开发安装（本地仓库直链）
 
 ```bash
 mkdir -p ~/.dsh/profiles/nvim-tui
@@ -75,7 +93,7 @@ dsh --profile nvim-tui
 > 本仓库根目录就是 bundle 本身：`cordis.patch.yml` 挂载 `nvim-tui-runner` 行，
 > package.json 的 `dsh.bundle.patch` 声明了它。
 
-启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.1.0 (build YYYY-MM-DD HH:mm) · channel N`。
+启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.2.3 (build YYYY-MM-DD HH:mm) · channel N`。
 输入 `/help` 随时查看全部命令。
 
 ## 配置

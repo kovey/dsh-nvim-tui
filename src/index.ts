@@ -15,7 +15,7 @@ import { WHALE_EMOJI_FRAMES } from './whale.js'
 import { ageLabel, isExpired, readCleanedIds, writeCleanedIds } from './subagent-clean.js'
 import {
   MarketEntry, fetchCatalog, readCatalog, writeCatalog, isFresh, searchCatalog,
-  readInstalledPlugins, runningProfileName, installSpec, openUrl, marketCachePath,
+  readInstalledPlugins, runningProfileName, installSpec, openUrl,
   installedMainMissing, resolveNpmSpec, readRepoPackage,
   patchPath, readPatch, readDisabledIds, setDisabledRows, writePatch,
   isNpmName, latestVersion, depMatchesEntry,
@@ -27,15 +27,15 @@ import {
   formatTokens, formatElapsed, modeLabel, escapeStatusline,
 } from './stats.js'
 import type {
-  AgentHandle, AgentPresetsService, AgentStatusPayload, AgentsService, ApprovalRequest,
+  AgentHandle, AgentPresetsService, ApprovalRequest,
   AttachmentsService, ChatMessage, CompactionService, FileReferencesService,
-  GoalsService, GoalState, HarnessSession, InboxLike, JobsService, LlmService, MessageContent,
+  GoalsService, GoalState, InboxLike, JobsService, LlmService, MessageContent,
   MessageFeedbackService, ModelSelection, PermissionPresetsService,
   PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent,
-  LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionStore,
+  LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService,
   SessionTitleService, SettingsService, SkillsService, SubagentInfo,
-  SubagentsService, TokenUsage, ToolsService, Usage, UserQuestion,
-  UserQuestionsService, WorkflowInfo, WorkflowResult, WorkspacesService,
+  SubagentsService, ToolsService, Usage,
+  UserQuestionsService, WorkspacesService,
 } from './types.js'
 
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
@@ -2135,11 +2135,6 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       send(trimmed)
     }
 
-    const currentModelLabel = () => {
-      const sel = currentSelection()
-      return `${sel.provider}/${sel.model}${sel.reasoningEffort ? ` (${sel.reasoningEffort})` : ''}`
-    }
-
     const applyModelSelection = async (next: ModelRef['current']): Promise<void> => {
       const rec = activeId === null ? undefined : sessions.get(activeId)
       if (rec?.modelRef) rec.modelRef.current = next // hot for the active session
@@ -2208,12 +2203,6 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     // -- glance segments (statusline visibility toggles) ---------------------
     const GLANCE_SEGMENTS = ['cache', 'context', 'tokens', 'cost', 'elapsed', 'total']
     const hiddenGlance = new Set<string>()
-
-    // -- command helpers ------------------------------------------------------
-    const arg = (line: string): string => {
-      const m = line.match(/^\S+\s+(.*)$/)
-      return m ? m[1].trim() : ''
-    }
 
     /** /effort [off|high|max|auto] */
     const effortCommand = async (a: string | undefined) => {
