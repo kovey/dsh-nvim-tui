@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { appendFileSync, writeFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, existsSync, statSync, renameSync } from 'node:fs'
+import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve, isAbsolute } from 'node:path'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -9,6 +10,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { NeovimClient } from 'neovim'
 import { spawnNvim, connectNvim } from './bridge.js'
 import { FeedRenderer } from './feed.js'
+import { diffTexts, fileDiffsFromMeta } from './diff.js'
 import { t, setLocale, locale } from './i18n.js'
 import { matchIntent } from './nlcmd.js'
 import { WHALE_EMOJI_FRAMES } from './whale.js'
@@ -138,6 +140,15 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     let pickerSettle: ((value: string | null) => void) | null = null // resolve(value|null) of the pending picker
     const hostDisposers: Array<() => void> = []
     const pendingInput: string[] = []
+    // File-change diffs: snapshot mutation targets BEFORE the tool runs so
+    // the ✓ result line can render an accurate +/− block (a write against
+    // its real old version, not an all-green wall).
+    const pendingFileSnaps = new Map<string, { display: string; before: string | null }>()
+    // Optimistic user-bubble echo: each direct submit renders immediately
+    // (the host's user/message event round-trip used to delay it visibly);
+    // the matching event is skipped when it arrives. FIFO per session — a
+    // stale front entry only self-corrects on the next identical submit.
+    const pendingEchoes = new Map<string, string[]>()
     /** Clipboard images queued via <C-v>; sent with the next submitted text. */
     let pendingImages: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }>> = []
     /** Open subagent transcript view: { childId, feed } (read-only replay). */
@@ -2132,6 +2143,15 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         onCommand(`/${nl.name}${nl.arg !== undefined ? ` ${nl.arg}` : ''}`)
         return
       }
+      const echoRec = activeId === null ? undefined : sessions.get(activeId)
+      if (echoRec !== undefined && pendingImages.length === 0 &&
+        splitImageDataUrls(trimmed).images.length === 0) {
+        echoRec.feed.pushUser(trimmed, [])
+        const q = pendingEchoes.get(activeId as string) ?? []
+        q.push(trimmed)
+        if (q.length > 4) q.shift()
+        pendingEchoes.set(activeId as string, q)
+      }
       send(trimmed)
     }
 
@@ -3218,6 +3238,62 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       }, 30000)
 
       // Event dispatch: each session's transcript goes to its own feed.
+      // File-change diffs: snapshot mutation targets BEFORE the tool runs so
+      // the ✓ result line can render an accurate +/− block (a write against
+      // its real old version, not an all-green wall).
+
+
+
+      /** Read a file as a diff snapshot (null when absent/unreadable/binary/
+       *  oversized — those cases render no diff block). */
+      const readFileSnapshot = async (p: string): Promise<string | null> => {
+        try {
+          const abs = resolve(p)
+          const st = await stat(abs)
+          if (!st.isFile() || st.size > 256 * 1024) return null
+          const text = await readFile(abs, 'utf8')
+          return text.includes('\0') ? null : text
+        } catch {
+          return null
+        }
+      }
+
+      /** tool/result: render ✎ diff blocks into the feed that rendered the
+       *  tool line. Primary source = the tool's official presentationMeta
+       *  (`meta.diffs = [{ path, oldText, newText }]` — exact, cwd-immune);
+       *  falls back to the pre-call file snapshot for flows the meta misses
+       *  (creates, deletes). */
+      const maybePushFileDiff = (feed: FeedRenderer, event: SessionEvent): void => {
+        if (event.type !== 'tool/result') return
+        const callId = event.data?.message?.source?.callId
+        const metaDiffs = fileDiffsFromMeta((event.data as { meta?: unknown } | undefined)?.meta)
+        if (metaDiffs !== null) {
+          if (typeof callId === 'string' && callId !== '') pendingFileSnaps.delete(callId)
+          for (const d of metaDiffs.slice(0, 4)) {
+            const block = diffTexts(d.oldText ?? null, d.newText ?? null)
+            if (block.stats.added === 0 && block.stats.removed === 0) continue
+            const action = d.oldText === undefined
+              ? t('新增')
+              : d.newText === undefined
+                ? t('删除')
+                : t('修改')
+            feed.pushDiff(`✎ ${action} ${d.path} (+${block.stats.added} −${block.stats.removed})`, block.lines)
+          }
+          return
+        }
+        if (typeof callId !== 'string' || callId === '') return
+        const snap = pendingFileSnaps.get(callId)
+        if (snap === undefined) return
+        pendingFileSnaps.delete(callId)
+        void readFileSnapshot(snap.display).then((after) => {
+          if (disposed) return
+          const block = diffTexts(snap.before, after)
+          if (block.stats.added === 0 && block.stats.removed === 0) return
+          const action = snap.before === null ? t('新增') : after === null ? t('删除') : t('修改')
+          feed.pushDiff(`✎ ${action} ${snap.display} (+${block.stats.added} −${block.stats.removed})`, block.lines)
+        })
+      }
+
       /** Produced-file heuristic for /deliverables: mutation tools whose args
        *  carry a follow-along path (official render intents: diff / edit). */
       const producedPathFromCall = (name: string, argsText: string | undefined): string | null => {
@@ -3233,11 +3309,37 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         // Open subagent transcript view: route the child's live events into
         // its read-only feed (reasoning/text/tools keep streaming in place).
         if (subagentView !== null && owner.id === subagentView.childId) {
+          if (event.type === 'tool/call' && typeof event.data?.name === 'string') {
+            const p = producedPathFromCall(event.data.name, event.data.arguments)
+            if (p !== null && typeof event.data.callId === 'string' && event.data.callId !== '') {
+              const cid = event.data.callId
+              void readFileSnapshot(p).then((before) => {
+                pendingFileSnaps.set(cid, { display: p, before })
+              })
+            }
+          }
           subagentView.feed.applyEvent(event)
+          maybePushFileDiff(subagentView.feed, event)
           return
         }
         const rec = sessions.get(owner.id)
         if (!rec) return
+        // Skip the host's user/message when this exact text was already
+        // rendered optimistically at submit time (no double bubble).
+        let echoed = false
+        if (event.type === 'user/message') {
+          const q = pendingEchoes.get(owner.id)
+          if (q !== undefined && q.length > 0) {
+            const data = event.data as { message?: ChatMessage } | ChatMessage | undefined
+            const msg = (data as { message?: ChatMessage } | undefined)?.message ??
+              (data as ChatMessage | undefined)
+            if (FeedRenderer.messageText(msg) === q[0]) {
+              q.shift()
+              pendingEchoes.set(owner.id, q)
+              echoed = true
+            }
+          }
+        }
         // Deliverables: files the current turn produced, derived from
         // mutation tools' follow-along args (official client uses the tools'
         // render-intent locations; the tool/result payload does not carry
@@ -3246,14 +3348,25 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
           rec.deliverables = { turn: event.data?.turn, paths: [] }
         } else if (event.type === 'tool/call' && event.data?.name !== undefined) {
           const p = producedPathFromCall(event.data.name, event.data.arguments)
-          if (p !== null && !(rec.deliverables?.paths ?? []).includes(p)) {
-            rec.deliverables = rec.deliverables ?? { turn: undefined, paths: [] }
-            rec.deliverables.paths.push(p)
+          if (p !== null) {
+            if (!(rec.deliverables?.paths ?? []).includes(p)) {
+              rec.deliverables = rec.deliverables ?? { turn: undefined, paths: [] }
+              rec.deliverables.paths.push(p)
+            }
+            if (typeof event.data.callId === 'string' && event.data.callId !== '') {
+              const cid = event.data.callId
+              void readFileSnapshot(p).then((before) => {
+                pendingFileSnaps.set(cid, { display: p, before })
+              })
+            }
           }
         }
         // Turn finished on the ACTIVE session → terminal bell (toggle /bell).
-        if (event.type === 'turn/end' && owner.id === activeId && bellOn) {
-          void luaCall('require("dsh_tui").bell()', []).catch(() => {})
+        if (event.type === 'turn/end') {
+          pendingFileSnaps.clear()
+          if (owner.id === activeId && bellOn) {
+            void luaCall('require("dsh_tui").bell()', []).catch(() => {})
+          }
         }
         if (event.type === 'session/title' && typeof event.data?.title === 'string') {
           rec.title = event.data.title
@@ -3292,8 +3405,11 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
           rec.goal = (event.data?.goal as GoalState | undefined) ?? null
           if (owner.id === activeId) updateStatusline()
         }
-        foldEvent(rec, event)
-        rec.feed.applyEvent(event)
+        if (!echoed) {
+          foldEvent(rec, event)
+          rec.feed.applyEvent(event)
+          maybePushFileDiff(rec.feed, event)
+        }
         // Headless e2e: first completed turn of the initial session ends the test.
         if (headless && event.type === 'turn/end' && owner.id === activeId) {
           rec.feed.commitTail()

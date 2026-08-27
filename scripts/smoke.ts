@@ -15,6 +15,7 @@ import { FeedRenderer } from '../lib/feed.js'
 import { WHALE_RENDER_ROWS, whaleFrames, WHALE_EMOJI_FRAMES, layoutWhaleRows, WHALE_ROWS } from '../lib/whale.js'
 import { foldUsage, billedInput, cacheHitRate, estimateCost, formatTokens, formatElapsed, modeLabel, escapeStatusline } from '../lib/stats.js'
 import { sniffMediaType, parseImageDataUrl, splitImageDataUrls, imageLabel } from '../lib/images.js'
+import { diffTexts, fileDiffsFromMeta } from '../lib/diff.js'
 import { t, setLocale, locale } from '../lib/i18n.js'
 import { matchIntent } from '../lib/nlcmd.js'
 import { ageLabel, isExpired } from '../lib/subagent-clean.js'
@@ -733,6 +734,28 @@ description:
   await lua('require("dsh_tui").approval_decide("y")', [])
   hit = await waitNote('dsh-approval-decided')
   assert.equal(hit?.args?.[0], 'y', 'approval decision routed')
+  // file-change diff block renders in the chat with whole-line groups
+  feedA.pushDiff('✎ 修改 src/x.ts (+1 −1)', ['- old line', '+ new line', '  ctx'])
+  await new Promise((r) => setTimeout(r, 200))
+  const diffLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(diffLines.includes('✎ 修改 src/x.ts (+1 −1)'), 'diff header rendered in chat')
+  assert.ok(diffLines.includes('+ new line'), 'diff added line rendered')
+  assert.ok(diffLines.includes('- old line'), 'diff removed line rendered')
+  const diffMarks: any[] = await nvim.request('nvim_buf_get_extmarks', [chatA.chatBuf, -1, 0, -1, { details: true }])
+  const diffGroups = new Set(diffMarks.map((m) => m[3]?.hl_group))
+  assert.ok(diffGroups.has('DshTuiDiffAdd') && diffGroups.has('DshTuiDiffDel'),
+    'diff lines carry add/del highlight groups')
+  // diff blocks always render in the CHAT — even when the session has a
+  // reasoning panel buffer (the panel stays the compact activity log)
+  const rbuf = await lua('return require("dsh_tui").ensure_reasoning(...)', ['session-aaaa'])
+  const freshChatBuf = await lua('return vim.api.nvim_create_buf(false, true)', [])
+  const panelFeed = new FeedRenderer(nvim, freshChatBuf, chatA.chatWin, { reasoningBuf: rbuf.reasoningBuf })
+  panelFeed.pushDiff('✎ 修改 src/y.ts (+1 −0)', ['+ only added'])
+  await new Promise((r) => setTimeout(r, 300))
+  const chatAfterPanel = await nvim.request('nvim_buf_get_lines', [freshChatBuf, 0, -1, false])
+  assert.ok(chatAfterPanel.includes('✎ 修改 src/y.ts (+1 −0)'), 'diff renders into the chat even with a panel buffer')
+  const panelAfterPanel = await nvim.request('nvim_buf_get_lines', [rbuf.reasoningBuf, 0, -1, false])
+  assert.ok(!panelAfterPanel.includes('✎ 修改 src/y.ts (+1 −0)'), 'diff stays out of the reasoning panel')
   // [a] 总是（自动模式）: routes 'always' (the runner then allows this once
   // and switches the session approval policy to 'never').
   await lua('require("dsh_tui").show_approval(...)', [{ toolName: 'bash', reason: 'again' }])
@@ -963,6 +986,36 @@ description:
   assert.ok(mdLink.spans.some((s) => s.group === 'DshTuiLink'), 'link span rendered')
   assert.ok(!mdLink.text.includes('(docs/x.md)'), 'link URL stripped')
   assert.ok(mdLink.text.includes('文档'), 'link text kept')
+
+  // 9g2. file-change diff blocks: LCS hunks, add/del-only, caps, i18n labels
+  const editDiff = diffTexts('a\nb\nc\nd', 'a\nB\nc\nd')
+  assert.equal(editDiff.stats.added, 1, 'diff counts the added line')
+  assert.equal(editDiff.stats.removed, 1, 'diff counts the removed line')
+  assert.ok(editDiff.lines.includes('- b'), 'removed line rendered with −')
+  assert.ok(editDiff.lines.includes('+ B'), 'added line rendered with +')
+  assert.ok(editDiff.lines.includes('  a'), 'context line kept above the change')
+  const addDiff = diffTexts(null, 'x\ny')
+  assert.equal(addDiff.stats.added, 2, 'new file = all additions')
+  assert.ok(addDiff.lines.includes('+ y'), 'new-file lines rendered')
+  const delDiff = diffTexts('x\ny', null)
+  assert.equal(delDiff.stats.removed, 2, 'deleted file = all removals')
+  assert.equal(diffTexts('x', 'x').lines.length, 0, 'identical content renders nothing')
+  const bigDiff = diffTexts(null, Array.from({ length: 100 }, (_, i) => 'line' + i).join('\n'))
+  assert.ok(bigDiff.truncated, 'oversized block truncates')
+  assert.ok(bigDiff.lines.some((l: string) => l.includes('省略')), 'truncation notice shown')
+  const metaDiffs = fileDiffsFromMeta({ diffs: [{ path: 'src/a.ts', oldText: 'x', newText: 'y' }, { path: 'src/b.ts', oldText: 'z', newText: 'z' }, { bogus: true }] })
+  assert.equal(metaDiffs?.length, 2, 'meta diffs parsed (unchanged + malformed dropped)')
+  assert.equal(metaDiffs?.[0]?.path, 'src/a.ts', 'meta diff carries the path')
+  assert.equal(fileDiffsFromMeta(undefined), null, 'no meta → null')
+  assert.equal(fileDiffsFromMeta({ diffs: [] }), null, 'empty diffs → null')
+  const midEdit = diffTexts(Array.from({ length: 50 }, (_, i) => 'l' + i).join('\n'),
+    Array.from({ length: 50 }, (_, i) => (i === 25 ? 'changed' : 'l' + i)).join('\n'))
+  assert.ok(midEdit.lines.includes('+ changed'), 'middle-of-file edit found')
+  assert.ok(midEdit.lines.length < 50, 'distant context trimmed (no whole-file echo)')
+  const prev = locale()
+  setLocale('en')
+  assert.equal(t('修改'), 'Modified', 'diff action label translated')
+  setLocale(prev)
 
   // 9h. @-file-reference menu: accept replaces the token in the input line.
   await nvim.request('nvim_buf_set_lines', [ids.inputBuf, 0, -1, false, ['请读 @fi']])
@@ -1209,6 +1262,9 @@ description:
   }
   const ffHl = await lua('return vim.api.nvim_get_hl(0, { name = "FloatFooter" })', [])
   assert.equal(ffHl.link, 'DshTuiStatus', 'embedded popup footer keeps the statusline look')
+  const diffHl = await lua('return { add = vim.api.nvim_get_hl(0, { name = "DshTuiDiffAdd" }), del = vim.api.nvim_get_hl(0, { name = "DshTuiDiffDel" }) }', [])
+  assert.equal(typeof diffHl.add.fg, 'number', 'diff add group defined')
+  assert.equal(typeof diffHl.del.fg, 'number', 'diff del group defined')
   const inputWinhl = await lua('return vim.wo[require("dsh_tui").ids().inputWin].winhl', [])
   assert.ok(inputWinhl.includes('Normal:DshTuiDim'), 'input window dims typed text')
   // terminal title: nvim owns the terminal and emits the OSC 2 title itself

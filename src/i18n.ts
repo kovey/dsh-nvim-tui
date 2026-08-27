@@ -32,6 +32,8 @@ export function t(zh: string): string {
 // zh → en dictionary (command surface, notices, statusline, feed labels)
 // ---------------------------------------------------------------------------
 const EN_DICT: Record<string, string> = {
+  新增: 'Added',
+  修改: 'Modified',
   // common
   '无活跃会话': 'no active session',
   '未知命令': 'unknown command',

@@ -1686,6 +1686,11 @@ function M.applyHighlights()
   vim.cmd('highlight default link FloatFooter DshTuiStatus')
   -- The input frame (winbar / statuscolumn / right-edge marks / statusline).
   vim.cmd('highlight default link DshTuiBorder WinSeparator')
+  -- File-change diff blocks (✎ header + +/− lines): GitHub-style add/del
+  -- foregrounds with NO background — loud red/green fills would fight the
+  -- chat palette.
+  vim.cmd('highlight default DshTuiDiffAdd guifg=#3fb950 ctermfg=71')
+  vim.cmd('highlight default DshTuiDiffDel guifg=#f85149 ctermfg=203')
   -- Blue whale pixel art (chat wallpaper/watermark): one group per
   -- half-block color pair (fg=top pixel, bg=bottom pixel) — brand blue
   -- #4d6bfe body, near-white belly, dark eye, blush.

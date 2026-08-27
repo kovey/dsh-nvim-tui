@@ -127,6 +127,12 @@ export declare class FeedRenderer {
     /** User bubble with image attachment labels (📎 lines under the text). */
     pushUser(text: string, imageLabels: string[]): void;
     pushTool(line: string): void;
+    /** File-change diff block (✎ header + `+ `/`- `/context lines). ALWAYS
+     *  renders in the chat — the panel stays the compact activity log (the
+     *  tool ✓ line still routes there when it is open), while the diff is the
+     *  content the user wants to read in the conversation. Lines are rendered
+     *  verbatim — no markdown stripping inside code content. */
+    pushDiff(header: string, lines: string[]): void;
     pushSubagent(line: string): void;
     pushWorkflow(line: string): void;
     pushError(text: unknown): void;

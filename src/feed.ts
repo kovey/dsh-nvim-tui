@@ -66,6 +66,9 @@ const ROLE_BY_PREFIX: Array<[RegExp, string]> = [
   [/^⚠ /, 'DshTuiError'],
   [/^🔧 /, 'DshTuiTool'],
   [/^✓ /, 'DshTuiTool'],
+  [/^✎ /, 'DshTuiTool'],
+  [/^\+ /, 'DshTuiDiffAdd'],
+  [/^- /, 'DshTuiDiffDel'],
   [/^✗ /, 'DshTuiTool'],
   [/^◇ /, 'DshTuiSubagent'],
   [/^◈ /, 'DshTuiWorkflow'],
@@ -239,6 +242,17 @@ export class FeedRenderer {
 
   pushTool(line: string): void {
     this.base.push('', line)
+    this.schedule()
+  }
+
+  /** File-change diff block (✎ header + `+ `/`- `/context lines). ALWAYS
+   *  renders in the chat — the panel stays the compact activity log (the
+   *  tool ✓ line still routes there when it is open), while the diff is the
+   *  content the user wants to read in the conversation. Lines are rendered
+   *  verbatim — no markdown stripping inside code content. */
+  pushDiff(header: string, lines: string[]): void {
+    if (lines.length === 0) return
+    this.base.push('', header, ...lines)
     this.schedule()
   }
 
@@ -761,6 +775,20 @@ export class FeedRenderer {
     for (const entry of transformTables(raw, streamOpen)) {
       if (entry.table) {
         parsed.push({ text: entry.text, spans: entry.spans, group: entry.group })
+        continue
+      }
+      // File-change diff lines: verbatim text (file content IS code — no
+      // markdown stripping) with a whole-line add/del/tool color group.
+      if (entry.raw.startsWith('+ ')) {
+        parsed.push({ text: entry.raw, spans: [], group: 'DshTuiDiffAdd' })
+        continue
+      }
+      if (entry.raw.startsWith('- ')) {
+        parsed.push({ text: entry.raw, spans: [], group: 'DshTuiDiffDel' })
+        continue
+      }
+      if (entry.raw.startsWith('✎ ')) {
+        parsed.push({ text: entry.raw, spans: [], group: 'DshTuiTool' })
         continue
       }
       // Role from the RAW line (markup stripping must not erase the prefix);
