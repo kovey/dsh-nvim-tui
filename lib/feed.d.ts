@@ -102,6 +102,7 @@ export declare class FeedRenderer {
     timer: ReturnType<typeof setTimeout> | null;
     flushing: Promise<void> | null;
     tokenNs: number | null;
+    lastActivityCount: number;
     dirty: boolean;
     ns: number | null;
     lastView: string[];

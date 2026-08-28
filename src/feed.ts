@@ -132,6 +132,7 @@ export class FeedRenderer {
   timer: ReturnType<typeof setTimeout> | null
   flushing: Promise<void> | null
   tokenNs: number | null // treesitter highlight marks (feed ns + separate)
+  lastActivityCount: number // transient activity rows in the previous view
   dirty: boolean
   ns: number | null // extmark namespace, created on first flush
   lastView: string[] // last flushed buffer text, diffed per flush
@@ -182,6 +183,7 @@ export class FeedRenderer {
     this.timer = null
     this.flushing = null
     this.tokenNs = null
+    this.lastActivityCount = 0
     this.dirty = false
     this.ns = null
     this.lastView = []
@@ -901,11 +903,19 @@ export class FeedRenderer {
     // Diff against the last flushed view: tables expand blocks (3 raw lines
     // → 5 bordered lines), so row positions cannot be tracked by base length.
     const lastView = this.lastView ?? []
+    // The previous activity rows (·· thinking… / 🔧 running tool) were
+    // TRANSIENT — the diff must only consider the COMMITTED prefix. Without
+    // this, any content change under them (an echoed user bubble, a notice)
+    // rewrites them as real buffer rows and the next tick stacks ANOTHER
+    // thinking line into the chat.
+    const prevActivity = this.lastActivityCount ?? 0
+    const committedEnd = Math.max(0, lastView.length - prevActivity)
     let startRow = 0
-    while (startRow < lines.length && startRow < lastView.length &&
+    while (startRow < lines.length && startRow < committedEnd &&
       lines[startRow] === lastView[startRow]) {
       startRow++
     }
+    this.lastActivityCount = activityLines.length
     // Nothing changed at all? Only the panel may still need a sync (its
     // streaming tail can keep growing while the chat line is unchanged).
     const unchanged = startRow === lines.length && lines.length === lastView.length

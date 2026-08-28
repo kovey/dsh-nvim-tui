@@ -766,6 +766,22 @@ description:
   const diffGroups = new Set(diffMarks.map((m) => m[3]?.hl_group))
   assert.ok(diffGroups.has('DshTuiDiffAdd') && diffGroups.has('DshTuiDiffDel'),
     'diff lines carry add/del highlight groups')
+  // transient activity rows never commit: an echo under a live '·· thinking…'
+  // line must not stack a second thinking row into the chat
+  feedA.applyEvent({ type: 'turn/start', data: {} })
+  await new Promise((r) => setTimeout(r, 950))
+  feedA.pushUser('正在思考时发的新问题', []) // the optimistic echo
+  await new Promise((r) => setTimeout(r, 200))
+  feedA.applyEvent({ type: 'turn/end', data: {} })
+  await new Promise((r) => setTimeout(r, 250))
+  const echoLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  const thinkingCount = echoLines.filter((l: string) => l.startsWith('·· thinking')).length
+  assert.ok(thinkingCount <= 1, 'no stacked thinking rows after an echo under a live turn')
+  assert.ok(echoLines.includes('> 正在思考时发的新问题'), 'echoed bubble rendered')
+  const userMarks: any[] = await nvim.request('nvim_buf_get_extmarks', [chatA.chatBuf, -1, 0, -1, { details: true }])
+  const userRow = echoLines.indexOf('> 正在思考时发的新问题')
+  const userRowHl = userMarks.find((m) => m[1] === userRow && m[3]?.hl_group === 'DshTuiUser')
+  assert.ok(userRowHl !== undefined, 'echoed user bubble carries the DshTuiUser color group')
   // diff blocks always render in the CHAT — even when the session has a
   // reasoning panel buffer (the panel stays the compact activity log)
   const rbuf = await lua('return require("dsh_tui").ensure_reasoning(...)', ['session-aaaa'])
@@ -1220,6 +1236,9 @@ description:
   assert.equal(await lua('return vim.fn.tabpagenr("$")', []), tabCountBefore + 1, 'new tabpage created')
   await nvim.request('nvim_command', ['tabclose'])
   await nvim.request('nvim_buf_set_lines', [ids.inputBuf, 0, -1, false, ['hi']])
+  // insert-mode cursor accepts the end position (col 2 = after 'i'); the
+  // test drives the @-accept path, which always runs with insert active
+  await lua(`local ids = require("dsh_tui").ids(); vim.api.nvim_set_current_win(ids.inputWin); vim.cmd('startinsert')`, [])
   await nvim.request('nvim_win_set_cursor', [ids.inputWin, [1, 2]])
   await lua('require("dsh_tui").append_input(...)', ['@note '])
   const appended = await nvim.request('nvim_buf_get_lines', [ids.inputBuf, 0, -1, false])
@@ -1314,7 +1333,7 @@ description:
   // fenced blocks render markdown-style: no raw ``` markers in the chat, the
   // opening fence becomes a dim language chip
   feedA.applyEvent({ type: 'assistant/chunk', data: { chunk: { type: 'text-delta', text: '\nsee:\n```ts\nconst x: number = 1\n```\n' } } })
-  await new Promise((r) => setTimeout(r, 250))
+  await new Promise((r) => setTimeout(r, 700))
   const fencedLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
   assert.ok(!fencedLines.includes('```ts') && !fencedLines.includes('```'), 'raw fence markers stripped from the chat')
   assert.ok(fencedLines.includes('▸ ts'), 'opening fence renders as a language chip')
@@ -1395,6 +1414,76 @@ description:
   await new Promise((r) => setTimeout(r, 80))
   const slAfterEmptySubmit = await lua('return vim.api.nvim_win_get_option(require("dsh_tui").ids().inputWin, "statusline")', [])
   assert.ok(String(slAfterEmptySubmit).includes('Enter 发送'), 'empty submit keeps the helper bar option')
+
+  // 12b. input-window hardening: ZZ inert, no clones, mode preserved, auto-restore
+  await lua(`local ids = require("dsh_tui").ids()
+    vim.api.nvim_set_current_win(ids.inputWin)
+    vim.cmd('startinsert')`, [])
+  await new Promise((r) => setTimeout(r, 80))
+  log('12b-EARLY INSERT MODE:', await lua('return vim.api.nvim_get_mode().mode .. " insertmode=" .. tostring(vim.o.insertmode)', []))
+  const zzMap = await lua(`local out = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(require("dsh_tui").ids().inputBuf, "n")) do
+      out[m.lhs] = m.rhs
+    end
+    return out`, [])
+  assert.ok(zzMap.ZZ !== undefined && zzMap.ZZ === '', 'ZZ is inert on the input buffer')
+  assert.ok(zzMap.ZQ !== undefined && zzMap.ZQ === '', 'ZQ is inert on the input buffer')
+  // window navigation preserves the mode (no forced insert on WinEnter)
+  await lua(`vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin)
+    vim.cmd('stopinsert')
+    vim.api.nvim_set_current_win(require("dsh_tui").ids().chatWin)
+    vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin)`, [])
+  await new Promise((r) => setTimeout(r, 80))
+  assert.equal((await lua('return vim.api.nvim_get_mode().mode', [])), 'n',
+    'switching back to the input keeps normal mode')
+  await lua(`vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin); vim.cmd('startinsert')`, [])
+  await new Promise((r) => setTimeout(r, 80))
+  log('BISECT after-mode-test:', await lua('return vim.api.nvim_get_mode().mode', []))
+  await lua(`vim.cmd('stopinsert')`, [])
+  // :sp from the input must not create a synced clone
+  const winsBeforeSp = (await lua('return vim.api.nvim_list_wins()', [])).length
+  await lua(`vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin); vim.cmd('sp')`, [])
+  await new Promise((r) => setTimeout(r, 120))
+  const clones = await lua(`local ids = require("dsh_tui").ids()
+    local n = 0
+    for _, w in ipairs(vim.api.nvim_list_wins()) do
+      if w ~= ids.inputWin and vim.api.nvim_win_get_buf(w) == ids.inputBuf then n = n + 1 end
+    end
+    return n`, [])
+  assert.equal(clones, 0, ':sp from the input leaves no buffer clone')
+  assert.equal((await lua('return vim.api.nvim_list_wins()', [])).length, winsBeforeSp, 'no stray window after :sp')
+  await lua(`vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin); vim.cmd('startinsert')`, [])
+  await new Promise((r) => setTimeout(r, 80))
+  log('BISECT after-sp:', await lua('return vim.api.nvim_get_mode().mode', []))
+  await lua(`vim.cmd('stopinsert')`, [])
+  // closing the input window (ZZ path's worst case) auto-restores it
+  const oldInputWin = await lua('return require("dsh_tui").ids().inputWin', [])
+  await lua('vim.api.nvim_win_close(...)', [oldInputWin, true])
+  await new Promise((r) => setTimeout(r, 700))
+  const restored = await lua(`local ids = require("dsh_tui").ids()
+    return {
+      valid = vim.api.nvim_win_is_valid(ids.inputWin),
+      buf = vim.api.nvim_win_get_buf(ids.inputWin),
+      inputBuf = ids.inputBuf,
+      mode = vim.api.nvim_get_mode().mode,
+    }`, [])
+  assert.equal(restored.valid, true, 'closed input window auto-restores')
+  assert.equal(restored.buf, restored.inputBuf, 'restored window shows the input buffer')
+  assert.equal(restored.mode, 'i', 'restored input starts in insert mode')
+  // ModeChanged enforcement: statusline plugins rewrite on mode flips
+  // (pressing i in the input used to wipe the frame + hint bar)
+  await lua(`vim.api.nvim_win_set_option(require("dsh_tui").ids().inputWin, "statusline", "")`, [])
+  await lua(`vim.cmd('doautocmd ModeChanged n:i')`, [])
+  await new Promise((r) => setTimeout(r, 80))
+  const slAfterMode = await lua('return vim.api.nvim_win_get_option(require("dsh_tui").ids().inputWin, "statusline")', [])
+  assert.ok(String(slAfterMode).includes('Enter 发送'), 'ModeChanged re-asserts the hint bar')
+  // display buffers never stay in insert mode (mouse click drags the state)
+  await lua(`vim.api.nvim_set_current_win(require("dsh_tui").ids().chatWin)`, [])
+  await lua('vim.api.nvim_input("i")', [])
+  await new Promise((r) => setTimeout(r, 120))
+  assert.equal((await lua('return vim.api.nvim_get_mode().mode', [])), 'n',
+    'chat buffer snaps back to normal mode')
+  await lua(`vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin)`, [])
   const dimHl = await lua('return vim.api.nvim_get_hl(0, { name = "DshTuiDim" })', [])
   assert.equal(dimHl.link, 'Comment', 'DshTuiDim follows the theme Comment')
   // a colorscheme (re)applied late must not wash the palette back to white

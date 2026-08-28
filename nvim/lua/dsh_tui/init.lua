@@ -166,6 +166,21 @@ end
 
 local function chat_buffer_options(buf)
   vim.bo[buf].buftype = 'nofile'
+  -- Display-only: clicking the chat while the input is in insert mode can
+  -- drag the insert state along (nvim keeps it on the focus switch) — snap
+  -- the display buffers straight back to normal mode.
+  vim.api.nvim_create_autocmd('InsertEnter', {
+    buffer = buf,
+    callback = function()
+      vim.schedule(function()
+        if vim.api.nvim_get_current_buf() == buf then
+          -- A real <Esc> keypress: :stopinsert can silently no-op right
+          -- after a focus switch (same class as the restore's startinsert).
+          vim.api.nvim_input('<Esc>')
+        end
+      end)
+    end,
+  })
   -- 'hide' not 'wipe': these buffers must survive being hidden — the
   -- reasoning panel's buffer is hidden whenever the panel closes and each
   -- chat buffer is hidden when another session becomes active. 'wipe' would
@@ -201,7 +216,10 @@ end
 
 local function make_input_buffer()
   input_buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[input_buf].bufhidden = 'wipe'
+  -- 'hide' not 'wipe': if anything closes the input WINDOW (ZZ / :q / a
+  -- plugin), the buffer — typed draft included — survives and the WinClosed
+  -- safety net just re-attaches it.
+  vim.bo[input_buf].bufhidden = 'hide'
   vim.bo[input_buf].swapfile = false
   vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { '' })
   -- Statusline plugins (mini.statusline et al.) must not render on our
@@ -1511,13 +1529,13 @@ local function window_options(win)
   vim.api.nvim_win_set_option(win, 'foldcolumn', '0')
 end
 
-local function layout()
-  -- Main window (right, top): chat.
-  chat_win = vim.api.nvim_get_current_win()
-  window_options(chat_win)
-
-  -- Bottom right: one-line prompt input.
+--- Build (or rebuild) the input window: the bottom one-row split with the
+--- full frame furniture. Factored out of layout() so the WinClosed safety
+--- net can restore the input if anything ever closes it (ZZ / :q / plugins).
+local function build_input_window()
+  M._buildingLayout = true
   vim.cmd('botright 1split')
+  M._buildingLayout = false
   input_win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(input_win, input_buf)
   window_options(input_win)
@@ -1561,6 +1579,15 @@ local function layout()
 
   -- No resident session list: /sessions pops a selectable float with full
   -- session ids. The chat gets the whole screen.
+end
+
+local function layout()
+  M._buildingLayout = true
+  -- Main window (right, top): chat.
+  chat_win = vim.api.nvim_get_current_win()
+  window_options(chat_win)
+  M._buildingLayout = false
+  build_input_window()
 
   -- Start typing right away: the prompt buffer puts us in insert mode.
   vim.api.nvim_set_current_win(input_win)
@@ -1572,6 +1599,10 @@ local function install_keymaps()
   local quit_cmd = '<Cmd>lua require("dsh_tui").quit()<CR>'
   vim.api.nvim_buf_set_keymap(input_buf, 'i', '<C-q>', quit_cmd, { noremap = true })
   vim.api.nvim_buf_set_keymap(input_buf, 'n', '<C-q>', quit_cmd, { noremap = true })
+  -- ZZ/ZQ would CLOSE the input window in normal mode — the TUI has no
+  -- meaning without a prompt; make them inert (quit = <C-q> or /quit).
+  vim.api.nvim_buf_set_keymap(input_buf, 'n', 'ZZ', '<Nop>', { noremap = true })
+  vim.api.nvim_buf_set_keymap(input_buf, 'n', 'ZQ', '<Nop>', { noremap = true })
 
   -- Input buffer (insert mode): <CR> submits, <C-CR> inserts a literal
   -- newline (multi-line input), <Up>/<Down> cycle history; <Tab>/<C-n>/
@@ -1627,20 +1658,9 @@ local function install_keymaps()
   vim.api.nvim_buf_set_keymap(input_buf, 'n', '<C-o>', reason_cmd, { noremap = true })
 end
 
-local function install_autocmds()
-  -- Whenever the input window gains focus, make sure we are in insert mode —
-  -- otherwise '/' would start a search instead of typing a slash command.
-  vim.api.nvim_create_autocmd('WinEnter', {
-    callback = function()
-      if input_win == nil then
-        return
-      end
-      if vim.api.nvim_get_current_win() == input_win
-        and vim.api.nvim_get_mode().mode ~= 'i' then
-        vim.cmd('startinsert')
-      end
-    end,
-  })
+--- Buffer-scoped input autocmds (re-registered whenever the input buffer is
+--- rebuilt — its bufhidden=wipe means closing the window destroys it).
+local function install_input_autocmds()
   vim.api.nvim_create_autocmd('TextChanged', {
     buffer = input_buf,
     callback = function()
@@ -1688,6 +1708,103 @@ local function install_autocmds()
     buffer = input_buf,
     callback = function() M.refresh_input_frame() end,
   })
+end
+
+local function install_autocmds()
+  -- Window navigation preserves the mode: <C-w>↑/<C-w>↓ into the input no
+  -- longer yanks it back to insert (an explicit user choice — the input
+  -- CAN stay in normal mode). Every flow that NEEDS insert mode starts it
+  -- itself (submit, popup close, fill_input…).
+  -- BUT insert mode drags along a focus switch (clicking the chat while the
+  -- input is in insert makes the chat insert WITHOUT firing InsertEnter) —
+  -- display splits snap straight back to normal.
+  vim.api.nvim_create_autocmd('WinEnter', {
+    callback = function()
+      local w = vim.api.nvim_get_current_win()
+      if input_win and w == input_win then return end
+      local ok, cfg = pcall(vim.api.nvim_win_get_config, w)
+      if ok and cfg.relative ~= '' and cfg.relative ~= nil then return end -- floats
+      if vim.bo[vim.api.nvim_win_get_buf(w)].buftype ~= 'nofile' then return end
+      if vim.api.nvim_get_mode().mode ~= 'i' then return end
+      -- Insert state dragged onto a display split (mouse click while typing):
+      -- snap the split back to normal, and restore the INPUT's insert if
+      -- that is where it was — the click must not strand typing mid-flow.
+      local inputWasInsert = false
+      if input_win and vim.api.nvim_win_is_valid(input_win) then
+        inputWasInsert = vim.api.nvim_win_call(input_win, function()
+          return vim.api.nvim_get_mode().mode
+        end) == 'i'
+      end
+      vim.schedule(function()
+        if vim.api.nvim_get_mode().mode == 'i'
+          and (input_win == nil or vim.api.nvim_get_current_win() ~= input_win) then
+          vim.api.nvim_input('<Esc>')
+        end
+        if inputWasInsert and input_win and vim.api.nvim_win_is_valid(input_win) then
+          local saved = vim.api.nvim_get_current_win()
+          if saved ~= input_win then
+            vim.api.nvim_set_current_win(input_win)
+            -- 'x' executes the key NOW (queued keys would hit the window
+            -- that has focus by processing time).
+            pcall(vim.api.nvim_feedkeys, 'i', 'nx', false)
+            vim.api.nvim_set_current_win(saved)
+          end
+        end
+      end)
+    end,
+  })
+  -- Safety net 1: if the input window ever gets closed (ZZ / :q / plugins),
+  -- rebuild it on the next tick — the TUI has no meaning without a prompt.
+  vim.api.nvim_create_autocmd('WinClosed', {
+    callback = function()
+      local closed = tonumber(vim.fn.expand('<afile>'))
+      if closed ~= input_win then return end
+      vim.schedule(function()
+        pcall(function()
+          if M._buildingLayout or M._quitting then return end
+          if input_win and vim.api.nvim_win_is_valid(input_win) then return end
+          if not (chat_win and vim.api.nvim_win_is_valid(chat_win)) then return end
+          if not (input_buf and vim.api.nvim_buf_is_valid(input_buf)) then return end
+          -- bufhidden=hide: the buffer (typed draft included) survives —
+          -- just rebuild the window around it. Buffer keymaps/autocmds are
+          -- still attached.
+          vim.api.nvim_set_current_win(chat_win)
+          build_input_window()
+          apply_statusline()
+          -- Enter insert on a LATER tick via a real keypress: `:startinsert`
+          -- silently no-ops right after a window close (nvim's insert-mode
+          -- machinery is still settling), but the i key always works.
+          vim.schedule(function()
+            if input_win and vim.api.nvim_win_is_valid(input_win) then
+              vim.api.nvim_set_current_win(input_win)
+              vim.api.nvim_input('i')
+            end
+          end)
+        end)
+      end)
+    end,
+  })
+  -- Safety net 2: never allow a CLONE of the input buffer — :sp / :vsp from
+  -- the input window would open synced look-alikes (content mirrors the
+  -- real one); close any new non-float window that shows the input buffer.
+  -- Splits of OTHER buffers (chat browsing) stay allowed.
+  vim.api.nvim_create_autocmd('WinNew', {
+    callback = function()
+      vim.schedule(function()
+        if M._buildingLayout then return end
+        if not (input_win and vim.api.nvim_win_is_valid(input_win)) then return end
+        if not (input_buf and vim.api.nvim_buf_is_valid(input_buf)) then return end
+        local w = vim.api.nvim_get_current_win()
+        if w == input_win then return end
+        local ok, cfg = pcall(vim.api.nvim_win_get_config, w)
+        if ok and cfg.relative ~= '' and cfg.relative ~= nil then return end
+        if vim.api.nvim_win_get_buf(w) == input_buf then
+          pcall(vim.api.nvim_win_close, w, true)
+        end
+      end)
+    end,
+  })
+  install_input_autocmds()
   -- The input window's winbar IS the frame's top edge: any plugin that sets
   -- `winbar` (its own or ours) gets snapped back to the TUI's on the input
   -- window. (The --cmd OptionSet guard deliberately does NOT blank winbar —
@@ -1702,10 +1819,13 @@ local function install_autocmds()
       end
     end,
   })
-  vim.api.nvim_create_autocmd({ 'WinEnter', 'BufEnter', 'TabEnter', 'VimEnter' }, {
+  vim.api.nvim_create_autocmd({ 'WinEnter', 'BufEnter', 'TabEnter', 'VimEnter', 'ModeChanged' }, {
     callback = function()
       -- User configs / lazy plugins keep flipping showtabline back to 2:
       -- re-assert the TUI's no-tabline stance on every window event.
+      -- ModeChanged included: statusline plugins (mini.statusline et al.)
+      -- rewrite the options the moment the mode flips (pressing i in the
+      -- input used to wipe the frame + hint bar).
       if vim.o.showtabline ~= 0 then vim.o.showtabline = 0 end
       -- Plugins like mini.statusline keep rewriting our windows' statuslines
       -- (rendering the startup buffer name): re-assert the TUI's own — blank
@@ -2270,6 +2390,7 @@ end
 
 --- Ask the runner to shut down (dispose agents + exit dsh).
 function M.quit()
+  M._quitting = true
   if M._channel then
     vim.rpcnotify(M._channel, 'dsh-quit')
   else
