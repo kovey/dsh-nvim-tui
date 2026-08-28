@@ -782,6 +782,14 @@ description:
   const userRow = echoLines.indexOf('> 正在思考时发的新问题')
   const userRowHl = userMarks.find((m) => m[1] === userRow && m[3]?.hl_group === 'DshTuiUser')
   assert.ok(userRowHl !== undefined, 'echoed user bubble carries the DshTuiUser color group')
+  // stray '- ' bullets in ordinary content must NOT render as diff rows
+  const bulletStart = await nvim.request('nvim_buf_line_count', [chatA.chatBuf])
+  feedA.applyEvent({ type: 'assistant/chunk', data: { chunk: { type: 'text-delta', text: '要点如下：\n- 第一点\n- 第二点\n+ 并不是 diff 的行\n' } } })
+  await new Promise((r) => setTimeout(r, 250))
+  const bulletMarks: any[] = await nvim.request('nvim_buf_get_extmarks', [chatA.chatBuf, -1, 0, -1, { details: true }])
+  const diffStyled = bulletMarks.filter((m) => m[1] >= bulletStart - 1 &&
+    (m[3]?.hl_group === 'DshTuiDiffAdd' || m[3]?.hl_group === 'DshTuiDiffDel'))
+  assert.equal(diffStyled.length, 0, 'plain +/- bullets outside a diff region get no diff styling')
   // diff blocks always render in the CHAT — even when the session has a
   // reasoning panel buffer (the panel stays the compact activity log)
   const rbuf = await lua('return require("dsh_tui").ensure_reasoning(...)', ['session-aaaa'])
