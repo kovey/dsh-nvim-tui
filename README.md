@@ -67,11 +67,16 @@ profile 的 bundles 层栈（无需手改 package.json）；profile 首次使用
 
 ## 更新
 
-对应安装方式执行：
+对应安装方式执行（git 依赖必须带 `--latest`，否则 pnpm 认为固定提交
+"已是最新"不会重新解析）：
 
 ```bash
-dsh plugin --profile tui update kovey/dsh-nvim-tui      # 官方 tui profile
-dsh plugin --profile nvim-tui update kovey/dsh-nvim-tui # 自定义 profile
+# 更新到最新版
+dsh plugin --profile tui update --latest kovey/dsh-nvim-tui      # 官方 tui profile
+dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui # 自定义 profile
+
+# 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.5"
 ```
 
 ## 运行依赖

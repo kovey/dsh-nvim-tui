@@ -5,6 +5,11 @@
 
 ## Unreleased（main）
 
+- **更新说明修正**：git 依赖的 `dsh plugin update` 必须带 `--latest`
+  （否则 pnpm 不重新解析分支 HEAD，见 issue #3）；固定版本用
+  `add "kovey/dsh-nvim-tui#vX.Y.Z"`（git ref 语法，`@version` 会被
+  pnpm 当作别名而报错）。
+
 ## [v0.2.5（2026-08-28）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.5)
 
 覆盖提交：
