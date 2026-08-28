@@ -367,6 +367,9 @@ description:
   assert.ok(profileDir('nvim-tui').endsWith('/profiles/nvim-tui'), 'profileDir resolves under DSH_HOME/.dsh')
   // phase-4: natural-language command router
   assert.deepEqual(matchIntent('会话列表'), { name: 'sessions', arg: undefined }, 'exact zh alias routes')
+  assert.deepEqual(matchIntent('添加任务 写单元测试'), { name: 'todo', arg: '写单元测试' }, 'add-task phrasing routes to /todo')
+  assert.deepEqual(matchIntent('待办'), { name: 'todo', arg: undefined }, '待办 routes to /todo')
+  assert.deepEqual(matchIntent('任务列表'), { name: 'tasks', arg: undefined }, '任务列表 still routes to /tasks (jobs)')
   assert.deepEqual(matchIntent('help'), { name: 'help', arg: undefined }, 'exact en alias routes')
   assert.deepEqual(matchIntent('切换模型 deepseek-chat'), { name: 'model', arg: 'deepseek-chat' }, 'model pattern captures arg')
   assert.deepEqual(matchIntent('用 deepseek-chat'), { name: 'model', arg: 'deepseek-chat' }, 'id-like model arg without 模型 keyword')

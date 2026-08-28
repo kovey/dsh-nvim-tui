@@ -5,6 +5,11 @@
 
 ## Unreleased（main）
 
+- **/todo 命令**：dsh 的待办清单是 agent 专属（todo_write 工具拒绝非
+  agent 调用方，官方 Web 同样只读）——`/todo <内容>` 按官方姿势让 agent
+  更新清单（保留其余项），`/todo` 无参弹窗展示当前清单（○ 待办 / ◐ 进行中
+  / ✓ 完成）；自然语言「添加任务 XX」「待办」直达。
+
 ## [v0.2.4（2026-08-27）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.4)
 
 覆盖提交：

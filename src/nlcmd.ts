@@ -214,6 +214,12 @@ const INTENTS: IntentSpec[] = [
     exact: [['搜索'], ['search']],
     patterns: [{ re: /^(?:搜索|查找|搜)[:： ]*(.+)$/i }],
   },
+  {
+    name: 'todo',
+    exact: [['待办'], ['待办列表'], ['todo'], ['todos']],
+    contains: ['待办', 'todo'],
+    patterns: [{ re: /^(?:添加|新建|增加|加入)(?:任务|待办)[:： ]*(.+)$/i }],
+  },
   { name: 'tasks', exact: [['任务'], ['任务列表'], ['tasks']], contains: ['任务', 'tasks'], patterns: [{ re: /^取消任务[:： ]*(.+)$/i, arg: (m) => `kill ${m[1]}` }] },
   {
     name: 'skills',

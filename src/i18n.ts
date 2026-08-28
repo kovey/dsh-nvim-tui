@@ -34,6 +34,8 @@ export function t(zh: string): string {
 const EN_DICT: Record<string, string> = {
   新增: 'Added',
   修改: 'Modified',
+  '添加/查看待办任务': 'Add/view todo tasks',
+  '（当前没有待办任务——直接告诉我要做什么，我会自己维护清单）': '(no standing todos — tell me what to do and I will keep the list myself)',
   // common
   '无活跃会话': 'no active session',
   '未知命令': 'unknown command',

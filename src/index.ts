@@ -265,6 +265,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       imagePoisonWarned: boolean
       deliverables: { turn: number | undefined; paths: string[] }
       todos: { completed: number; inProgress: number; pending: number } | null
+      todosItems: Array<{ content: string; status: string }>
       runningSince?: number | null
       [key: string]: unknown
     }
@@ -328,6 +329,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         const todos = event.data?.todos ?? []
         const count = (st: string) => todos.filter((t) => t.status === st).length
         rec.todos = { completed: count('completed'), inProgress: count('in_progress'), pending: count('pending') }
+        rec.todosItems = todos
         if (rec.id === activeId) updateStatusline()
       }
     }
@@ -523,6 +525,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         imagePoisonWarned: false,
         deliverables: { turn: undefined, paths: [] },
         todos: null,
+        todosItems: [],
       })
       // Boot banner: version + build stamp + channel (proves which code runs).
       feed.appendNotice(`dsh-nvim-tui ${BUILD_VERSION} (build ${BUILD_STAMP}) · channel ${channelIdValue}`)
@@ -1040,6 +1043,30 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       } catch (err) {
         notice(`压缩失败: ${(err as Error).message}`)
       }
+    }
+
+    /** /todo — the standing task list is AGENT-owned (the dsh todo_write
+     *  tool rejects non-agent callers, the official web UI only renders it),
+     *  so adding a task = asking the agent to update its list; with no
+     *  argument the current list pops up (read-only, from todo/write folds). */
+    const todoCommand = (a: string | undefined): void => {
+      const rec = activeId === null ? undefined : sessions.get(activeId)
+      if (!rec) { notice(t('无活跃会话')); return }
+      const text = (a ?? '').trim()
+      if (text !== '') {
+        const items = rec.todosItems ?? []
+        const keep = items.length > 0 ? `，保持其余 ${items.length} 项不变` : ''
+        void followup(rec, `请更新任务清单：添加一项「${text}」${keep}`)
+        return
+      }
+      const items = rec.todosItems ?? []
+      if (items.length === 0) {
+        notice(t('（当前没有待办任务——直接告诉我要做什么，我会自己维护清单）'))
+        return
+      }
+      const marks: Record<string, string> = { pending: '○', in_progress: '◐', completed: '✓' }
+      const lines = items.map((it) => `  ${marks[it.status] ?? '·'} ${it.content}`)
+      void luaCall('require("dsh_tui").show_lines_float(...)', [t('📋 待办清单'), lines]).catch(() => {})
     }
 
     /** /goal [show|new <objective>|pause|resume|complete|clear] — the active
@@ -3111,6 +3138,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       { name: '/image', desc: t('发送图片附件（识图）'), usage: t('<路径> [提示]'), group: t('会话'), fn: (a) => imageCommand(a) },
       { name: '/compact', desc: t('压缩上下文'), usage: t(''), group: t('会话'), fn: () => void compactCommand() },
       { name: '/goal', desc: t('查看/管理目标'), usage: t('[new <目标>|pause|resume|complete|clear]'), group: t('会话'), fn: (a) => goalCommand(a) },
+      { name: '/todo', desc: t('添加/查看待办任务'), usage: t('[任务内容]'), group: t('会话'), fn: (a) => todoCommand(a) },
       { name: '/plan', desc: t('计划模式开关'), usage: t('[on|off|status]'), group: t('会话'), fn: (a) => planCommand(a) },
       { name: '/rewind', desc: t('回退到某条消息'), usage: t('[第N条]'), group: t('会话'), fn: (a) => void rewindCommand(a) },
       { name: '/rename', desc: t('重命名会话'), usage: t('<新标题>'), group: t('会话'), fn: (a) => renameCommand(a) },
