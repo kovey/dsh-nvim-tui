@@ -2012,6 +2012,16 @@ function M.applyDimPalette()
   if normal_fg then border_fg = blend24(normal_fg, normal_bg, 0.45) end
   if border_fg == nil and status_fg then border_fg = blend24(status_fg, normal_bg, 0.6) end
   vim.api.nvim_set_hl(0, 'DshTuiBorder', { fg = border_fg or 0x8a8a8a, bg = normal_bg })
+  -- Popup surfaces: the float background (which the rounded borders and
+  -- their corner areas render on) follows the EDITOR background — many
+  -- themes shade NormalFloat darker than Normal, which makes every popup
+  -- border look like a dark frame floating on the chat. Flat, unobtrusive.
+  vim.api.nvim_set_hl(0, 'NormalFloat', { bg = normal_bg })
+  local floatBorderHl = vim.api.nvim_get_hl(0, { name = 'FloatBorder', link = false })
+  vim.api.nvim_set_hl(0, 'FloatBorder', {
+    fg = floatBorderHl.fg,
+    bg = normal_bg,
+  })
   -- Diff row colors FOLLOW THE THEME: read the colorscheme's own DiffAdd /
   -- DiffDelete (the user's normal diff look) so switching themes re-tints
   -- the +/− rows too. Only when the theme leaves a background empty do we

@@ -1319,6 +1319,15 @@ description:
   }
   const ffHl = await lua('return vim.api.nvim_get_hl(0, { name = "FloatFooter" })', [])
   assert.equal(ffHl.link, 'DshTuiStatus', 'embedded popup footer keeps the statusline look')
+  const popupBg = await lua(`local hex = function(c) return type(c) == 'number' and c or nil end
+    return {
+      ref = hex(vim.api.nvim_get_hl(0, { name = 'DshTuiBorder', link = false }).bg), -- = editor bg (with fallback)
+      nf = hex(vim.api.nvim_get_hl(0, { name = 'NormalFloat', link = false }).bg),
+      fb = hex(vim.api.nvim_get_hl(0, { name = 'FloatBorder', link = false }).bg),
+    }`, [])
+  assert.ok(popupBg.nf != null, 'popup surface gets an explicit background')
+  assert.equal(popupBg.nf, popupBg.ref, 'popup surface matches the editor background')
+  assert.equal(popupBg.fb, popupBg.ref, 'popup border background matches the editor background')
   // syntax highlighting helpers: fence-language → filetype normalization +
   // no-crash without treesitter (headless smoke env has no user config)
   const ftMap = await lua(`local M = require("dsh_tui")
