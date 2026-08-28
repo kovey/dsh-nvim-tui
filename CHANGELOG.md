@@ -5,6 +5,14 @@
 
 ## Unreleased（main）
 
+## [v0.2.5（2026-08-28）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.5)
+
+覆盖提交：
+[`de45977`](https://github.com/kovey/dsh-nvim-tui/commit/de45977) ·
+[`b36a3ef`](https://github.com/kovey/dsh-nvim-tui/commit/b36a3ef) ·
+[`012ee41`](https://github.com/kovey/dsh-nvim-tui/commit/012ee41) ·
+[`7a477e0`](https://github.com/kovey/dsh-nvim-tui/commit/7a477e0)
+
 - **弹窗背景对齐**：所有浮窗（弹窗/面板/菜单）的边框背景改为与编辑器
   背景一致——多数主题把 NormalFloat 渲染得比 Normal 深，弹窗边框像
   深色框浮在聊天上；现改为扁平的编辑器背景色，换主题自动跟随。
