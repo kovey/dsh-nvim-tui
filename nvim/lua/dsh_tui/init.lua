@@ -1827,6 +1827,9 @@ local function install_autocmds()
       -- rewrite the options the moment the mode flips (pressing i in the
       -- input used to wipe the frame + hint bar).
       if vim.o.showtabline ~= 0 then vim.o.showtabline = 0 end
+      -- Same for the mouse: lazy plugins (VeryLazy) re-enable mouse=a after
+      -- start(); the TUI is keyboard-first — keep it off.
+      if vim.o.mouse ~= '' then vim.o.mouse = '' end
       -- Plugins like mini.statusline keep rewriting our windows' statuslines
       -- (rendering the startup buffer name): re-assert the TUI's own — blank
       -- chat line until the runner pushes the real one, helper bar on input.
@@ -2078,6 +2081,11 @@ function M.start()
   -- No tabline chrome in the TUI at all: the chat never renders a stray
   -- [No Name] label, and file tabs (open_file_tab) stay reachable via gt/gT.
   vim.o.showtabline = 0
+  -- Mouse OFF in the TUI: nvim's insert mode follows the focus, so a mouse
+  -- click into a popup while the input is typing drags insert into the
+  -- popup. Window navigation is <C-w>/keyboard-first anyway — disabling the
+  -- mouse removes the whole failure class at the source.
+  vim.o.mouse = ''
   M.applyHighlights()
   takeover()
   make_input_buffer()

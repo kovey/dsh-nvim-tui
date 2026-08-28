@@ -156,6 +156,12 @@ try {
   assert.equal(await lua('return vim.o.showtabline', []), 0, 'tabline always hidden in the TUI')
   assert.equal(await lua('return vim.o.laststatus', []), 2, 'statuslines stay on (chat stats + input hints)')
   assert.equal(await lua('return vim.o.titlestring', []), 'dsh', 'terminal title pinned to dsh from the first frame (no scratch/[No Name] flash)')
+  // Mouse hygiene: the TUI is keyboard-first — no mouse means no focus-drag
+  // of the insert state into popups.
+  assert.equal(await lua('return vim.o.mouse', []), '', 'mouse disabled in the TUI (insert state cannot be dragged by clicks)')
+  await lua('vim.o.mouse = "a"', [])
+  await new Promise((r) => setTimeout(r, 80))
+  assert.equal(await lua('return vim.o.mouse', []), '', 'mouse re-enabling is neutralized (lazy plugins cannot flip it back)')
   // OptionSet guard: even a plugin forcing showtabline=2 gets snapped back.
   await lua('vim.o.showtabline = 2', [])
   assert.equal(await lua('return vim.o.showtabline', []), 0, 'showtabline changes are neutralized instantly (no flash)')
