@@ -15,5 +15,9 @@ export interface NlMatch {
     name: string;
     /** optional argument string to append. */
     arg?: string;
+    /** true when the match came from the LOOSE noun pass (substring contains)
+     *  — ambiguous, the runner hands it to the agent (tui_command tool)
+     *  instead of executing the command blindly. */
+    loose?: boolean;
 }
 export declare function matchIntent(raw: string): NlMatch | null;

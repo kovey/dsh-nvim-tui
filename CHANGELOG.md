@@ -5,6 +5,12 @@
 
 ## Unreleased（main）
 
+- **自然语言路由交给大模型**：规则匹配仍负责零延迟快路（斜杠命令、
+  模式、精确短语）；**模糊的名词匹配不再擅自执行**——消息带路由提示发给
+  agent，并注册宿主工具 `tui_command`（白名单内的 UI/安全命令），由
+  大模型判断「执行命令还是正常聊天」后决定调用与否；匹配结果携带
+  loose 标记区分快路与模糊。
+
 - **更新说明修正**：git 依赖的 `dsh plugin update` 必须带 `--latest`
   （否则 pnpm 不重新解析分支 HEAD，见 issue #3）；固定版本用
   `add "kovey/dsh-nvim-tui#vX.Y.Z"`（git ref 语法，`@version` 会被
