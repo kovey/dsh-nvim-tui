@@ -3,7 +3,40 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## Unreleased（main）
+## [v0.2.6（2026-08-29）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.6)
+
+覆盖提交：
+[`272e68d`](https://github.com/kovey/dsh-nvim-tui/commit/272e68d) ·
+[`499122a`](https://github.com/kovey/dsh-nvim-tui/commit/499122a) ·
+[`b513c61`](https://github.com/kovey/dsh-nvim-tui/commit/b513c61) ·
+[`a12f7c3`](https://github.com/kovey/dsh-nvim-tui/commit/a12f7c3) ·
+[`9e1725f`](https://github.com/kovey/dsh-nvim-tui/commit/9e1725f) ·
+[`9f14b1b`](https://github.com/kovey/dsh-nvim-tui/commit/9f14b1b)
+
+- **TUI 禁用鼠标**：nvim 的插入模式跟随窗口焦点，输入框插入时鼠标点弹窗
+  会把插入状态拖进弹窗（且不触发 InsertEnter，事件拦截不可靠）；TUI 本身
+  没有任何鼠标功能，直接禁用——start() 关闭 mouse，启动参数 OptionSet
+  守卫把 mouse 加入快照名单（懒加载插件改回 `a` 也会被立即拍掉），从
+  源头消除整类问题；窗口切换走 `<C-w>`/键盘。
+
+- **diff 块高亮三处修复**：超大单个改动块不再渲染成空块（超限时渲染
+  头部并统计真实 +/−，避免 `+0 −0` 空卡片被丢弃、diff 完全消失）；diff
+  行组只保留背景色、文字颜色交给语法 token（不再出现行级 fg 与 token
+  颜色的同字打架）；语法着色起始行对齐到第一条上下文行（修复前置上下文
+  导致 token 整体向下错位——标题行/空行背着上一行的 token）。
+
+- **弹窗标题背景对齐**：浮窗标题（FloatTitle）背景与编辑器背景一致——
+  部分主题给标题组纯黑背景，标题条后拖一块黑；前景/加粗保留主题原样。
+
+- **启动 buffer 协作（issue #4）**：takeover 不再于 VimEnter 批次内同步
+  删除 startup buffer——删除延迟到批次结束后（vim.schedule），scratch 按
+  argv(0) 名字定位（headless 启动时窗口可能显示无名 buffer），并加
+  buf_is_valid / bufwinid / 空参数守卫；其他 VimEnter 回调（如 nvim-tree
+  自动打开模板读 data.buf）不再抛 E5111。
+
+- **C-c 停止修复**：输入框 `<C-c>` 一直发送 `dsh-abort` 通知，但 runner
+  从未注册该分支、通知被静默丢弃；补上分支复用 /stop 同路（运行中
+  agent.cancel + 停止提示，空闲时提示无运行回合）。
 
 - **自然语言路由交给大模型**：规则匹配仍负责零延迟快路（斜杠命令、
   模式、精确短语）；**模糊的名词匹配不再擅自执行**——消息带路由提示发给
