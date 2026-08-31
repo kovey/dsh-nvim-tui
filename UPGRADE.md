@@ -77,6 +77,32 @@ dsh-base 提供）：
         default: standard
 ```
 
+### 3.3 pending entry 致命化：补齐依赖行（启动崩溃）
+
+alpha.2 的 boot 把「未激活（pending）的 loader entry」视为**致命错误**
+（`plugin tree failed to load: 1 entry did not activate`），旧版本里
+pending 插件只是静默不可用。典型症状：
+
+```
+Error: dsh: plugin tree failed to load: dsh: 1 entry did not activate
+dsh-workspaces-adapter: pending (waiting for service: workspaceRegistry)
+```
+
+bundles 里有 `dsh-workspaces-adapter` 的 profile，patch 必须补上它依赖的
+`workspace` 行（dsh-base alpha.2 已自带 storage 三件套与
+sessionPersistence，只加这一行即可）：
+
+```yaml
+- insert:
+    - id: workspace
+      name: '@deepseek-ai/dsh-workspace'
+```
+
+排查方法：headless 启动一次（`DSH_NVIM_TUI_HEADLESS=1 dsh --profile <p>`），
+日志里 `pending (waiting for service: X)` 指向缺哪个服务，就按同样方式补
+提供 X 的官方行（行名可在 `dsh --profile <p> --dump-config` 的
+`@deepseek-ai/dsh-base` 段里查）。
+
 ## 4. 第三方插件兼容性
 
 按启动日志逐条排查 `does not provide an export named ...`：
