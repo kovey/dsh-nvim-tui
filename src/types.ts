@@ -378,7 +378,10 @@ export interface HarnessSession {
     [key: string]: unknown
   }
   events?: SessionEvent[]
-  append: (type: string, data: unknown, opts?: { surfaceOp?: 'append'; sourceEventSeqs?: number[] }) => unknown
+  append: (type: string, data: unknown, opts?: {
+    surfaceOp?: 'append' | { op: 'replace'; start: number; end: number }
+    sourceEventSeqs?: number[]
+  }) => unknown
   [key: string]: unknown
 }
 

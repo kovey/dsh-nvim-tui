@@ -3,6 +3,26 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.2.9（2026-08-31）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.9)
+
+- **修复 v0.2.8 自愈在"崩溃后又发过消息"的会话上失效**。v0.2.8 把合成
+  tool/result 追加到日志末尾，但 DeepSeek wire 格式要求 tool 消息**紧跟**
+  在 assistant 的 tool_calls 消息之后、中间不得有任何其他消息——崩溃后再
+  发过消息的会话（如 php/che-card-repo 的 263 轮长会话）追加位置错位，
+  配对仍不成立，400 依旧。v0.2.9 改为按 surface 位置外科修复：
+  - assistant 消息位于**历史末尾**：仍补写合成 tool/result（紧跟配对，
+    与宿主 interrupted-turn closer 同形；无 tool/call 事件的块用
+    `TOOL_NOT_STARTED` 且不带 sourceEventSeqs——崩溃可能发生在它之前的
+    调用上）；
+  - assistant 消息之后**已有后续消息**：用 surface replace 就地改写该
+    assistant 消息（悬空的 tool-call 块换成文字说明，reasoning/健康块
+    保留），并把由此失去配对的 tool/result 表面节点替换为普通文字消息
+    （v0.2.8 错位的合成结果也一并中和）——不再产生悬空 tool_calls 或
+    孤儿 role=tool 消息。
+- **验证**：用宿主真实持久化读取器重建 4 个毒化会话（php 263 轮 /
+  159k 事件 / 33 事件双 tool-call 块等），按 wire 判定逐条核对：修复前
+  全部不通过、修复后全部通过；类型检查 + smoke 通过。
+
 ## [v0.2.8（2026-08-31）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.8)
 
 - **修复「bash 执行后会话卡死 + 400 insufficient tool messages」**。根因是

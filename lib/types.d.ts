@@ -621,7 +621,11 @@ export interface HarnessSession {
     };
     events?: SessionEvent[];
     append: (type: string, data: unknown, opts?: {
-        surfaceOp?: 'append';
+        surfaceOp?: 'append' | {
+            op: 'replace';
+            start: number;
+            end: number;
+        };
         sourceEventSeqs?: number[];
     }) => unknown;
     [key: string]: unknown;

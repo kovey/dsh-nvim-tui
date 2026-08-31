@@ -32,8 +32,8 @@ import {
 import type {
   AgentHandle, AgentPresetsService, ApprovalRequest,
   AttachmentsService, ChatMessage, CompactionService, FileReferencesService,
-  GoalsService, GoalState, InboxLike, JobsService, LlmService, MessageContent,
-  MessageFeedbackService, ModelSelection, PermissionPresetsService,
+  GoalsService, GoalState, HarnessSession, InboxLike, JobsService, LlmService,
+  MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService,
   PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent,
   LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService,
   SessionTitleService, SettingsService, SkillsService, SubagentInfo,
@@ -42,7 +42,7 @@ import type {
 } from './types.js'
 
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
-export const BUILD_VERSION = '0.2.8'
+export const BUILD_VERSION = '0.2.9'
 export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 export const name = 'dsh-nvim-tui'
@@ -542,7 +542,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         if (rec !== undefined) {
           const repaired = repairOrphanToolCalls(rec)
           if (repaired > 0) {
-            feed.appendNotice(`♻ ${t('已修复')} ${repaired} ${t('个悬空工具调用（补写错误结果）——会话此前因 "insufficient tool messages" 被 400 拒绝的问题已解除')}`)
+            feed.appendNotice(`♻ ${t('已修复')} ${repaired} ${t('处损坏的工具调用记录——会话此前因 "insufficient tool messages" 被 400 拒绝的问题已解除')}`)
           }
         }
       } catch {}
@@ -593,8 +593,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     }
 
     /**
-     * Append one synthetic isError tool/result for a committed tool/call that
-     * never produced a result (the "insufficient tool messages" poison).
+     * Repair the "insufficient tool messages" session poison.
      *
      * Background: when the profile carries a SECOND physical copy of
      * `@deepseek-ai/dsh-tools` (a plugin dependency hoisted into the
@@ -603,13 +602,25 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
      * harness copy. `ctx.tools[TOOL_RUNTIME_SCHEDULER]` is then undefined and
      * dispatch crashes with "Cannot read properties of undefined (reading
      * 'prepare')" — AFTER the tool/call event was committed. The derived
-     * history replays an assistant tool_calls block with no tool message and
-     * the DeepSeek API rejects every later request with "insufficient tool
-     * messages following tool_calls message". Appending a synthetic result
-     * re-pairs the history so the session works again. Shape mirrors the
-     * harness's own interrupted-turn closers (dsh-session).
+     * history replays an assistant tool_calls block whose tool messages are
+     * missing, and the DeepSeek API rejects every later request with
+     * "insufficient tool messages following tool_calls message".
+     *
+     * The DeepSeek wire format requires each assistant tool_calls block to be
+     * IMMEDIATELY followed by its tool messages, in order. So the repair has
+     * two modes, chosen per poisoned assistant message by its position in the
+     * surface (the model-visible history):
+     * - Tail (nothing follows it): append synthetic isError tool results for
+     *   the missing calls — they land right after the tool_calls and pair.
+     * - Not tail (later messages already exist — e.g. the user kept sending
+     *   messages after the crash): appending at the end cannot pair, so
+     *   surgically REPLACE the assistant message in place (surface replace),
+     *   turning the orphaned tool-call blocks into a text note, and replace
+     *   each now-unpaired tool/result surface node with a plain user note.
+     *   The latter also neutralizes the misplaced synthetic results an older
+     *   append-only repair (v0.2.8) left behind the user messages.
      */
-    const synthesizeToolResult = (rec: SessionRec, callId: string, seq: number, turn: unknown, step: unknown): void => {
+    const synthesizeToolResult = (rec: SessionRec, callId: string, seq: number | undefined, turn: unknown, step: unknown): void => {
       const session = rec.handle.agent.session
       const message = createToolResultMessage({
         // The log yields a plain string; ToolCallId is a brand over string.
@@ -620,38 +631,127 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
           text: 'The tool call crashed inside the Harness after it was recorded, so no result was durably recorded. Its outcome is unknown. Decide whether to retry from the tool semantics: retry only if the operation is read-only or idempotent; if it may have side effects, first verify external state or ask the user. Do not retry blindly.',
         }],
       })
+      // A call whose tool/call event exists was "started"; one that never got
+      // that far (the crash hit an earlier call) is "not started" — mirroring
+      // the harness's own interrupted-turn closer codes and provenance rules.
+      const started = typeof seq === 'number' && seq >= 0
       session.append('tool/result', {
-        turn,
-        step,
+        ...(turn !== undefined ? { turn } : {}),
+        ...(step !== undefined ? { step } : {}),
         message,
-        error: { name: 'ToolOutcomeUnknownError', code: 'TOOL_OUTCOME_UNKNOWN' },
-      }, { surfaceOp: 'append', sourceEventSeqs: [seq] })
+        error: started
+          ? { name: 'ToolOutcomeUnknownError', code: 'TOOL_OUTCOME_UNKNOWN' }
+          : { name: 'ToolNotStartedError', code: 'TOOL_NOT_STARTED' },
+      }, {
+        surfaceOp: 'append',
+        ...(started ? { sourceEventSeqs: [seq] } : {}),
+      })
     }
 
-    /** Scan the whole log for tool/call events with no matching tool/result
-     *  and synthesize the missing error results. Returns the repair count. */
+    /** Replace one existing surface node (identified by its seq) with a new
+     *  message-producing event of the given type. */
+    const surfaceReplace = (session: HarnessSession, type: string, seq: number, data: unknown): void => {
+      session.append(type, data, {
+        surfaceOp: { op: 'replace', start: seq, end: seq },
+        sourceEventSeqs: [seq],
+      })
+    }
+
+    /** Walk the model-visible surface and repair every assistant message
+     *  whose tool_calls blocks are not immediately followed by their tool
+     *  results. Returns the number of repaired assistant messages. */
     const repairOrphanToolCalls = (rec: SessionRec): number => {
-      const events = rec.handle.agent.session.events ?? []
-      const calls = new Map<string, { seq: number; turn: unknown; step: unknown; count: number }>()
-      const results = new Map<string, number>()
-      for (const e of events) {
-        if (e.type === 'tool/call') {
-          const id = e.data?.callId
-          if (typeof id !== 'string' || id === '') continue
-          const cur = calls.get(id)
-          calls.set(id, { seq: e.seq ?? -1, turn: e.data?.turn, step: e.data?.step, count: (cur?.count ?? 0) + 1 })
-        } else if (e.type === 'tool/result') {
-          const id = e.data?.message?.source?.callId
-          if (typeof id === 'string' && id !== '') results.set(id, (results.get(id) ?? 0) + 1)
-        }
-      }
+      const session = rec.handle.agent.session
+      const events = session.events ?? []
+      const nodes = (session.surface as { nodes?: number[] } | undefined)?.nodes
+      if (!Array.isArray(nodes)) return 0
       let repaired = 0
-      for (const [id, call] of calls) {
-        if ((results.get(id) ?? 0) >= call.count || call.seq < 0) continue
+      for (let i = 0; i < nodes.length; i++) {
+        const seqA = nodes[i]
+        const ev = events[seqA]
+        if (ev?.type !== 'assistant/message') continue
+        const original = ev.data?.message as ChatMessage | undefined
+        const blocks = original?.content ?? []
+        /** Loose read of one content block (the local MessageContent union
+         *  does not carry tool-call member fields). */
+        const toolCallIdOf = (b: MessageContent | undefined): string | undefined => {
+          const anyBlock = b as { type?: unknown; id?: unknown; name?: unknown } | undefined
+          return anyBlock?.type === 'tool-call' && typeof anyBlock.id === 'string' ? anyBlock.id : undefined
+        }
+        const toolIds = blocks.map(toolCallIdOf).filter((id): id is string => id !== undefined)
+        if (toolIds.length === 0) continue
+        // Tail case: nothing follows in the surface, so appended synthetic
+        // results land immediately after the tool_calls and pair correctly.
+        if (i === nodes.length - 1) {
+          const have = new Set<string>()
+          for (const e of events) {
+            if (e.type === 'tool/result' && typeof e.data?.message?.source?.callId === 'string') {
+              have.add(e.data.message.source.callId)
+            }
+          }
+          for (const id of toolIds) {
+            if (have.has(id)) continue
+            const call = events.find((e) => e.type === 'tool/call' && e.data?.callId === id) as
+              { seq?: number; data?: { turn?: unknown; step?: unknown } } | undefined
+            try {
+              // turn/step fall back to the assistant message's own (the crash
+              // may have hit before this call's tool/call event was written).
+              synthesizeToolResult(rec, id, call?.seq, call?.data?.turn ?? ev.data?.turn, call?.data?.step ?? ev.data?.step)
+              repaired++
+            } catch {}
+          }
+          continue
+        }
+        // Not tail: every tool id must be answered by the immediately
+        // following surface node, in order; the first mismatch (a user
+        // message in between, a missing/foreign result, …) poisons the rest.
+        let kept = 0
+        for (let k = 0; k < toolIds.length && i + 1 + k < nodes.length; k++) {
+          const next = events[nodes[i + 1 + k]]
+          const cid = next?.type === 'tool/result' ? next.data?.message?.source?.callId : undefined
+          if (cid === toolIds[k]) kept = k + 1
+          else break
+        }
+        if (kept === toolIds.length) continue // healthy pairing
+        const dropped = toolIds.slice(kept)
+        // Replace the assistant message: dropped tool-call blocks become a
+        // text note; reasoning/text blocks and healthy tool-calls are kept.
+        const rebuilt = blocks.map((b) => {
+          if (dropped.includes(toolCallIdOf(b) ?? '')) {
+            const anyBlock = b as { name?: unknown } | undefined
+            return {
+              type: 'text',
+              text: `[工具调用 ${String(anyBlock?.name ?? '')} 未执行：调度器在派发前崩溃，结果未知。如确有需要请重试；若是可能产生副作用的操作，先核实外部状态再决定。]`,
+            }
+          }
+          return b
+        })
         try {
-          synthesizeToolResult(rec, id, call.seq, call.turn, call.step)
+          surfaceReplace(session, 'assistant/message', seqA, {
+            turn: ev.data?.turn,
+            step: ev.data?.step,
+            message: { ...original, content: rebuilt },
+          })
           repaired++
-        } catch {}
+        } catch {
+          continue
+        }
+        // Neutralize the dropped ids' tool/result surface nodes (including
+        // synthetic results an older append-only repair left misplaced) —
+        // an unpaired role=tool wire message would 400 on its own.
+        for (let j = i + 1; j < nodes.length; j++) {
+          const node = events[nodes[j]]
+          if (node?.type !== 'tool/result') continue
+          const cid = node.data?.message?.source?.callId
+          if (typeof cid !== 'string' || !dropped.includes(cid)) continue
+          try {
+            const note = createUserMessage({
+              source: { kind: 'user' },
+              content: [{ type: 'text', text: '（此前的工具结果随崩溃的工具调用一并移除）' }],
+            })
+            surfaceReplace(session, 'user/message', nodes[j], note)
+          } catch {}
+        }
       }
       return repaired
     }
@@ -3627,9 +3727,8 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
               if (disposed || !sessions.has(rec.id)) return
               let healed = 0
               for (const [callId, call] of orphaned) {
-                if (call.seq < 0) continue
                 try {
-                  synthesizeToolResult(rec, callId, call.seq, call.turn, call.step)
+                  synthesizeToolResult(rec, callId, call.seq >= 0 ? call.seq : undefined, call.turn, call.step)
                   healed++
                 } catch {}
               }
