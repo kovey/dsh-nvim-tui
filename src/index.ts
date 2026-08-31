@@ -3350,6 +3350,9 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
           try { onInput(String(args?.[0] ?? '')) } catch (err) { notice(`⚠ 输入处理失败: ${(err as Error).message}`) }
         } else if (method === 'dsh-command') {
           try { onCommand(String(args?.[0] ?? '')) } catch (err) { notice(`⚠ 命令失败: ${(err as Error).message}`) }
+        } else if (method === 'dsh-abort') {
+          // <C-c> in the input box: same path as /stop.
+          stopCommand()
         }
         else if (method === 'dsh-session-select') void guard('切换会话', selectSession)(String(args?.[0] ?? ''))
         else if (method === 'dsh-session-new') void guard('新建会话', createSession)()
