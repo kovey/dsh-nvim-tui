@@ -620,7 +620,10 @@ export interface HarnessSession {
         [key: string]: unknown;
     };
     events?: SessionEvent[];
-    append: (type: string, data: unknown) => void;
+    append: (type: string, data: unknown, opts?: {
+        surfaceOp?: 'append';
+        sourceEventSeqs?: number[];
+    }) => unknown;
     [key: string]: unknown;
 }
 /** The harness session store. */

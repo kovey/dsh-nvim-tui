@@ -3,6 +3,36 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.2.8（2026-08-31）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.8)
+
+- **修复「bash 执行后会话卡死 + 400 insufficient tool messages」**。根因是
+  `@deepseek-ai/dsh-tools` 被声明为**普通依赖**：pnpm 安装本插件时把它
+  hoist 到 profile 的 `node_modules/@deepseek-ai/dsh-tools`，与宿主自带的
+  拷贝形成**两份物理副本**。cordis loader 从 profile 目录解析 bundle
+  entry `tools`，于是 `tools` 服务由插件副本构造，而 `dsh-agent-loop`
+  （宿主副本）用自己那份 `TOOL_RUNTIME_SCHEDULER` unique symbol 去取
+  `ctx.tools[TOOL_RUNTIME_SCHEDULER]` → `undefined` → 工具派发在
+  **tool/call 事件已落盘之后**崩于 `Cannot read properties of undefined
+  (reading 'prepare')`。该悬空 tool_call 永远没有 tool/result，此后每一
+  轮请求重放「带 tool_calls 却没有 tool 消息」的 assistant 消息，被
+  DeepSeek API 以 `insufficient tool messages following tool_calls
+  message` 永久 400 拒绝——会话毒化、无法自愈（宿主编排层已知问题，社区
+  #1337/#1633/#1665/#1677/#1697/#1959 同签名）。
+  - `@deepseek-ai/dsh-tools` 改为 **optional peerDependency**（构建期仍以
+    devDependency 提供类型）：profile 不再安装第二份拷贝，插件运行期从
+    宿主解析 `defineTool`，与 `tools` 服务/agent-loop 保持同一实例；
+  - **会话自愈**：打开会话时全量扫描 `tool/call` 无配对 `tool/result`
+    的孤儿调用并补写 isError 合成结果（形状对齐宿主的 interrupted-turn
+    closer：`TOOL_OUTCOME_UNKNOWN`）；回合以 `reading 'prepare'` 崩溃收尾
+    时同步在回合末补写悬空结果（延迟到 turn/end 发布边界外），被毒化的
+    旧会话打开即可继续使用，无需重建；
+  - 崩溃时在聊天区给出可操作的提示（`pnpm why @deepseek-ai/dsh-tools`
+    → `pnpm dedupe`）。
+- **验证**：类型检查 + smoke 通过；对用户侧两份毒化会话日志
+  （`session-7856853f`、`session-5ed28f79`、`session-03df1039` 等）取证：
+  均为 `tool/call bash` → turn/end error `reading 'prepare'` → 后续全部
+  400，与修复逻辑一一对应。
+
 ## [v0.2.7（2026-08-31）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.7)
 
 - **全面适配 DeepSeek Harness v0.1.2-alpha.2**：peer 依赖

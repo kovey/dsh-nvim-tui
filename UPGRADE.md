@@ -4,6 +4,56 @@ dsh-nvim-tui v0.2.7 全面适配 DeepSeek Harness **v0.1.2-alpha.2**。本指南
 宿主升级、插件更新、profile patch 修正、第三方插件兼容、验证与回滚的全部步骤
 （每一步均经真实环境实测）。
 
+> **v0.2.8 重要更新（会话卡死 400 insufficient tool messages）**：见
+> [§0. v0.2.8：修复工具调度器崩溃与已毒化会话的自愈](#0-v028修复工具调度器崩溃与已毒化会话的自愈)。
+> 升级到 v0.2.8 后按该节清理 profile 中残留的第二份 `@deepseek-ai/dsh-tools`。
+
+## 0. v0.2.8：修复工具调度器崩溃与已毒化会话的自愈
+
+**症状**：agent 调用工具（如 bash）后回合崩于
+`Cannot read properties of undefined (reading 'prepare')`，此后该会话**每一
+轮**都被 API 以 `An assistant message with 'tool_calls' must be followed by
+tool messages responding to each 'tool_call_id'. (insufficient tool messages
+following tool_calls message)` 400 拒绝，会话永久卡死。
+
+**根因**：v0.2.7 及更早把 `@deepseek-ai/dsh-tools` 声明为**普通依赖**。pnpm
+安装时把它 hoist 进 profile 的 `node_modules`，与宿主自带的 dsh-tools 形成
+两份物理拷贝；loader 从 profile 解析 `tools` bundle entry → `tools` 服务用
+插件副本构造，`dsh-agent-loop`（宿主副本）持有的 scheduler unique symbol
+对不上 → 工具派发在 tool/call 已落盘后崩溃 → 悬空 tool_call 让历史永远
+重放一条没有 tool 结果的消息 → API 永久 400（宿主编排层已知问题，社区
+#1337/#1633/#1665/#1677/#1697/#1959 同签名）。
+
+**修复**：
+
+1. 插件升级到 **v0.2.8+**（dsh-tools 改为 optional peerDependency，不再把
+   第二份拷贝带进 profile）：
+
+   ```bash
+   dsh plugin --profile <name> update --latest kovey/dsh-nvim-tui
+   # 或固定版本
+   dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.2.8"
+   ```
+
+2. 清理旧版本残留的第二份拷贝（升级后仍会留在 profile 里）：
+
+   ```bash
+   cd ~/.dsh/profiles/<name>
+   pnpm why @deepseek-ai/dsh-tools   # 确认谁在引入副本（应为"无"或仅宿主）
+   pnpm dedupe                       # 收敛重复版本
+   # 若 dedupe 后仍存在 node_modules/@deepseek-ai/dsh-tools 实体目录（非
+   # 指向宿主的软链），删除后重装：rm -rf node_modules && pnpm install
+   ```
+
+   验证（`tui` profile 实测命令）：profile 的
+   `node_modules/@deepseek-ai/dsh-tools` 应为**指向宿主安装的软链**
+   （`~/.dsh/profiles/node_modules/…` 的共享 fallback），而不是 pnpm 装出的
+   实体目录。
+
+3. **旧会话自愈（无需重建）**：v0.2.8 打开会话时自动扫描并补写悬空
+   tool_call 的合成错误结果（`TOOL_OUTCOME_UNKNOWN`），毒化历史重新配对，
+   原会话继续可用；回合内再次崩溃时也会在回合末自动补写并提示根因。
+
 ## 版本对应（peer 范围不混用）
 
 | dsh-nvim-tui | 宿主 dsh | peer 依赖范围 |

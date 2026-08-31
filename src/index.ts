@@ -4,7 +4,7 @@ import { appendFileSync, writeFileSync, readFileSync, mkdirSync, readdirSync, un
 import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve, isAbsolute } from 'node:path'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, createToolResultMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
@@ -42,7 +42,7 @@ import type {
 } from './types.js'
 
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
-export const BUILD_VERSION = '0.2.7'
+export const BUILD_VERSION = '0.2.8'
 export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 export const name = 'dsh-nvim-tui'
@@ -267,6 +267,9 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       todos: { completed: number; inProgress: number; pending: number } | null
       todosItems: Array<{ content: string; status: string }>
       runningSince?: number | null
+      /** tool/call events whose tool/result has not arrived yet (live-turn
+       *  orphan detection for the duplicate-dsh-tools scheduler crash). */
+      pendingToolCalls: Map<string, { seq: number; turn: unknown; step: unknown }>
       [key: string]: unknown
     }
     const sessions = new Map<string, SessionRec>()
@@ -526,9 +529,23 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         deliverables: { turn: undefined, paths: [] },
         todos: null,
         todosItems: [],
+        pendingToolCalls: new Map(),
       })
       // Boot banner: version + build stamp + channel (proves which code runs).
       feed.appendNotice(`dsh-nvim-tui ${BUILD_VERSION} (build ${BUILD_STAMP}) · channel ${channelIdValue}`)
+      // Heal a poisoned session (a scheduler crash left a tool/call with no
+      // tool/result → the DeepSeek API rejects every later request with
+      // "insufficient tool messages following tool_calls message"): synthesize
+      // the missing error results once at open so the history re-pairs.
+      try {
+        const rec = sessions.get(id)
+        if (rec !== undefined) {
+          const repaired = repairOrphanToolCalls(rec)
+          if (repaired > 0) {
+            feed.appendNotice(`♻ ${t('已修复')} ${repaired} ${t('个悬空工具调用（补写错误结果）——会话此前因 "insufficient tool messages" 被 400 拒绝的问题已解除')}`)
+          }
+        }
+      } catch {}
       return id
     }
 
@@ -573,6 +590,70 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
           { text: `  @${t('文件')} ${t('引用文件')} · Ctrl+O ${t('思考面板')} · Ctrl+P ${t('历史输入')} · Ctrl+C ${t('停止')}` },
         ],
       }
+    }
+
+    /**
+     * Append one synthetic isError tool/result for a committed tool/call that
+     * never produced a result (the "insufficient tool messages" poison).
+     *
+     * Background: when the profile carries a SECOND physical copy of
+     * `@deepseek-ai/dsh-tools` (a plugin dependency hoisted into the
+     * profile's node_modules), the loader builds the `tools` service from
+     * that copy while dsh-agent-loop imports its scheduler symbol from the
+     * harness copy. `ctx.tools[TOOL_RUNTIME_SCHEDULER]` is then undefined and
+     * dispatch crashes with "Cannot read properties of undefined (reading
+     * 'prepare')" — AFTER the tool/call event was committed. The derived
+     * history replays an assistant tool_calls block with no tool message and
+     * the DeepSeek API rejects every later request with "insufficient tool
+     * messages following tool_calls message". Appending a synthetic result
+     * re-pairs the history so the session works again. Shape mirrors the
+     * harness's own interrupted-turn closers (dsh-session).
+     */
+    const synthesizeToolResult = (rec: SessionRec, callId: string, seq: number, turn: unknown, step: unknown): void => {
+      const session = rec.handle.agent.session
+      const message = createToolResultMessage({
+        // The log yields a plain string; ToolCallId is a brand over string.
+        callId: callId as unknown as Parameters<typeof createToolResultMessage>[0]['callId'],
+        isError: true,
+        content: [{
+          type: 'text',
+          text: 'The tool call crashed inside the Harness after it was recorded, so no result was durably recorded. Its outcome is unknown. Decide whether to retry from the tool semantics: retry only if the operation is read-only or idempotent; if it may have side effects, first verify external state or ask the user. Do not retry blindly.',
+        }],
+      })
+      session.append('tool/result', {
+        turn,
+        step,
+        message,
+        error: { name: 'ToolOutcomeUnknownError', code: 'TOOL_OUTCOME_UNKNOWN' },
+      }, { surfaceOp: 'append', sourceEventSeqs: [seq] })
+    }
+
+    /** Scan the whole log for tool/call events with no matching tool/result
+     *  and synthesize the missing error results. Returns the repair count. */
+    const repairOrphanToolCalls = (rec: SessionRec): number => {
+      const events = rec.handle.agent.session.events ?? []
+      const calls = new Map<string, { seq: number; turn: unknown; step: unknown; count: number }>()
+      const results = new Map<string, number>()
+      for (const e of events) {
+        if (e.type === 'tool/call') {
+          const id = e.data?.callId
+          if (typeof id !== 'string' || id === '') continue
+          const cur = calls.get(id)
+          calls.set(id, { seq: e.seq ?? -1, turn: e.data?.turn, step: e.data?.step, count: (cur?.count ?? 0) + 1 })
+        } else if (e.type === 'tool/result') {
+          const id = e.data?.message?.source?.callId
+          if (typeof id === 'string' && id !== '') results.set(id, (results.get(id) ?? 0) + 1)
+        }
+      }
+      let repaired = 0
+      for (const [id, call] of calls) {
+        if ((results.get(id) ?? 0) >= call.count || call.seq < 0) continue
+        try {
+          synthesizeToolResult(rec, id, call.seq, call.turn, call.step)
+          repaired++
+        } catch {}
+      }
+      return repaired
     }
 
     /** Create a fresh session+agent and switch to it. `cwdPath` (optional)
@@ -3497,6 +3578,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         // them, so this is a name+args heuristic over the same set).
         if (event.type === 'turn/start') {
           rec.deliverables = { turn: event.data?.turn, paths: [] }
+          rec.pendingToolCalls.clear()
         } else if (event.type === 'tool/call' && event.data?.name !== undefined) {
           const p = producedPathFromCall(event.data.name, event.data.arguments)
           if (p !== null) {
@@ -3512,9 +3594,52 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
             }
           }
         }
+        // Live orphan tracking for the duplicate-dsh-tools scheduler crash:
+        // every tool/call parks here until its tool/result arrives; any call
+        // still parked when turn/end lands has been orphaned by the crash.
+        if (event.type === 'tool/call' && typeof event.data?.callId === 'string') {
+          rec.pendingToolCalls.set(event.data.callId, {
+            seq: event.seq ?? -1,
+            turn: event.data?.turn,
+            step: event.data?.step,
+          })
+        } else if (event.type === 'tool/result' && typeof event.data?.message?.source?.callId === 'string') {
+          rec.pendingToolCalls.delete(event.data.message.source.callId)
+        }
         // Turn finished on the ACTIVE session → terminal bell (toggle /bell).
         if (event.type === 'turn/end') {
           pendingFileSnaps.clear()
+          if (rec.pendingToolCalls.size > 0) {
+            // The turn ended while tool calls were still pending: the tool
+            // scheduler crashed after committing tool/call events and no
+            // result will ever arrive. Synthesize error results so the next
+            // request is not rejected by "insufficient tool messages".
+            // Deferred: session.append cannot reenter while the turn/end
+            // event's own publication boundary is still open.
+            const orphaned = [...rec.pendingToolCalls.entries()]
+            rec.pendingToolCalls.clear()
+            const reason = (event.data as {
+              reason?: { error?: { message?: string } }
+            } | undefined)?.reason
+            const prepareCrash = typeof reason?.error?.message === 'string' &&
+              reason.error.message.includes("reading 'prepare'")
+            setTimeout(() => {
+              if (disposed || !sessions.has(rec.id)) return
+              let healed = 0
+              for (const [callId, call] of orphaned) {
+                if (call.seq < 0) continue
+                try {
+                  synthesizeToolResult(rec, callId, call.seq, call.turn, call.step)
+                  healed++
+                } catch {}
+              }
+              if (healed > 0 && owner.id === activeId) {
+                notice(prepareCrash
+                  ? t(`⚠ 工具调度器崩溃（profile 里存在第二份 @deepseek-ai/dsh-tools 拷贝）——已补写 ${healed} 个悬空工具结果，本会话可继续使用；根治：在 profile 目录执行 pnpm why @deepseek-ai/dsh-tools 后 pnpm dedupe（或将 dsh-nvim-tui 升级到 0.2.8+）`)
+                  : t(`⚠ 回合结束时仍有 ${healed} 个工具调用未产生结果——已补写错误结果，会话历史已修复`))
+              }
+            }, 0)
+          }
           if (owner.id === activeId && bellOn) {
             void luaCall('require("dsh_tui").bell()', []).catch(() => {})
           }
