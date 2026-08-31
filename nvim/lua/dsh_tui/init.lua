@@ -1872,19 +1872,40 @@ local function takeover()
   pcall(vim.cmd, 'silent! only')
   M._reasoningWin = nil
   M._reasoningOpen = false
-  -- Swap the current window to a fresh unnamed nofile buffer, THEN wipe every
-  -- listed buffer — the startup scratch-file buffer included. Otherwise the
-  -- file name keeps rendering in window statuslines (mini.statusline et al.)
-  -- until the runner attaches: the startup "label flash".
+  -- Swap the current window to a fresh unnamed nofile buffer, THEN wipe the
+  -- startup scratch-file buffer. The swap stays SYNCHRONOUS (the scratch
+  -- file name must never render in window statuslines — mini.statusline et
+  -- al. would flash it on the first frame), but the DELETE is deferred past
+  -- the whole VimEnter autocmd batch: other VimEnter callbacks in the user
+  -- config (the nvim-tree auto-open template reads data.buf = 1) still hold
+  -- the startup buffer and crash with E5111 on a mid-batch wipe.
+  -- The scratch buffer is identified BY NAME (argv(0)): the displayed
+  -- buffer is not reliable — headless boots can park an unnamed buffer in
+  -- the window with the arg file hidden in a second buffer.
+  local scratchBuf = nil
+  local argvPath = vim.fn.fnamemodify(vim.fn.argv(0), ':p')
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    -- argv(0) may be empty (no file arg): '' normalizes to the cwd, which
+    -- would match unnamed buffers — never wipe in that case.
+    if vim.fn.argv(0) ~= '' and vim.bo[b].buflisted
+      and vim.fn.fnamemodify(vim.api.nvim_buf_get_name(b), ':p') == argvPath then
+      scratchBuf = b
+      break
+    end
+  end
   local fresh = vim.api.nvim_create_buf(false, true)
   vim.bo[fresh].buftype = 'nofile'
   vim.bo[fresh].bufhidden = 'wipe'
   pcall(vim.api.nvim_win_set_buf, 0, fresh)
-  for _, b in ipairs(vim.api.nvim_list_bufs()) do
-    if b ~= fresh and vim.bo[b].buflisted then
-      pcall(vim.api.nvim_buf_delete, b, { force = true })
-    end
-  end
+  vim.schedule(function()
+    if scratchBuf == nil then return end
+    if not vim.api.nvim_buf_is_valid(scratchBuf) then return end
+    -- Cooperative: if some plugin split the scratch open during the batch,
+    -- leave the buffer alone (a stray listed entry is cheaper than breaking
+    -- that plugin's window).
+    if vim.fn.bufwinid(scratchBuf) ~= -1 then return end
+    pcall(vim.api.nvim_buf_delete, scratchBuf, { force = true })
+  end)
 end
 
 --- ALL DshTui* highlight definitions (role links + dim palette) in one

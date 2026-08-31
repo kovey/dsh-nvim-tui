@@ -10,6 +10,7 @@
 
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import path from 'node:path'
 import { spawnNvim, connectNvim } from '../lib/bridge.js'
 import { FeedRenderer } from '../lib/feed.js'
 import { WHALE_RENDER_ROWS, whaleFrames, WHALE_EMOJI_FRAMES, layoutWhaleRows, WHALE_ROWS } from '../lib/whale.js'
@@ -30,7 +31,14 @@ import {
 const log = (...a: unknown[]) => fs.writeSync(1, a.join(' ') + '\n')
 
 const { child, sockPath } = await spawnNvim({
-  extraArgs: ['--headless'],
+  // A "user config" VimEnter autocmd registered AFTER the TUI's own (like
+  // the nvim-tree auto-open template): it reads the startup buffer the way
+  // such plugins do — the buffer must still be VALID inside the batch.
+  extraArgs: [
+    '--headless',
+    '--cmd',
+    'lua vim.api.nvim_create_autocmd("VimEnter", { callback = function() vim.g.smokeStartupBufValid = vim.api.nvim_buf_is_valid(1) end })',
+  ],
   loadUserConfig: false,
   isolateXdg: true,
 })
@@ -121,6 +129,23 @@ try {
   log('ids:', JSON.stringify(ids))
   assert.ok(Number.isInteger(ids.inputBuf) && Number.isInteger(ids.chatWin))
   assert.equal(ids.sessionsBuf, undefined, 'no resident sessions window anymore')
+
+  // 1b. startup-buffer cooperation (issue #4): user VimEnter callbacks that
+  // read the startup buffer (nvim-tree auto-open template) must see it VALID
+  // inside the batch — takeover() defers the wipe until after the batch.
+  assert.equal(await lua('return vim.g.smokeStartupBufValid', []), true,
+    'startup buffer stays valid during other VimEnter callbacks (no mid-batch E5111)')
+  // …and the scratch buffer IS wiped right after the batch (no leak).
+  const scratchPath = path.join(path.dirname(sockPath), 'scratch')
+  let scratchGone = false
+  for (let i = 0; i < 30; i++) {
+    if ((await lua('return vim.fn.bufexists(...)', [scratchPath])) === 0) {
+      scratchGone = true
+      break
+    }
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  assert.ok(scratchGone, 'startup scratch buffer wiped after the VimEnter batch')
 
   // 2. multi-session: two chat buffers, /sessions float with FULL ids,
   // active switching.
