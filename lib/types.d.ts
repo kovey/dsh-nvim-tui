@@ -354,12 +354,9 @@ export interface SaveImageAttachment {
     mediaType: string;
     name?: string;
 }
-/** dsh-compaction service. */
+/** dsh-compaction service (compactNow is called with the live agent). */
 export interface CompactionService {
-    compactNow: (opts: {
-        session: unknown;
-        options: unknown;
-    }, signal: AbortSignal) => Promise<{
+    compactNow: (agent: unknown, signal: AbortSignal, sourceCommandId?: string) => Promise<{
         shadowedSeqs: unknown[];
         shadowedTokenCount: number;
     } | null>;
@@ -436,9 +433,10 @@ export interface SkillDef {
 export interface PermissionPresetsService {
     names: Iterable<string>;
     set: (session: unknown, name: string) => void;
-    current: (events: unknown) => string;
+    current: (session: unknown) => string;
     optionOf: (name: string) => {
-        label?: string;
+        value?: string;
+        name?: string;
         description?: string;
     } | undefined;
 }
@@ -453,16 +451,18 @@ export interface LoaderService {
         disabled?: boolean;
     }>;
 }
-/** dsh-host-plugin-inventory (read-only loader entry projection). */
+/** dsh-host-plugin-inventory (read-only loader entry projection).
+ *  0.1.2-alpha.2: list() is async. */
 export interface PluginInventoryService {
-    list?: () => {
+    list?: () => Promise<{
         entries?: Array<{
             entryId: string;
             moduleName: string;
             enabled: boolean;
             fiberPhase: string;
         }>;
-    };
+        agentPresets?: unknown;
+    }>;
 }
 /** dsh-session-projection registry (whole-log projection reads). */
 export interface SessionProjectionsService {
@@ -495,6 +495,7 @@ export interface SessionReferenceService {
         label: string;
         cwd?: string;
         createdAt: number;
+        sameWorkspace?: boolean;
     }>>;
 }
 /** dsh-file-reference service. */
@@ -510,12 +511,10 @@ export interface SettingsService {
     describe?: (opts?: {
         redactSecrets?: boolean;
     }) => Array<{
-        name?: string;
-        sections?: Array<{
-            key: string;
-            value?: unknown;
-            [k: string]: unknown;
-        }>;
+        ns?: string;
+        schema?: unknown;
+        value?: unknown;
+        revision?: unknown;
         [k: string]: unknown;
     }>;
     documentPath?: string;
@@ -535,9 +534,12 @@ export interface SessionQueryService {
         limit: number;
     }) => Promise<{
         items?: Array<{
-            sessionId?: string;
-            id?: string;
-            title?: string;
+            header?: {
+                id?: string;
+                [key: string]: unknown;
+            };
+            live?: boolean;
+            persisted?: boolean;
             bestMatch?: {
                 snippet?: string;
             };
@@ -579,16 +581,23 @@ export interface MessageFeedbackService {
         };
     }>;
 }
-/** dsh-user-questions interactive answerer provider. */
-export interface UserQuestionsService {
-    registerProvider: (provider: {
-        ask: (request: {
-            questions?: UserQuestion[];
-            signal?: {
-                addEventListener: (ev: string, cb: () => void, opts?: unknown) => void;
-            };
-        }) => Promise<unknown>;
-    }) => () => void;
+/** dsh-user-questions waterfall request (0.1.2-alpha.2: `user-questions/request` event). */
+export interface UserQuestionRequest {
+    questions?: UserQuestion[];
+    agent?: {
+        session?: {
+            id?: string;
+        };
+    };
+    signal?: AbortSignal;
+}
+/** dsh-user-questions answer (the waterfall's resolved value). */
+export interface UserQuestionAnswer {
+    answers: Array<{
+        id: string;
+        selected?: string[];
+        custom?: string;
+    }>;
 }
 /** dsh-agent-presets service. */
 export interface AgentPresetsService {

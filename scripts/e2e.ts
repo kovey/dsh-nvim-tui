@@ -14,10 +14,14 @@ import path from 'node:path'
 const prompt = process.argv[2] ?? '你好，请只回复两个字：收到'
 const dumpPath = path.join(os.tmpdir(), `dsh-nvim-tui-e2e-${process.pid}.txt`)
 const timeoutMs = Number(process.env.DSH_NVIM_TUI_E2E_TIMEOUT ?? 180000)
+// Overridable harness entry (e.g. DSH_BIN=/tmp/dsh-alpha-prefix/node_modules/.bin/dsh
+// DSH_NVIM_TUI_PROFILE=nvim-tui-a2 for alpha verification) — defaults to PATH `dsh`.
+const dshBin = process.env.DSH_BIN ?? 'dsh'
+const profile = process.env.DSH_NVIM_TUI_PROFILE ?? 'nvim-tui'
 
 try { fs.unlinkSync(dumpPath) } catch {}
 
-const child = spawn('dsh', ['--profile', 'nvim-tui'], {
+const child = spawn(dshBin, ['--profile', profile], {
   stdio: ['ignore', 'pipe', 'pipe'],
   env: {
     ...process.env,

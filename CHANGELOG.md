@@ -3,6 +3,62 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.2.7（2026-08-31）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.7)
+
+- **全面适配 DeepSeek Harness v0.1.2-alpha.2**：peer 依赖
+  `@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` 与 `@deepseek-ai/dsh-tools`
+  升至 `^0.1.2-alpha.2`（cordis 4.0.2）；逐项核对 0.1.1-rc.2 → 0.1.2-alpha.2
+  的 40+ 个包的 API 与事件契约（alpha.1 的 15 项优化 + alpha.2 的
+  连接重试/定时计划/`SessionEvent.ignorable` 恢复等改动一并覆盖），
+  结论与修复如下：
+
+  - **破坏性变化（3 处已修）**：
+    ① `dsh-permission-presets.current(events)` 改为 `current(session)`——
+    `/permission` 两处调用改传会话；
+    ② `dsh-user-questions` 移除 `registerProvider`，改为 scoped waterfall
+    事件 `user-questions/request`——runner 改为在宿主事件上认领请求
+    （`next()` 委托、`{answers}` 结算、AbortSignal 中止），删除过时的
+    `UserQuestionsService` 接口；
+    ③ `dsh-host-plugin-inventory.list()` 改为 async——`/plugins` 补
+    `await`。
+  - **顺带修复的预存 bug（与版本无关，两版同病）**：
+    ① `/compact` 首参传错——真实契约是 `compactNow(agent, signal)`，
+    旧代码传 `{session, options}` 导致 `agent.runMaintenance is not a
+    function`，压缩永远失败，改传 live agent；
+    ② `/permission` 显示预设标签读 `optionOf().label`——真实字段是
+    `name`，标签从此生效；
+    ③ `/search` 结果读 `h.title/sessionId/id`——真实结构是
+    `h.header.id`，改用之；
+    ④ `goal/change` 事件里 `roundsStarted` 是 `data` 的兄弟字段而非
+    `data.goal` 的成员——状态栏目标进度从此显示真实轮数；
+    ⑤ `/todo` 增加 `todos` 整日志投影兜底（dsh-tool-todo 注册的
+    `projections.stateOf(session, 'todos')`），恢复会话不带事件重放时
+    清单不再丢失。
+  - **核实为兼容、无需改动的面**：`createUserMessage`/`defineTool`/
+    `installModelSelection` 三处直接编译 API 签名不变；`Agent` 接口
+    （session/status/cancel/followup/steer/inbox/options）、`AgentStatus`
+    取值、`agent/status`、`subagent/start|end`、`workflow/*`、
+    `approval/request` 事件 payload 全部不变（subagent 的 provider/model/
+    reasoningEffort 选择加在请求侧而非事件侧）；会话事件
+    `turn/*`、`assistant/*`、`tool/call`、`tool/result`（含
+    `meta.diffs` 呈现）、`compaction/*`、`goal/change`、`todo/write`、
+    `tool-workflow/*` 契约不变（`todo/write` 类型声明迁到
+    dsh-tool-todo、`CallId`→`ToolCallId` 品牌改名均不影响运行时）；
+    `sessionStats`/`contextBreakdown` 投影形状不变；
+    settings/workspace/skill/plan/session-query/session-title/
+    message-feedback/session-reference/file-reference/attachment/
+    agent-default-model/agent-presets/session-persistence 服务契约不变。
+  - **验证**：类型检查 + smoke 通过；scratch 安装
+    `@deepseek-ai/dsh@alpha`（0.1.2-alpha.2）真机 e2e 通过（真实模型
+    回复正常渲染）。
+  - **新增 [UPGRADE.md](./UPGRADE.md) 升级指南**：宿主升级、插件更新、
+    profile cordis.patch.yml 修正（删除与 alpha.2 dsh-base 重复的
+    storage 三件套行、删除失效的 shipped 预设根）、第三方插件兼容
+    （dsh-context 需 ≥ 0.38.5）、scratch 安全试跑与回滚，全部步骤实测。
+  - **注意**：宿主需升级到 0.1.2-alpha.2
+    （`npm i -g @deepseek-ai/dsh@alpha`）后再更新本插件；peer 范围
+    `^0.1.2-alpha.2` 与旧宿主 rc.2 不混用。
+
 ## [v0.2.6（2026-08-29）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.6)
 
 覆盖提交：

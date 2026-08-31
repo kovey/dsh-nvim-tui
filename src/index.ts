@@ -38,11 +38,11 @@ import type {
   LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService,
   SessionTitleService, SettingsService, SkillsService, SubagentInfo,
   SubagentsService, ToolsService, Usage,
-  UserQuestionsService, WorkspacesService,
+  WorkspacesService,
 } from './types.js'
 
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
-export const BUILD_VERSION = '0.2.6'
+export const BUILD_VERSION = '0.2.7'
 export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 export const name = 'dsh-nvim-tui'
@@ -106,7 +106,6 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       messageFeedback: MessageFeedbackService
       sessionPersistence: SessionPersistenceService
       agentPresets: AgentPresetsService
-      userQuestions: UserQuestionsService
       workspaces: WorkspacesService
     }
     const svc = <K extends keyof ServiceMap>(name: K): ServiceMap[K] | undefined =>
@@ -1032,10 +1031,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       }
       notice(t('正在压缩上下文…'))
       try {
-        const result = await compaction.compactNow(
-          { session: rec.handle.agent.session, options: rec.handle.agent.options ?? {} },
-          new AbortController().signal,
-        )
+        const result = await compaction.compactNow(rec.handle.agent, new AbortController().signal)
         if (result === null) {
           notice(t('没有可压缩的历史'))
         } else {
@@ -1060,7 +1056,16 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         void followup(rec, `请更新任务清单：添加一项「${text}」${keep}`)
         return
       }
-      const items = rec.todosItems ?? []
+      // Whole-log todos projection (dsh-tool-todo registers `todos` on
+      // ctx.sessionProjections): authoritative on resumed sessions; fall back
+      // to the live todo/write fold.
+      let items: Array<{ content: string; status: string }> = rec.todosItems ?? []
+      const projections = svc('sessionProjections')
+      if (typeof projections?.stateOf === 'function') {
+        const proj = projections.stateOf(rec.handle.agent.session, 'todos') as
+          Array<{ content: string; status: string }> | null | undefined
+        if (Array.isArray(proj) && proj.length > 0) items = proj
+      }
       if (items.length === 0) {
         notice(t('（当前没有待办任务——直接告诉我要做什么，我会自己维护清单）'))
         return
@@ -1451,13 +1456,15 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     /** /plugins — read-only host loader inventory (official Plugins
      *  settings tab counterpart), rendered in a scrollable float like
      *  /sessions and the other listing commands. */
-    const pluginsCommand = (): void => {
+    const pluginsCommand = async (): Promise<void> => {
       const inv = svc('pluginInventory')
       if (typeof inv?.list !== 'function') {
         notice(t('plugin-inventory 服务未装配（dsh-host-plugin-inventory）'))
         return
       }
-      const entries = inv.list().entries ?? []
+      // dsh 0.1.2-alpha.2: list() 改为 async，返回 Promise<PluginInventorySnapshot>。
+      const snapshot = await inv.list()
+      const entries = snapshot.entries ?? []
       const lines: string[] = ['']
       if (entries.length === 0) {
         lines.push(t('（loader 没有插件条目）'))
@@ -1486,10 +1493,10 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       try {
         const names = [...permission.names]
         if (!a) {
-          const current = permission.current(rec.handle.agent.session.events)
+          const current = permission.current(rec.handle.agent.session)
           for (const name of names) {
             const opt = permission.optionOf(name)
-            notice(`${name}${name === current ? ' ✓（当前）' : ''} · ${opt?.label ?? name}${opt?.description ? `) — ${opt.description}` : ''}`)
+            notice(`${name}${name === current ? ' ✓（当前）' : ''} · ${opt?.name ?? name}${opt?.description ? `) — ${opt.description}` : ''}`)
           }
           return
         }
@@ -1499,10 +1506,10 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
           return
         }
         const opt = permission.optionOf(name)
-        const current = permission.current(rec.handle.agent.session.events)
+        const current = permission.current(rec.handle.agent.session)
         // Danger-full-access switch asks for an explicit confirmation first
         // (official client's modal acknowledgement counterpart).
-        const danger = /full|danger/i.test(name) || /全|危险/.test(opt?.label ?? '')
+        const danger = /full|danger/i.test(name) || /全|危险/.test(opt?.name ?? '')
         if (danger && name !== current) {
           const ok = await openPicker(t('危险权限确认'), [
             { label: '确认切换到全访问（危险操作需谨慎）', value: 'yes' },
@@ -2036,8 +2043,8 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         }
         const sel = await openPicker(`搜索结果（${hits.length}）`,
           hits.map((h) => ({
-            label: `${h.title ?? h.sessionId ?? h.id ?? '?'} · ${String(h.bestMatch?.snippet ?? '').slice(0, 48)}`,
-            value: String(h.sessionId ?? h.id),
+            label: `${String(h.header?.id ?? '?')} · ${String(h.bestMatch?.snippet ?? '').slice(0, 48)}`,
+            value: String(h.header?.id),
           })))
         if (sel !== null) await selectSession(sel)
       } catch (err) {
@@ -3546,7 +3553,15 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
             notice(`计划模式已${rec.planActive ? '开启' : '关闭'}`)
           }
         } else if (event.type === 'goal/change') {
-          rec.goal = (event.data?.goal as GoalState | undefined) ?? null
+          // `data.goal` is the durable GoalSnapshot; `roundsStarted` rides as
+          // a sibling of the snapshot, so fold it back in for the statusline.
+          const goal = (event.data?.goal as GoalState | undefined | null) ?? null
+          if (goal === null) {
+            rec.goal = null
+          } else {
+            const roundsStarted = (event.data as { roundsStarted?: number } | undefined)?.roundsStarted
+            rec.goal = roundsStarted === undefined ? goal : { ...goal, roundsStarted }
+          }
           if (owner.id === activeId) updateStatusline()
         }
         if (!echoed) {
@@ -3677,30 +3692,30 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         })
       }))
 
-      // User questions: register as the interactive answerer.
-      const userQuestions = svc('userQuestions')
-      if (userQuestions?.registerProvider) {
-        hostDisposers.push(userQuestions.registerProvider({
-          ask: (request) => new Promise((resolve, reject) => {
-            questionsResolve = { resolve, reject }
-            request.signal?.addEventListener('abort', () => {
+      // User questions: claim the host's `user-questions/request` waterfall
+      // as the interactive answerer (dsh 0.1.2-alpha.2: registerProvider was
+      // removed in favor of the scoped cordis waterfall).
+      hostDisposers.push(runtimeCtx.on('user-questions/request', (request, next) => {
+        if (disposed) return next()
+        return new Promise((resolve, reject) => {
+          questionsResolve = { resolve, reject }
+          request.signal?.addEventListener('abort', () => {
+            if (questionsResolve) {
+              const r = questionsResolve
+              questionsResolve = null
+              r.reject(new Error('cancelled by caller'))
+            }
+          }, { once: true })
+          void luaCall('require("dsh_tui").show_questions(...)', [request.questions ?? []])
+            .catch(() => {
               if (questionsResolve) {
                 const r = questionsResolve
                 questionsResolve = null
-                r.reject(new Error('cancelled by caller'))
+                r.reject(new Error('no UI'))
               }
-            }, { once: true })
-            void luaCall('require("dsh_tui").show_questions(...)', [request.questions ?? []])
-              .catch(() => {
-                if (questionsResolve) {
-                  const r = questionsResolve
-                  questionsResolve = null
-                  r.reject(new Error('no UI'))
-                }
-              })
-          }),
-        }))
-      }
+            })
+        })
+      }))
 
       // History list for resume: only THIS project's project-level sessions.
       // Subagent children are bare-UUID ids (no `session-` prefix) — excluded,

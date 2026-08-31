@@ -1,6 +1,6 @@
 {
   "name": "dsh-nvim-tui",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Neovim-style TUI for DeepSeek Harness (dsh): nvim renders the terminal, a Node runner bridges DSH agent events over msgpack-RPC — sessions, tool cards, reasoning panel, approvals, markdown tables",
   "type": "module",
   "main": "lib/index.js",
@@ -13,7 +13,8 @@
     "lib",
     "nvim",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "UPGRADE.md"
   ],
   "dsh": {
     "bundle": {
@@ -29,11 +30,11 @@
     "e2e": "node scripts/e2e.ts"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-agent": "^0.1.1-rc.2",
-    "@deepseek-ai/dsh-llm": "^0.1.1-rc.2"
+    "@deepseek-ai/dsh-agent": "^0.1.2-alpha.2",
+    "@deepseek-ai/dsh-llm": "^0.1.2-alpha.2"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-tools": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-tools": "^0.1.2-alpha.2",
     "neovim": "^5.4.0",
     "string-width": "^8.2.2",
     "tar": "^7.5.22"

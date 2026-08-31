@@ -78,18 +78,26 @@ dsh plugin --profile tui update --latest kovey/dsh-nvim-tui      # 官方 tui pr
 dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui # 自定义 profile
 
 # 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
-dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.5"
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.7"
 ```
+
+> **宿主 dsh 0.1.1-rc.2 → 0.1.2-alpha.2 的完整升级步骤**（宿主升级、profile
+> patch 修正、第三方插件兼容、验证与回滚）见 [UPGRADE.md](./UPGRADE.md)。
+> v0.2.7 起 peer 依赖锚定 `^0.1.2-alpha.2`，必须与 alpha.2 宿主配套使用。
 
 ## 运行依赖
 
 | 依赖 | 最低版本 | 说明 |
 |---|---|---|
-| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | **0.1.1-rc.2** | peer 依赖 `@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` `^0.1.1-rc.2`，由 profile 的 dsh 安装锚点提供 |
+| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | **0.1.2-alpha.2**（`alpha` dist-tag） | peer 依赖 `@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` `^0.1.2-alpha.2`，由 profile 的 dsh 安装锚点提供 |
 | [Neovim](https://neovim.io) | **0.9**（推荐 **0.10+**） | 0.10+ 完整体验（输入框四边边框、弹窗提示嵌入边框）；0.9 可运行但降级（`❯` 提示列与左边框以虚拟文本呈现、弹窗提示为分离提示条） |
 | Node.js | 23.6+ | 由 dsh 提供（`engines` 声明），一般无需单独安装 |
 
-> 开发与 CI 实测：dsh 0.1.1-rc.2 / nvim 0.12.4。
+> 开发与 CI 实测：dsh 0.1.2-alpha.2 / nvim 0.12.4。
+
+> 升级宿主：`npm i -g @deepseek-ai/dsh@alpha`（0.1.2-alpha.2 修复了
+> Node 24.0–24.11.1 的启动/HMR 问题；v0.2.7 起 peer 依赖锚定
+> `^0.1.2-alpha.2`，与旧宿主 rc.2 不混用）。
 
 ## 开发安装（本地仓库直链）
 
@@ -105,7 +113,7 @@ dsh --profile nvim-tui
 > 本仓库根目录就是 bundle 本身：`cordis.patch.yml` 挂载 `nvim-tui-runner` 行，
 > package.json 的 `dsh.bundle.patch` 声明了它。
 
-启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.2.3 (build YYYY-MM-DD HH:mm) · channel N`。
+启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.2.7 (build YYYY-MM-DD HH:mm) · channel N`。
 输入 `/help` 随时查看全部命令。
 
 ## 配置
