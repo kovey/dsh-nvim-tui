@@ -185,6 +185,7 @@ export function diffTexts(before: string | null, after: string | null, opts: Dif
   let removed = 0
   let rendered = 0
   let truncated = false
+  const room = Math.max(1, maxLines - 1)
   const totalRender = ranges.reduce((acc, r) => acc + (r[1] - r[0] + 1), 0)
   for (let r = 0; r < ranges.length; r++) {
     const [lo, hi] = ranges[r]!
@@ -203,7 +204,18 @@ export function diffTexts(before: string | null, after: string | null, opts: Dif
         cAdded++
       }
     }
-    if (lines.length + chunk.length > maxLines - 1) {
+    if (lines.length + chunk.length > room) {
+      // Even the first chunk overflows the cap (one giant hunk): render its
+      // HEAD — a partial block with real stats is infinitely better than an
+      // empty block with +0 −0 (which the caller then drops entirely).
+      const keep = Math.max(0, room - lines.length)
+      const part = chunk.slice(0, keep)
+      lines.push(...part)
+      for (const l of part) {
+        if (l.startsWith('+ ')) added++
+        else if (l.startsWith('- ')) removed++
+        rendered++
+      }
       truncated = true
       break
     }

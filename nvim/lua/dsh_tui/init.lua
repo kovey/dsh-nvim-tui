@@ -2025,12 +2025,19 @@ function M.applyDimPalette()
     fg = floatBorderHl.fg,
     bg = normal_bg,
   })
+  -- The popup TITLE (the text on the top border) must sit on the same flat
+  -- background: themes like this one give FloatTitle a literal black bg,
+  -- which paints a dark block behind every title bar.
+  local floatTitleHl = vim.api.nvim_get_hl(0, { name = 'FloatTitle', link = false })
+  floatTitleHl.bg = normal_bg
+  vim.api.nvim_set_hl(0, 'FloatTitle', floatTitleHl)
   -- Diff row colors FOLLOW THE THEME: read the colorscheme's own DiffAdd /
   -- DiffDelete (the user's normal diff look) so switching themes re-tints
   -- the +/− rows too. Only when the theme leaves a background empty do we
   -- blend the foreground into the editor bg (Claude-style filled rows on
-  -- ANY theme). Token syntax marks (priority 4097) keep their fg and fall
-  -- through to this row fill for their background.
+  -- ANY theme). The row group carries the BACKGROUND ONLY — the text color
+  -- belongs to the syntax tokens (priority 4097), which keeps token colors
+  -- from fighting a row-level fg on the same text.
   local diffAddHl = vim.api.nvim_get_hl(0, { name = 'DiffAdd', link = false })
   local diffDelHl = vim.api.nvim_get_hl(0, { name = 'DiffDelete', link = false })
   local function diffRow(theme, fallbackFg, ratio)
@@ -2039,7 +2046,7 @@ function M.applyDimPalette()
     if bg == nil then
       bg = blend24(normal_bg, fg, ratio)
     end
-    return { fg = fg, bg = bg }
+    return { bg = bg }
   end
   vim.api.nvim_set_hl(0, 'DshTuiDiffAdd', diffRow(diffAddHl, 0x3fb950, 0.20))
   vim.api.nvim_set_hl(0, 'DshTuiDiffDel', diffRow(diffDelHl, 0xf85149, 0.18))

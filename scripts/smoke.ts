@@ -1071,6 +1071,18 @@ description:
     Array.from({ length: 50 }, (_, i) => (i === 25 ? 'changed' : 'l' + i)).join('\n'))
   assert.ok(midEdit.lines.includes('+ changed'), 'middle-of-file edit found')
   assert.ok(midEdit.lines.length < 50, 'distant context trimmed (no whole-file echo)')
+  // A single hunk LARGER than the cap must still render its head with real
+  // stats — an empty +0 −0 block gets the whole card dropped by the runner
+  // (the hidden bug that made some diffs disappear entirely).
+  const giantEdit = diffTexts(
+    Array.from({ length: 60 }, (_, i) => 'old' + i).join('\n'),
+    Array.from({ length: 60 }, (_, i) => 'new' + i).join('\n'))
+  assert.ok(giantEdit.truncated, 'giant single-hunk diff truncates')
+  assert.ok(giantEdit.lines.length >= 4, 'giant hunk still renders its head')
+  assert.ok(giantEdit.stats.added + giantEdit.stats.removed > 0,
+    'giant hunk reports real stats (never +0 −0 with content)')
+  assert.ok(giantEdit.lines.some((l: string) => l.startsWith('- old')), 'giant hunk head keeps − rows')
+  assert.ok(giantEdit.lines.some((l: string) => l.includes('省略')), 'giant hunk shows the omission notice')
   const prev = locale()
   setLocale('en')
   assert.equal(t('修改'), 'Modified', 'diff action label translated')
@@ -1375,8 +1387,8 @@ description:
     return { ok = ok, err = tostring(err) }`, [])
   assert.equal(hlOk.ok, true, 'highlight_syntax never throws (no treesitter → flat fallback)')
   const diffHl = await lua('return { add = vim.api.nvim_get_hl(0, { name = "DshTuiDiffAdd" }), del = vim.api.nvim_get_hl(0, { name = "DshTuiDiffDel" }) }', [])
-  assert.equal(typeof diffHl.add.fg, 'number', 'diff add group defined')
-  assert.equal(typeof diffHl.del.fg, 'number', 'diff del group defined')
+  assert.equal(diffHl.add.fg, undefined, 'diff add group carries NO fg (text color belongs to syntax tokens)')
+  assert.equal(diffHl.del.fg, undefined, 'diff del group carries NO fg (text color belongs to syntax tokens)')
   assert.equal(typeof diffHl.add.bg, 'number', 'diff add row carries a background fill')
   assert.equal(typeof diffHl.del.bg, 'number', 'diff del row carries a background fill')
   const inputWinhl = await lua('return vim.wo[require("dsh_tui").ids().inputWin].winhl', [])
@@ -1517,6 +1529,15 @@ description:
   await lua(`vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin)`, [])
   const dimHl = await lua('return vim.api.nvim_get_hl(0, { name = "DshTuiDim" })', [])
   assert.equal(dimHl.link, 'Comment', 'DshTuiDim follows the theme Comment')
+  // popup surfaces sit flat on the editor background: title included — some
+  // themes give FloatTitle a literal black bg (a dark block behind titles)
+  const flatHl = await lua(`return {
+    nf = vim.api.nvim_get_hl(0, { name = "NormalFloat", link = false }).bg,
+    fb = vim.api.nvim_get_hl(0, { name = "FloatBorder", link = false }).bg,
+    ft = vim.api.nvim_get_hl(0, { name = "FloatTitle", link = false }).bg,
+  }`, [])
+  assert.equal(flatHl.fb, flatHl.nf, 'popup border background follows the float surface')
+  assert.equal(flatHl.ft, flatHl.nf, 'popup title background follows the float surface (no black block)')
   // a colorscheme (re)applied late must not wash the palette back to white
   await lua('vim.cmd("colorscheme default")', [])
   await new Promise((r) => setTimeout(r, 100))

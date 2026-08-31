@@ -772,6 +772,8 @@ export class FeedRenderer {
     const parsed: Array<{ text: string; spans: Span[]; group?: string | null }> = []
     // Syntax-highlight sources: fenced code (```lang) and diff blocks (lang
     // inferred from the ✎ header path). Rows = final buffer rows (0-based).
+    // Diff rows keep their tokens: the row group carries ONLY the background
+    // tint (see applyDimPalette), so token colors never fight a row fg.
     const codeBlocks: Array<{ lang: string; row: number; col: number; lines: string[] }> = []
     let fenceOpen = false
     let fenceLang = ''
@@ -828,6 +830,11 @@ export class FeedRenderer {
       }
       if (diffRegion) {
         if (entry.raw.startsWith('  ')) {
+          // Context rows collect into the syntax block too — the block's
+          // START must anchor at the FIRST collected row (context before the
+          // first +/− line included), or every token lands shifted down by
+          // the leading-context count.
+          if (diffRow === -1) diffRow = parsed.length
           diffCode.push(entry.raw.slice(2))
         } else {
           closeDiffBlock()
