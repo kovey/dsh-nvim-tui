@@ -3,7 +3,12 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [未发布]
+## [v0.2.11（2026-09-01）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.11)
+
+覆盖提交：
+[`fb82a9c`](https://github.com/kovey/dsh-nvim-tui/commit/fb82a9c) ·
+[`9156303`](https://github.com/kovey/dsh-nvim-tui/commit/9156303) ·
+[`9ef5111`](https://github.com/kovey/dsh-nvim-tui/commit/9ef5111)
 
 - **修复：diff 上下文行携带围栏标记导致全文染成天蓝**。文件编辑卡片的
   上下文行以 `  ` 前缀原样渲染——此前只收集进语法块而未 `continue`，继续
