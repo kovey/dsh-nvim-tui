@@ -929,6 +929,18 @@ description:
   const diffGroups = new Set(diffMarks.map((m) => m[3]?.hl_group))
   assert.ok(diffGroups.has('DshTuiDiffAdd') && diffGroups.has('DshTuiDiffDel'),
     'diff lines carry add/del highlight groups')
+  // regression: a diff CONTEXT line holding a fence marker (`  ```` from a code
+  // block inside an edited file) must NOT toggle the view's fence state —
+  // everything after the card stays plain, never sky-blue DshTuiCode
+  feedA.pushDiff('✎ 修改 README.md (+1 −1)', ['+ new line', '  ```', '- old line'])
+  feedA.applyEvent({ type: 'assistant/chunk', data: { chunk: { type: 'text-delta', text: '围栏之后的普通文本\n' } } })
+  await new Promise((r) => setTimeout(r, 250))
+  const afterFenceLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  const afterFenceRow = afterFenceLines.indexOf('围栏之后的普通文本')
+  assert.ok(afterFenceRow >= 0, 'text after a fence-marker context line renders')
+  const afterFenceMarks: any[] = await nvim.request('nvim_buf_get_extmarks', [chatA.chatBuf, -1, 0, -1, { details: true }])
+  const codeOnRow = afterFenceMarks.filter((m) => m[1] === afterFenceRow && m[3]?.hl_group === 'DshTuiCode')
+  assert.equal(codeOnRow.length, 0, 'fence marker inside diff context must not leak code color below the card')
   // transient activity rows never commit: an echo under a live '·· thinking…'
   // line must not stack a second thinking row into the chat
   feedA.applyEvent({ type: 'turn/start', data: {} })
