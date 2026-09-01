@@ -1655,7 +1655,12 @@ end
 --- Buffer-scoped input autocmds (re-registered whenever the input buffer is
 --- rebuilt — its bufhidden=wipe means closing the window destroys it).
 local function install_input_autocmds()
+  -- Idempotent: a plugin may hijack the input window's buffer and wipe its
+  -- surface; the WinEnter self-heal re-runs this — the augroup clears any
+  -- previous hooks so nothing stacks.
+  local grp = vim.api.nvim_create_augroup('dsh_tui_input', { clear = true })
   vim.api.nvim_create_autocmd('TextChanged', {
+    group = grp,
     buffer = input_buf,
     callback = function()
       M.resize_input()
@@ -1664,6 +1669,7 @@ local function install_input_autocmds()
     end,
   })
   vim.api.nvim_create_autocmd('TextChangedI', {
+    group = grp,
     buffer = input_buf,
     callback = function()
       M.resize_input()
@@ -1674,6 +1680,7 @@ local function install_input_autocmds()
   -- Leaving insert mode (second <Esc>, <C-c>, a float taking focus…) closes
   -- the completion menus; re-entering refreshes them against the input text.
   vim.api.nvim_create_autocmd('InsertLeave', {
+    group = grp,
     buffer = input_buf,
     callback = function()
       M.close_cmd_menu()
@@ -1683,11 +1690,13 @@ local function install_input_autocmds()
   -- Completion plugins lazy-load (nvim-cmp on InsertEnter); retry the
   -- per-buffer disable at every later opportunity until it sticks.
   vim.api.nvim_create_autocmd('User', {
+    group = grp,
     pattern = 'VeryLazy',
     once = true,
     callback = function() M.disable_external_completion() end,
   })
   vim.api.nvim_create_autocmd('InsertEnter', {
+    group = grp,
     buffer = input_buf,
     callback = function()
       vim.defer_fn(function()
@@ -1699,6 +1708,7 @@ local function install_input_autocmds()
   -- Keep the frame's right edge in sync with the input rows (typing, undo,
   -- paste, history) — clearing and re-adding a handful of extmarks.
   vim.api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI' }, {
+    group = grp,
     buffer = input_buf,
     callback = function() M.refresh_input_frame() end,
   })
@@ -1715,7 +1725,25 @@ local function install_autocmds()
   vim.api.nvim_create_autocmd('WinEnter', {
     callback = function()
       local w = vim.api.nvim_get_current_win()
-      if input_win and w == input_win then return end
+      if input_win and w == input_win then
+        -- Self-heal: a plugin may have wiped the input surface (keymaps /
+        -- hooks) while it had the window — re-assert them whenever focus
+        -- returns to the input.
+        if input_buf and vim.api.nvim_buf_is_valid(input_buf) then
+          local hasSubmit = false
+          for _, m in ipairs(vim.api.nvim_buf_get_keymap(input_buf, 'i')) do
+            if m.lhs == '<CR>' and type(m.rhs) == 'string' and m.rhs ~= '' then
+              hasSubmit = true
+              break
+            end
+          end
+          if not hasSubmit then
+            install_keymaps()
+            install_input_autocmds()
+          end
+        end
+        return
+      end
       local ok, cfg = pcall(vim.api.nvim_win_get_config, w)
       if ok and cfg.relative ~= '' and cfg.relative ~= nil then return end -- floats
       if vim.bo[vim.api.nvim_win_get_buf(w)].buftype ~= 'nofile' then return end
@@ -1852,6 +1880,67 @@ local function install_autocmds()
   -- switches — must not wash the highlights back to pure white.
   vim.api.nvim_create_autocmd('ColorScheme', {
     callback = function() M.applyHighlights() end,
+  })
+  -- Window ownership discipline: the chat and input windows may only ever
+  -- show their own buffers. A plugin opening a file into one of them
+  -- (nvim-tree select, :edit, :term…) gets the buffer RELOCATED into a
+  -- fresh tab (focus follows) and the TUI window is restored. Plugin
+  -- windows themselves are never touched — user plugins and the TUI stay
+  -- isolated from each other.
+  vim.api.nvim_create_autocmd({ 'BufWinEnter', 'WinEnter', 'WinNew', 'TabEnter' }, {
+    callback = function()
+      vim.schedule(function()
+        if M._quitting or M._buildingLayout then return end
+        local checks = {}
+        if chat_win and vim.api.nvim_win_is_valid(chat_win) then
+          checks[#checks + 1] = { 'chat', chat_win, (M._activeId and M._chats[M._activeId]) or nil }
+        end
+        if input_win and vim.api.nvim_win_is_valid(input_win) then
+          checks[#checks + 1] = { 'input', input_win, input_buf }
+        end
+        for _, c in ipairs(checks) do
+          local tag, win, own = c[1], c[2], c[3]
+          if own ~= nil and vim.api.nvim_buf_is_valid(own)
+            and vim.api.nvim_win_get_buf(win) ~= own then
+            local foreign = vim.api.nvim_win_get_buf(win)
+            -- Restore the TUI window FIRST (even if the tab dance fails, the
+            -- input box is back), then move the file into a fresh tab.
+            local okRestore = pcall(vim.api.nvim_win_set_buf, win, own)
+            vim.cmd('tabnew')
+            local okFile = pcall(vim.api.nvim_win_set_buf, 0, foreign)
+          end
+        end
+        -- INPUT identity takeover: `:edit file` while the input is EMPTY
+        -- renames the input buffer IN PLACE and loads the file into it (the
+        -- buffer id never changes, so the window-swap check above cannot see
+        -- it). Restore the input surface and open the file in a fresh tab.
+        if input_win and vim.api.nvim_win_is_valid(input_win)
+          and input_buf and vim.api.nvim_buf_is_valid(input_buf) then
+          local taken = vim.bo[input_buf].buftype ~= 'nofile'
+            or vim.api.nvim_buf_get_name(input_buf) ~= ''
+          if taken then
+            local path = vim.api.nvim_buf_get_name(input_buf)
+            pcall(vim.api.nvim_buf_set_name, input_buf, '')
+            pcall(function() vim.bo[input_buf].buftype = 'nofile' end)
+            pcall(function() vim.bo[input_buf].bufhidden = 'hide' end)
+            pcall(function() vim.bo[input_buf].swapfile = false end)
+            pcall(vim.api.nvim_buf_set_lines, input_buf, 0, -1, false, { '' })
+            pcall(function() vim.bo[input_buf].modified = false end)
+            pcall(vim.api.nvim_win_set_buf, input_win, input_buf)
+            -- The takeover wiped the buffer's locals (b: vars, mappings):
+            -- re-assert the whole input surface.
+            vim.b[input_buf].ministatusline_disable = true
+            install_keymaps()
+            install_input_autocmds()
+            M.disable_external_completion()
+            if path ~= '' then
+              vim.cmd('tabnew')
+              pcall(vim.cmd, 'edit ' .. vim.fn.fnameescape(path))
+            end
+          end
+        end
+      end)
+    end,
   })
   vim.defer_fn(function() M.disable_external_completion() end, 300)
   vim.defer_fn(function() M.disable_external_completion() end, 1200)
@@ -2120,6 +2209,7 @@ function M.start()
   -- any NON-floating window that is not part of the TUI in the SAME event
   -- cycle, so their UI never gets a frame. Active for a few seconds only.
   M._bootGuardUntil = vim.uv.now() + 3000
+  M._mainTab = vim.api.nvim_get_current_tabpage()
   vim.api.nvim_create_autocmd({ 'WinNew', 'BufWinEnter' }, {
     callback = function()
       -- Deferred: during WinNew the float's config is not applied yet, so a
@@ -2128,6 +2218,9 @@ function M.start()
       vim.schedule(function()
         if M._bootGuardUntil == nil or vim.uv.now() > M._bootGuardUntil then return end
         local w = vim.api.nvim_get_current_win()
+        -- Only police the TUI's own tab: windows the window-ownership guard
+        -- relocated into a fresh tab belong to the plugin and stay put.
+        if vim.api.nvim_win_get_tabpage(w) ~= M._mainTab then return end
         local ok, cfg = pcall(vim.api.nvim_win_get_config, w)
         local isFloat = ok and cfg.relative ~= '' and cfg.relative ~= nil
         if not isFloat and w ~= chat_win and w ~= input_win then

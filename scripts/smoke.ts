@@ -187,6 +187,74 @@ try {
   await lua('vim.o.mouse = "a"', [])
   await new Promise((r) => setTimeout(r, 80))
   assert.equal(await lua('return vim.o.mouse', []), '', 'mouse re-enabling is neutralized (lazy plugins cannot flip it back)')
+
+  // 3c. window ownership: a plugin (nvim-tree select / :edit) opening a file
+  // into the chat or input window gets the buffer RELOCATED into a new tab
+  // (focus follows) and the TUI window is restored — plugins stay isolated.
+  const fileBuf = await lua(`local b = vim.api.nvim_create_buf(true, false)
+    vim.api.nvim_buf_set_lines(b, 0, -1, false, { 'line1', 'line2' })
+    return b`, [])
+  const tabsBefore = await lua('return vim.fn.tabpagenr("$")', [])
+  await lua('vim.api.nvim_win_set_buf(require("dsh_tui").ids().inputWin, ...)', [fileBuf])
+  await new Promise((r) => setTimeout(r, 300))
+  const afterInput = await lua(`return {
+    tabs = vim.fn.tabpagenr('$'),
+    curTabBuf = vim.api.nvim_win_get_buf(0),
+    inputBuf = vim.api.nvim_win_get_buf(require("dsh_tui").ids().inputWin),
+  }`, [])
+  assert.equal(afterInput.tabs, tabsBefore + 1, 'input hijack opens a new tab for the file')
+  assert.equal(afterInput.curTabBuf, fileBuf, 'focus follows the file into the new tab')
+  assert.equal(afterInput.inputBuf, ids.inputBuf, 'input window restored to the input buffer')
+  await lua('vim.cmd("tabclose")', [])
+  await new Promise((r) => setTimeout(r, 200))
+  await lua('vim.api.nvim_win_set_buf(require("dsh_tui").ids().chatWin, ...)', [fileBuf])
+  await new Promise((r) => setTimeout(r, 300))
+  const afterChat = await lua(`return {
+    tabs = vim.fn.tabpagenr('$'),
+    curTabBuf = vim.api.nvim_win_get_buf(0),
+    chatBuf = vim.api.nvim_win_get_buf(require("dsh_tui").ids().chatWin),
+  }`, [])
+  assert.equal(afterChat.tabs, tabsBefore + 1, 'chat hijack opens a new tab for the file')
+  assert.equal(afterChat.curTabBuf, fileBuf, 'focus follows the file into the new tab (chat case)')
+  assert.equal(afterChat.chatBuf, await lua('return require("dsh_tui").ids().chatBuf', []),
+    'chat window restored to the active chat buffer')
+  await lua('vim.cmd("tabclose")', [])
+  await new Promise((r) => setTimeout(r, 200))
+  // 3d. input self-heal: a wiped submit keymap is re-asserted on WinEnter.
+  await lua('vim.api.nvim_buf_del_keymap(require("dsh_tui").ids().inputBuf, "i", "<CR>")', [])
+  await lua('vim.api.nvim_set_current_win(require("dsh_tui").ids().chatWin)', [])
+  await lua('vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin)', [])
+  await new Promise((r) => setTimeout(r, 200))
+  const crMap = await lua(`for _, m in ipairs(vim.api.nvim_buf_get_keymap(require("dsh_tui").ids().inputBuf, "i")) do
+    if m.lhs == '<CR>' then return true end end
+    return false`, [])
+  assert.equal(crMap, true, 'input submit keymap self-heals on WinEnter')
+  // 3e. input IDENTITY takeover: `:edit file` while the input is empty
+  // renames the input buffer IN PLACE and loads the file into it (the id
+  // never changes) — the guard must restore the input surface and open the
+  // file in a fresh tab.
+  const editTarget = path.join(process.cwd(), 'package.json')
+  await lua('vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin)', [])
+  await lua(`local b = require("dsh_tui").ids().inputBuf
+    vim.api.nvim_buf_set_lines(b, 0, -1, false, { '' })
+    vim.bo[b].modified = false`, [])
+  await lua('vim.cmd("edit " .. vim.fn.fnameescape(...))', [editTarget])
+  await new Promise((r) => setTimeout(r, 400))
+  const afterTake = await lua(`local ids = require('dsh_tui').ids()
+    return {
+      tabs = vim.fn.tabpagenr('$'),
+      curName = vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf()),
+      inputName = vim.api.nvim_buf_get_name(ids.inputBuf),
+      inputType = vim.bo[ids.inputBuf].buftype,
+      winBuf = vim.api.nvim_win_get_buf(ids.inputWin),
+    }`, [])
+  assert.equal(afterTake.tabs, tabsBefore + 1, ':edit takeover opens the file in a new tab')
+  assert.ok(afterTake.inputName === '' && afterTake.inputType === 'nofile',
+    'input buffer identity restored after the takeover')
+  assert.equal(afterTake.winBuf, ids.inputBuf, 'input window shows the restored input buffer')
+  assert.ok(String(afterTake.curName).includes('package.json'), 'focus follows the file into the new tab')
+  await lua('vim.cmd("tabclose")', [])
+  await new Promise((r) => setTimeout(r, 200))
   // OptionSet guard: even a plugin forcing showtabline=2 gets snapped back.
   await lua('vim.o.showtabline = 2', [])
   assert.equal(await lua('return vim.o.showtabline', []), 0, 'showtabline changes are neutralized instantly (no flash)')
