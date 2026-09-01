@@ -5,6 +5,16 @@
 
 ## [未发布]
 
+- **全面适配 DeepSeek Harness v0.1.2-alpha.3**：peer 依赖锚点抬升至
+  `^0.1.2-alpha.3`（dsh-agent / dsh-llm / dsh-tools）。逐包 diff 核对
+  alpha.2 → alpha.3 的 40+ 包：19 个核心包 `lib/` 逐字节相同（纯版本号
+  抬升）；dsh-session-projection 的 change feed 改为按 raw view 的
+  `Object.is` 变化去重通知（nvim-tui 只读 `stateOf()`，不受影响）；
+  dsh-attachment 新增浏览器上传 API `admitPromptContent`（纯增量，用到的
+  `saveImage()` 未变）。**结论：零破坏性变化，源码零改动适配**。
+  `tsc check` / `build` / `smoke` 全绿；alpha.3 真机 e2e 双通道通过
+  （scratch 隔离 profile + 真实 nvim-tui profile，真实模型回复，版本横幅
+  0.2.11）。
 - **init.lua 按模块拆分（门面化）**：1484 行的 init.lua 收敛为 ~340 行的
   公共门面——只做三件事：转发完整的 M.* API（runner/键位/冒烟测试零改动）、
   编排跨模块意图（submit、cmd_next/cmd_prev 的双菜单路由）、start() 启动

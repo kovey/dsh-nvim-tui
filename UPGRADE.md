@@ -1,8 +1,64 @@
-# 升级指南：dsh 0.1.1-rc.2 → 0.1.2-alpha.2
+# 升级指南：dsh 0.1.2-alpha.2 → 0.1.2-alpha.3
+
+dsh-nvim-tui v0.2.11 全面适配 DeepSeek Harness **v0.1.2-alpha.3**。alpha.3 是
+全家族（40+ 包）的**协同版本号抬升**，逐包 diff 结论：
+
+- **19 个核心包**（dsh-agent / dsh-llm / dsh-tools / dsh-session /
+  dsh-user-approval / dsh-code-runtime / dsh-scope / dsh-system-prompt /
+  dsh-typert-protocol / dsh-typert-registry / dsh-brand / dsh-timeout /
+  dsh-util-crypto / dsh-util-values …）`lib/` **与 alpha.2 逐字节相同**，仅
+  package.json 版本号与依赖范围抬升；
+- **dsh-session-projection**：行为微调——change feed 只在某单元 raw view
+  按 `Object.is` 变化时通知（原来是每次 state 引用变化都通知，语义收敛，
+  纯去重、非破坏）。nvim-tui 只读 `stateOf()`，不受影响；
+- **dsh-attachment**：新增浏览器上传 API `admitPromptContent` +
+  `PromptContentPart` / `AdmittedPromptContentPart` 类型（纯增量）。
+  nvim-tui 用到的 `saveImage()` 未变；
+- **dsh-invariants**：仅 README 修订。
+
+**结论：无破坏性变化**，nvim-tui 源码零改动即可适配——本次变更只有 peer
+依赖锚点抬升（`^0.1.2-alpha.2` → `^0.1.2-alpha.3`）、版本横幅（0.2.11）
+与真机验证。
+
+## 升级步骤
+
+```bash
+# 1. 升级宿主（alpha dist-tag 当前即 0.1.2-alpha.3）
+npm i -g @deepseek-ai/dsh@alpha
+dsh --version        # 应输出 0.1.2-alpha.3
+# 首次启动任意 profile 时 boot 会把共享 store（~/.dsh/profiles/node_modules）
+# 抬升到 alpha.3；正在运行的 dsh 进程仍在内存里跑旧代码，需重启才生效。
+
+# 2. 更新 nvim-tui 插件（发布版）
+dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui
+# 或固定版本
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.11"
+
+# 3. 无需修正 cordis.patch.yml —— alpha.3 未新增/删除 loader entry，
+#    旧 profile 的 patch 原样可用（与 alpha.2→alpha.3 的零破坏结论一致）。
+```
+
+## 验证
+
+```bash
+cd <仓库>
+npm run check && npm run build && npm run smoke
+npm run e2e -- "请只回复两个字：就绪"   # 真机：全局 dsh (alpha.3) + nvim-tui profile
+```
+
+**判定标准**：e2e 输出 `E2E PASS`，dump 里 `── turn ──` 与 `── turn end ──`
+之间有真实助手回复（alpha.3 真机实测通过）。
+
+**回滚**：`npm i -g @deepseek-ai/dsh@0.1.2-alpha.2`，插件退回
+`kovey/dsh-nvim-tui#v0.2.10`。
+
+---
+
+# 历史指南：dsh 0.1.1-rc.2 → 0.1.2-alpha.2
 
 dsh-nvim-tui v0.2.7 全面适配 DeepSeek Harness **v0.1.2-alpha.2**。本指南覆盖
 宿主升级、插件更新、profile patch 修正、第三方插件兼容、验证与回滚的全部步骤
-（每一步均经真实环境实测）。
+（每一步均经真实环境实测）。以下内容保留作历史参考。
 
 > **v0.2.8 重要更新（会话卡死 400 insufficient tool messages）**：见
 > [§0. v0.2.8：修复工具调度器崩溃与已毒化会话的自愈](#0-v028修复工具调度器崩溃与已毒化会话的自愈)。
