@@ -370,7 +370,22 @@ src/                          TypeScript 源码（strict，唯一手写源）
   stats.ts    状态栏统计：token/缓存/成本/时长 折叠与格式化
   images.ts   图片读取：文件 / macOS 剪贴板 / data URL 解析
 lib/                          tsc 编译产物（.js + .d.ts；dsh 加载入口 main → lib/index.js）
-nvim/lua/dsh_tui/init.lua     nvim 侧 UI：窗口布局、prompt 输入、键位、RPC
+nvim/lua/dsh_tui/             nvim 侧 UI（按职责拆分的 Lua 模块）
+  init.lua      公共门面：完整的 M.* API 转发 + 跨模块意图编排（submit/菜单路由）+ start()
+  state.lua     共享可变状态（窗口/buffer 句柄的唯一来源，M._* 兼容字段的惰性别名）
+  layout.lua    窗口布局：输入窗构建（边框家具）、布局挂载、启动接管、布局预设
+  input.lua     输入 buffer：文本读写、动态高度、边框右缘、历史、fill/append、焦点恢复
+  cmd_menu.lua  / 命令补全浮窗
+  at_menu.lua   @ 提及补全浮窗（复用 cmd_menu 几何）
+  session.lua   会话 buffer：chat/reasoning 创建、思考面板、set_active、ids
+  autocmds.lua  自愈 + 窗口归属 + 插件隔离 + 启动守卫的 autocmd 层
+  keymaps.lua   输入 buffer 键位（自愈层可重复安装）
+  rpc.lua       runner 通道操作（attach/quit/bell/theme/…）
+  statusline.lua 聊天状态栏 + 终端标题（OSC 2）
+  highlight.lua DshTui* 高亮组 + 调色板 + treesitter 代码块着色
+  buffer.lua    buffer 原语（展示 buffer 选项、输入文本、补全插件屏蔽）
+  popup_core.lua 通用浮窗族（审批 / 提问 / 选择器）+ 底部提示栏
+  popups.lua    专用浮窗（技能详情、子代理视图、目录选择、进度、会话列表）
 scripts/smoke.ts              无头冒烟测试（Node ≥23.6 直跑）
 scripts/e2e.ts                真模型端到端回归
 tsconfig.json / tsconfig.scripts.json   主构建 / scripts 检查配置

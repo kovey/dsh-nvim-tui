@@ -3,6 +3,28 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [未发布]
+
+- **init.lua 按模块拆分（门面化）**：1484 行的 init.lua 收敛为 ~340 行的
+  公共门面——只做三件事：转发完整的 M.* API（runner/键位/冒烟测试零改动）、
+  编排跨模块意图（submit、cmd_next/cmd_prev 的双菜单路由）、start() 启动
+  序列。行为域各归其位：`layout`（窗口/接管/预设）、`input`（文本/高度/边框/
+  历史）、`cmd_menu`/`at_menu`（两种输入补全）、`session`（会话 buffer/思考
+  面板）、`autocmds`（自愈/归属/插件隔离/启动守卫）、`keymaps`、`rpc`、
+  `statusline`、`buffer`（buffer 原语）。依赖图严格单向无环，新增逻辑不再
+  需要触碰 init.lua。
+- **M._\* 字段惰性别名**：runner/测试内省的 M._cmdWin、M._progress、
+  M._sessWin 等全部经元表 __index 惰性解析到 state 同名字段——nil↔value
+  迁移和整表替换（S.progress / S.subagentView）都不会让别名过期，并修复了
+  拆分中途的别名断链（会话列表/技能浮窗等测试一度读取到过期 nil）。
+- **子模块 package.preload 注册**：bridge 原本只为 dsh_tui 根模块预注册
+  dofile；现在 init.lua 按自身路径把全部子模块一并注册，用户配置重建
+  runtimepath（lazy.nvim）后 require 依旧可用（冒烟测试「rtp reset」覆盖）。
+- **顺带修复拆分期悬空引用**：popups 的 SKILL_HINT / dir_entries / 进度条
+  extmark 命名空间（M._ns → S.ns）、popup_core 关闭浮窗后的输入焦点恢复
+  （input_win → S.input_win）、启动守卫的 chat_buf 悬空全局（改为当前活跃
+  会话 buffer）。
+
 ## [v0.2.10（2026-09-01）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.10)
 
 覆盖提交：
