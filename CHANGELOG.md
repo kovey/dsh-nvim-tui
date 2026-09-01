@@ -3,6 +3,33 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.2.10（2026-09-01）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.10)
+
+覆盖提交：
+[`42081f4`](https://github.com/kovey/dsh-nvim-tui/commit/42081f4) ·
+[`1ed4dda`](https://github.com/kovey/dsh-nvim-tui/commit/1ed4dda)
+
+- **子代理运行状态可视化**：有运行中子代理时聊天状态栏 idle 变为
+  `● running ◇N`（鲸鱼 spinner 同步转动）；子代理徽章渲染在 thinking
+  槽位——同一套瞬态活动行逻辑，实时计时、永不落盘，主 agent 有思考/
+  工具活动时让位；完整思考链仍在 /subagents 查看。
+
+- **任务步骤进度动态渲染**：流式内容尾部的 `- ✅/⏳/⬜ …` 步骤块（含
+  标题行）在任一步骤未完成时动态渲染在 thinking 行上方，每版新消息
+  原地替换；全部完成后回落到正常位置并随回合落盘，中间版本不进聊天
+  记录，重启回放不丢失。
+
+- **窗口归属守护（插件隔离）**：聊天/输入窗口只允许显示自己的 buffer——
+  插件（nvim-tree 选文件、:edit、:term）塞入其他 buffer 时，先恢复 TUI
+  窗口、再把 buffer 迁到新标签页（焦点跟随）；插件的窗口/浮窗一概不碰。
+  顺带根治了 `:edit` 对空输入框的**身份接管**（未命名未修改的输入 buffer
+  被原地改名并载入文件内容，导致回车失效、/ @ 补全失效）：检测到身份
+  变化即恢复输入面（名字/类型/选项/键位/钩子/b:变量）并把文件在新标签页
+  打开；输入框键位缺失时 WinEnter 自愈重挂；启动守卫限定主标签页。
+
+- **死代码清理**：移除未引用的 `dir_move` 与 `WorkspaceEntityLike.
+  detachSession` / `WorkspacesService.insertBefore` / `InboxLike.hasPending`。
+
 ## [v0.2.9（2026-08-31）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.9)
 
 - **修复 v0.2.8 自愈在"崩溃后又发过消息"的会话上失效**。v0.2.8 把合成
