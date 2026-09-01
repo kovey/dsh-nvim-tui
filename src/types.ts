@@ -46,6 +46,21 @@ export type MessageContent =
   | { type: 'image'; attachment: ImageAttachmentRef }
   | { type: string; [key: string]: unknown }
 
+/**
+ * Producer attribution for a message (dsh-llm MessageSource, structural).
+ * `kind` answers WHO produced it ('user' human / 'plugin' host-injected /
+ * 'model' / 'tool'); `form` answers WHAT KIND of thing it is (instructions /
+ * catalog / snapshot / notice / relay / recall — semantic, never visual).
+ * A `notice` form collapses to its one-line `summary`.
+ */
+export interface MessageSourceLike {
+  kind?: string
+  form?: string
+  summary?: string
+  plugin?: string
+  [key: string]: unknown
+}
+
 /** A chat message (assistant messages carry id/usage; results carry source). */
 export interface ChatMessage {
   id?: string
@@ -77,7 +92,7 @@ export type SessionEvent =
   | (SessionEventBase & { type: 'turn/start'; data?: { turn?: number; [key: string]: unknown } })
   | (SessionEventBase & { type: 'turn/end'; data?: Record<string, unknown> })
   | (SessionEventBase & { type: 'user/message'; data?: ChatMessage | { message?: ChatMessage } })
-  | (SessionEventBase & { type: 'assistant/message'; data?: { turn?: number; step?: number; message?: ChatMessage; usage?: TokenUsage } })
+  | (SessionEventBase & { type: 'assistant/message'; data?: { turn?: number; step?: number; message?: ChatMessage; usage?: TokenUsage; interrupted?: true } })
   | (SessionEventBase & { type: 'assistant/chunk'; data?: { turn?: number; step?: number; chunk?: AssistantChunk } })
   | (SessionEventBase & { type: 'tool/call'; data?: { turn?: number; step?: number; callId?: string; name?: string; arguments?: string } })
   | (SessionEventBase & { type: 'tool/result'; data?: { turn?: number; step?: number; message?: ChatMessage; error?: { code?: string; name?: string; [key: string]: unknown } | null } })

@@ -38,6 +38,38 @@ dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.11"
 #    旧 profile 的 patch 原样可用（与 alpha.2→alpha.3 的零破坏结论一致）。
 ```
 
+## 4. 推荐：profile 装配补全（激活 TUI 已有功能）
+
+v0.2.11 的功能对比核查确认 5 个官方宿主服务是 **dsh-web-app bundle 独有**、
+nvim-tui 宿主组合（dsh-base + dsh-nvim-tui）未装配的——runner 的消费面早已
+实现，缺装配时对应功能空转。在 profile 的 cordis.patch.yml 追加即可（依赖
+全部落在 dsh-base 已有的 storage / sessionQuery / sessionProjection 上，
+无需额外行；包本体在共享 store 里已随宿主安装）：
+
+```yaml
+# /fb 消息反馈（此前提示"服务未装配"）
+- insert:
+    - id: message-feedback
+      name: '@deepseek-ai/dsh-message-feedback'
+      config:
+        maxNoteBytes: 8192
+# @ 提及的跨会话引用（此前静默失效）
+    - id: session-reference
+      name: '@deepseek-ai/dsh-session-reference'
+# 状态栏 TTFT / tok-s 统计（此前投影单元不存在，永不显示）
+    - id: session-stats
+      name: '@deepseek-ai/dsh-session-stats'
+# PTC 预设的 run_code 执行 seam（此前 /preset ptc 挂起不可用）
+    - id: code-runtime
+      name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+# 子代理独立模型选择设置
+    - id: subagent-model-selection-settings
+      name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
+```
+
+装配后 headless 启动一次验证（alpha.2 起 boot 把 pending 条目视为致命错误，
+能正常启动即证明全部激活）。
+
 ## 验证
 
 ```bash

@@ -31,7 +31,7 @@ import { transformTables } from './table.js'
 import { imageLabel } from './images.js'
 import { formatElapsed, formatTokens } from './stats.js'
 import { t } from './i18n.js'
-import type { ChatMessage, ImageAttachmentRef, MessageContent, SessionEvent } from './types.js'
+import type { ChatMessage, ImageAttachmentRef, MessageContent, MessageSourceLike, SessionEvent } from './types.js'
 
 const INLINE_RE = /(\*\*[^*]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\n]+\))/g
 /** Exact ✎ diff header: ✎ (新增|修改|删除) <path> (+N −M) — the ONLY line
@@ -387,6 +387,28 @@ export class FeedRenderer {
         const data = event.data as { message?: ChatMessage } | ChatMessage | undefined
         const msg = (data as { message?: ChatMessage } | undefined)?.message ??
           (data as ChatMessage | undefined)
+        const source = (msg as (ChatMessage & { source?: MessageSourceLike }) | undefined)?.source
+        // Only kind 'user' (or a source-less legacy event) is human input.
+        // The harness's MessageSource kind union is merge-extensible — plugins
+        // add their own ('plugin' snapshots, 'skill-catalog', 'subagent-report',
+        // 'subagent-settled', …) — so the test must be positive on 'user', not
+        // a negative list of known producers.
+        if (source !== undefined && source.kind !== 'user') {
+          // Host-injected context (runtime snapshots, catalogs, relays,
+          // goal continuations…): NOT a human bubble — it must never
+          // masquerade as user input. Render as dim notice rows: a `notice`
+          // form collapses to its one-line summary; other forms render the
+          // content dimmed under a small header.
+          const text = FeedRenderer.messageText(msg)
+          if (source.form === 'notice' && typeof source.summary === 'string' && source.summary !== '') {
+            this.base.push('', `· ${source.summary}`)
+          } else if (text) {
+            this.base.push('', '· 注入上下文')
+            for (const line of text.split('\n')) this.base.push(`· ${line}`)
+          }
+          this.schedule()
+          break
+        }
         const text = FeedRenderer.messageText(msg)
         const images = FeedRenderer.messageImages(msg)
         if (text || images.length > 0) this.pushUser(text, images)
@@ -407,6 +429,11 @@ export class FeedRenderer {
         }
         this.commitReasoning()
         this.tail = FeedRenderer.messageText(message)
+        // An aborted turn commits the prefix it produced before the stop:
+        // mark it so the truncated content never reads as a complete answer.
+        if (event.data?.interrupted === true) {
+          this.tail += (this.tail === '' ? '' : '\n') + '⚠ 回合被中断'
+        }
         this.schedule()
         break
       }

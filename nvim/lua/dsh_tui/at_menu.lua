@@ -99,7 +99,8 @@ function AM.set(items, start)
       vim.b[buf].ministatusline_disable = true
       S.atBuf = buf
       S.atWin = vim.api.nvim_open_win(buf, false,
-        CM.win_config(math.min(MAX_H, #S.atItems), 30, { noautocmd = true }))
+        CM.win_config(math.min(MAX_H, #S.atItems), 30,
+          { noautocmd = true, title = true, titleText = ' @ 提及 ' }))
     end
     render()
   end)

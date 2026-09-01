@@ -23,17 +23,37 @@ function K.install()
   vim.api.nvim_buf_set_keymap(S.input_buf, 'i', '<CR>', submit_cmd, { noremap = true })
   vim.api.nvim_buf_set_keymap(S.input_buf, 'n', '<CR>', submit_cmd, { noremap = true })
   vim.api.nvim_buf_set_keymap(S.input_buf, 'i', '<C-CR>', '<CR>', { noremap = true })
-  vim.keymap.set('i', '<Up>', function() require('dsh_tui').history_move(-1) end, { buffer = S.input_buf })
-  vim.keymap.set('i', '<Down>', function() require('dsh_tui').history_move(1) end, { buffer = S.input_buf })
+  vim.keymap.set('i', '<Up>', function()
+    if require('dsh_tui').at_menu_open() then
+      require('dsh_tui').at_prev()
+    elseif require('dsh_tui').cmd_menu_state().open then
+      require('dsh_tui').cmd_prev()
+    else
+      require('dsh_tui').history_move(-1)
+    end
+  end, { buffer = S.input_buf })
+  vim.keymap.set('i', '<Down>', function()
+    if require('dsh_tui').at_menu_open() then
+      require('dsh_tui').at_next()
+    elseif require('dsh_tui').cmd_menu_state().open then
+      require('dsh_tui').cmd_next()
+    else
+      require('dsh_tui').history_move(1)
+    end
+  end, { buffer = S.input_buf })
   vim.keymap.set('i', '<C-n>', function()
-    if require('dsh_tui').cmd_menu_state().open then
+    if require('dsh_tui').at_menu_open() then
+      require('dsh_tui').at_next()
+    elseif require('dsh_tui').cmd_menu_state().open then
       require('dsh_tui').cmd_next()
     else
       require('dsh_tui').history_move(1)
     end
   end, { buffer = S.input_buf })
   vim.keymap.set('i', '<C-p>', function()
-    if require('dsh_tui').cmd_menu_state().open then
+    if require('dsh_tui').at_menu_open() then
+      require('dsh_tui').at_prev()
+    elseif require('dsh_tui').cmd_menu_state().open then
       require('dsh_tui').cmd_prev()
     else
       require('dsh_tui').history_move(-1)

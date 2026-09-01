@@ -3,6 +3,35 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [未发布]
+
+- **修复：@ 提及菜单不能用导航键选择（只能选中第一项）**。`<Up>/<Down>/
+  <C-n>/<C-p>` 此前只检查 / 命令菜单，@ 菜单打开时全部落入历史回退——真实
+  会话里有历史时会把已输入的 @token 替换掉并关闭菜单（表现为"只能默认选
+  第一个"）。现在四个导航键在任一补全菜单打开时优先路由到菜单（@ 菜单 →
+  / 菜单 → 历史），与 / 菜单的键位语义完全一致；@ 菜单窗口同步补上
+  「 @ 提及 」标题（与「命令补全」呼应）。冒烟测试新增 C-n/Down/Up/C-p
+  四组按键回归断言（含菜单保持打开）。
+- **Harness alpha.3 功能对比核查的 A/C 级补全**（对照官方 web profile 完整
+  插件树逐项核查）：
+  - **A 级·宿主服务装配**：确认 5 个 web-app 独有服务在 nvim-tui 宿主组合
+    缺失导致已有功能空转——`message-feedback`（/fb 报"未装配"）、
+    `session-reference`（@ 跨会话引用静默失效）、`session-stats`（状态栏
+    TTFT/tok-s 永不显示）、`code-runtime-worker-thread`（/preset ptc 挂起）、
+    `subagent-model-selection-settings`（子代理模型选择）。UPGRADE.md 增补
+    官方装配行清单（profile patch 5 行 insert，依赖全落 dsh-base 已有
+    seam）；已写入本机 nvim-tui profile 并真机 e2e 验证（boot 全激活）。
+  - **C 级·事件契约补全**：`user/message` 按 `source.kind` 区分渲染——只有
+    `kind: 'user'`（或无线索的旧事件）渲染为用户气泡；宿主注入的上下文
+    （runtime snapshot、skill-catalog、subagent-report 等——kind 联合可被
+    插件扩展，故正向判定而非黑名单）不再冒充用户输入：`notice` 形态折叠
+    为一行暗色摘要，其余形态以「· 注入上下文」暗色块呈现；
+    `assistant/message.interrupted` 回合末尾追加「⚠ 回合被中断」标记，被
+    截断的前缀不再读起来像完整答案。冒烟测试新增两组回归用例（注入上下文
+    无 DshTuiUser 着色、中断标记可见）。
+  - **B 级结论**：schedule 官方 web 自身 disabled；webhook/ACP/SDK/持久
+    PTY/hooks 桥属自动化挂载包，与交互式 TUI 无对应面——均不纳入。
+
 ## [v0.2.11（2026-09-01）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.11)
 
 覆盖提交：

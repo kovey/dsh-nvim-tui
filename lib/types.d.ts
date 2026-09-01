@@ -48,6 +48,20 @@ export type MessageContent = {
     type: string;
     [key: string]: unknown;
 };
+/**
+ * Producer attribution for a message (dsh-llm MessageSource, structural).
+ * `kind` answers WHO produced it ('user' human / 'plugin' host-injected /
+ * 'model' / 'tool'); `form` answers WHAT KIND of thing it is (instructions /
+ * catalog / snapshot / notice / relay / recall — semantic, never visual).
+ * A `notice` form collapses to its one-line `summary`.
+ */
+export interface MessageSourceLike {
+    kind?: string;
+    form?: string;
+    summary?: string;
+    plugin?: string;
+    [key: string]: unknown;
+}
 /** A chat message (assistant messages carry id/usage; results carry source). */
 export interface ChatMessage {
     id?: string;
@@ -112,6 +126,7 @@ export type SessionEvent = (SessionEventBase & {
         step?: number;
         message?: ChatMessage;
         usage?: TokenUsage;
+        interrupted?: true;
     };
 }) | (SessionEventBase & {
     type: 'assistant/chunk';

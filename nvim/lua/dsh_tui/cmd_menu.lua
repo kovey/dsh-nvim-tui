@@ -95,7 +95,7 @@ function CM.win_config(count, width, extra)
     cfg.noautocmd = true
   end
   if extra and extra.title and vim.fn.has('nvim-0.9') == 1 then
-    cfg.title = ' 命令补全 '
+    cfg.title = extra.titleText or ' 命令补全 '
     cfg.title_pos = 'center'
   end
   return cfg

@@ -957,6 +957,29 @@ description:
   const userRow = echoLines.indexOf('> 正在思考时发的新问题')
   const userRowHl = userMarks.find((m) => m[1] === userRow && m[3]?.hl_group === 'DshTuiUser')
   assert.ok(userRowHl !== undefined, 'echoed user bubble carries the DshTuiUser color group')
+  // host-injected context (non-'user' source) must NOT masquerade as user
+  // input: notice form collapses to a dim one-liner, other forms render
+  // dimmed — and the kind union is merge-extensible (skill-catalog etc.)
+  feedA.applyEvent({ type: 'user/message', data: { content: [{ type: 'text', text: '短通知内容' }], source: { kind: 'plugin', form: 'notice', summary: '策略快照已更新' } } })
+  feedA.applyEvent({ type: 'user/message', data: { content: [{ type: 'text', text: 'runtime context line1\nruntime context line2' }], source: { kind: 'plugin', form: 'snapshot' } } })
+  feedA.applyEvent({ type: 'user/message', data: { content: [{ type: 'text', text: 'skills catalog body' }], source: { kind: 'skill-catalog', form: 'catalog' } } })
+  await new Promise((r) => setTimeout(r, 250))
+  const injectedLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(injectedLines.includes('· 策略快照已更新'), 'plugin notice form renders as a collapsed dim summary')
+  assert.ok(injectedLines.includes('· 注入上下文'), 'plugin snapshot form renders under a context header')
+  assert.ok(injectedLines.includes('· runtime context line1'), 'plugin snapshot content renders dimmed')
+  assert.ok(injectedLines.includes('· skills catalog body'), 'merge-extensible kinds (skill-catalog) render dimmed too')
+  assert.ok(!injectedLines.includes('> runtime context line1'), 'injected context never renders as a user bubble')
+  assert.ok(!injectedLines.includes('> 策略快照已更新'), 'injected notice never renders as a user bubble')
+  const injectedMarks: any[] = await nvim.request('nvim_buf_get_extmarks', [chatA.chatBuf, -1, 0, -1, { details: true }])
+  const ctxRow = injectedLines.indexOf('· runtime context line1')
+  const userOnCtx = injectedMarks.filter((m) => m[1] === ctxRow && m[3]?.hl_group === 'DshTuiUser')
+  assert.equal(userOnCtx.length, 0, 'injected context rows carry no DshTuiUser color')
+  // an interrupted turn commits its prefix + a visible marker
+  feedA.applyEvent({ type: 'assistant/message', data: { turn: 1, step: 1, message: { content: [{ type: 'text', text: '被打断的前缀' }] }, interrupted: true } })
+  await new Promise((r) => setTimeout(r, 250))
+  const interruptedLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(interruptedLines.includes('⚠ 回合被中断'), 'interrupted turn renders a visible marker')
   // stray '- ' bullets in ordinary content must NOT render as diff rows
   const bulletStart = await nvim.request('nvim_buf_line_count', [chatA.chatBuf])
   feedA.applyEvent({ type: 'assistant/chunk', data: { chunk: { type: 'text-delta', text: '要点如下：\n- 第一点\n- 第二点\n+ 并不是 diff 的行\n' } } })
@@ -1267,6 +1290,27 @@ description:
   await lua('require("dsh_tui").at_accept()', [])
   const atLines = await nvim.request('nvim_buf_get_lines', [ids.inputBuf, 0, -1, false])
   assert.equal(atLines[0], '请读 @src/b.md', 'at-mention accepted into input')
+  // navigation keys route to the OPEN at-menu (C-n / C-p / Up / Down) — the
+  // same menu-first claim as the /-command menu; without it the keys fall
+  // into history cycling and the menu can never change its selection
+  await nvim.request('nvim_buf_set_lines', [ids.inputBuf, 0, -1, false, ['@']])
+  await nvim.request('nvim_win_set_cursor', [ids.inputWin, [1, 1]])
+  await lua('require("dsh_tui").set_at_menu(...)', [[{ path: 'src/a.txt', mention: '@src/a.txt' }, { path: 'src/b.md', mention: '@src/b.md' }, { path: 'src/c.ts', mention: '@src/c.ts' }], 1])
+  await lua(`vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin); vim.cmd('startinsert')`, [])
+  await nvim.input('<C-n>')
+  await new Promise((r) => setTimeout(r, 120))
+  assert.equal(await lua('return require("dsh_tui")._atIdx', []), 2, '<C-n> advances the at-menu selection')
+  await nvim.input('<Down>')
+  await new Promise((r) => setTimeout(r, 120))
+  assert.equal(await lua('return require("dsh_tui")._atIdx', []), 3, '<Down> advances the at-menu selection')
+  await nvim.input('<Up>')
+  await new Promise((r) => setTimeout(r, 120))
+  assert.equal(await lua('return require("dsh_tui")._atIdx', []), 2, '<Up> moves the at-menu selection back')
+  await nvim.input('<C-p>')
+  await new Promise((r) => setTimeout(r, 120))
+  assert.equal(await lua('return require("dsh_tui")._atIdx', []), 1, '<C-p> moves the at-menu selection back')
+  assert.ok(await lua('return require("dsh_tui").at_menu_open()', []), 'at-menu stays open through navigation')
+  await lua('require("dsh_tui").close_at_menu()', [])
   await nvim.request('nvim_buf_set_lines', [ids.inputBuf, 0, -1, false, ['']])
 
   // 9i. directory picker: navigate to a file → dsh-dir-selected notify.
