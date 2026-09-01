@@ -1246,12 +1246,6 @@ function M.show_dir_picker(startPath)
   render_dir_picker()
 end
 
-function M.dir_move(dir)
-  if M._dirIdx == 0 then return end
-  M._dirIdx = math.max(1, math.min(#M._dirRows, M._dirIdx + dir))
-  render_dir_picker()
-end
-
 function M.dir_jump(where)
   if #M._dirRows == 0 then return end
   M._dirIdx = where == 'last' and #M._dirRows or 1

@@ -275,13 +275,11 @@ export interface WorkspaceEntityLike {
   title: string
   sessionIds: readonly string[]
   setTitle?: (title: string) => Promise<void>
-  detachSession?: (sessionId: string) => Promise<void>
 }
 export interface WorkspacesService {
   list: () => WorkspaceEntityLike[]
   create?: (path: string, title?: string) => Promise<{ id: string }>
   delete?: (id: string) => Promise<boolean>
-  insertBefore?: (id: string, beforeId?: string) => Promise<readonly string[]>
   archiveSession?: (sessionId: string) => Promise<void>
   archivedSessionIds?: readonly string[]
 }
@@ -397,7 +395,6 @@ export interface SessionStore {
 export interface InboxLike {
   nextTurn?: readonly unknown[]
   nextStep?: readonly unknown[]
-  hasPending?: boolean
   remove?: (messageId: string) => boolean
   replace?: (messageId: string, newMessage: unknown) => boolean
   clear?: () => void

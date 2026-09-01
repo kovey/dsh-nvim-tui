@@ -221,6 +221,19 @@ try {
   feedB.appendNotice('b-notice')
   await new Promise((r) => setTimeout(r, 150)) // let the 40ms throttle flush
 
+  // 3b. running subagents: ONE compact activity line in the thinking slot
+  // (same transient logic — never committed), cleared when the run ends.
+  feedA.subagentStart({ runId: 'run-x', provider: 'deepseek-code', id: 'uuid-x' })
+  await new Promise((r) => setTimeout(r, 150))
+  let subLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(subLines.some((l: string) => /^◇ deepseek-code · \d+\.\d+s$/.test(l)),
+    'subagent activity line renders in the thinking slot')
+  feedA.subagentEnd({ runId: 'run-x', provider: 'deepseek-code', id: 'uuid-x', stopReason: 'completed' })
+  await new Promise((r) => setTimeout(r, 150))
+  subLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(!subLines.some((l: string) => /^◇ deepseek-code · \d+\.\d+s$/.test(l)),
+    'subagent activity line vanishes after the run ends (start/end cards stay)')
+
   const linesA = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
   log('chat A lines:', JSON.stringify(linesA))
   assert.ok(linesA.includes('> 你好'), 'user message rendered')
@@ -521,6 +534,49 @@ description:
   log('placeholder lines:', JSON.stringify(linesB3))
   assert.ok(linesB3.some((l: string) => /^·· thinking… \d+s$/.test(l)), 'silent turn shows thinking placeholder')
   feedB.applyEvent({ type: 'turn/end', time: 6500, data: {} })
+
+  // 6b. task step-progress block: while ANY step is incomplete the trailing
+  // `- ✅/⏳/⬜ …` block renders ABOVE the thinking line (dynamic — each new
+  // message replaces the live version); once every step is ✅ it falls back
+  // into the ordinary tail and commits on turn end (persisted for replays).
+  feedB.applyEvent({ type: 'turn/start', time: 7000, data: {} })
+  feedB.applyEvent({ type: 'assistant/message', time: 7100, data: { turn: 2, step: 1, message: { content: [{ type: 'text', text: '任务全链进度（回调通知需求）:\n- ✅ 功能实现\n- ⏳ code-review\n- ⬜ 补测试' }] } } })
+  feedB.applyEvent({ type: 'assistant/chunk', time: 7150, data: { chunk: { type: 'reasoning-delta', text: '推进任务' } } })
+  await new Promise((r) => setTimeout(r, 250))
+  let stepLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  const idxOf = (re: RegExp) => stepLines.findIndex((l: string) => re.test(l))
+  let pHeader = idxOf(/^任务全链进度/)
+  let pStep = idxOf(/^- ⏳ code-review/)
+  let pThink = idxOf(/^·· thinking/)
+  assert.ok(pHeader >= 0 && pStep >= 0 && pThink >= 0, 'progress block + thinking line both render')
+  assert.ok(pHeader < pThink && pStep < pThink, 'incomplete progress block renders ABOVE the thinking line')
+  // a later step re-emits the block, still incomplete → stays lifted
+  feedB.applyEvent({ type: 'assistant/message', time: 7200, data: { turn: 2, step: 2, message: { content: [{ type: 'text', text: '任务全链进度（回调通知需求）:\n- ✅ 功能实现\n- ✅ code-review\n- ⏳ 补测试' }] } } })
+  feedB.applyEvent({ type: 'assistant/chunk', time: 7250, data: { chunk: { type: 'reasoning-delta', text: '收尾' } } })
+  await new Promise((r) => setTimeout(r, 250))
+  stepLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  pHeader = idxOf(/^任务全链进度/)
+  pStep = idxOf(/^- ⏳ 补测试/)
+  pThink = idxOf(/^·· thinking/)
+  assert.ok(pHeader >= 0 && pStep >= 0 && pThink >= 0, 'updated block + thinking line both render')
+  assert.ok(pHeader < pThink, 'updated incomplete block stays ABOVE the thinking line')
+  // all ✅ → ordinary tail (below the thinking line), committed on turn end
+  feedB.applyEvent({ type: 'assistant/message', time: 7300, data: { turn: 2, step: 3, message: { content: [{ type: 'text', text: '任务全链进度（回调通知需求）:\n- ✅ 功能实现\n- ✅ code-review\n- ✅ 补测试' }] } } })
+  feedB.applyEvent({ type: 'assistant/chunk', time: 7350, data: { chunk: { type: 'reasoning-delta', text: '完成' } } })
+  await new Promise((r) => setTimeout(r, 250))
+  stepLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  const cHeader = idxOf(/^任务全链进度/)
+  const cThink = idxOf(/^·· thinking/)
+  assert.ok(cHeader >= 0 && cThink >= 0, 'completed block + thinking line both render')
+  assert.ok(cThink < cHeader, 'completed block sits back in the normal tail (below thinking)')
+  feedB.applyEvent({ type: 'turn/end', time: 7400, data: {} })
+  await new Promise((r) => setTimeout(r, 250))
+  const persisted = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.ok(persisted.some((l: string) => l.includes('任务全链进度'))
+    && persisted.some((l: string) => l.includes('✅ 补测试')),
+    'completed block commits to the chat (persisted for replays)')
+  assert.ok(!persisted.some((l: string) => /⏳|⬜/.test(l)),
+    'intermediate incomplete versions never land in the chat')
 
   // 7. <C-o> reasoning panel toggle
   const opened = await lua('return require("dsh_tui").toggle_reasoning()', [])

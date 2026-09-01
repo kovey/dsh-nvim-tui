@@ -739,6 +739,29 @@ export class FeedRenderer {
       return
     }
     const tailLines = this.tail === '' ? [] : this.tail.split('\n')
+    // Task step-progress block: a TRAILING run of `- ✅/⏳/⬜ …` lines (with
+    // its optional unmarked header line above). While ANY step is incomplete
+    // it renders as a dynamic region ABOVE the thinking line (live updates
+    // as the model re-emits the block); once every step is ✅ it falls back
+    // into the ordinary tail and commits with the message — persisted for
+    // replays.
+    const STEP_MARK_RE = /^\s*[-*•]?\s*[✅⏳⬜]/
+    let progressLines: string[] = []
+    let restTail = tailLines
+    if (tailLines.length > 0) {
+      let i = tailLines.length - 1
+      while (i >= 0 && STEP_MARK_RE.test(tailLines[i]!)) i--
+      const stepStart = i + 1
+      if (stepStart < tailLines.length && stepStart > 0) {
+        const headerRow = tailLines[stepStart - 1]!
+        const headerIsHeader = headerRow.trim() !== '' && !STEP_MARK_RE.test(headerRow)
+        const incomplete = tailLines.slice(stepStart).some((l) => /⏳|⬜/.test(l))
+        if (incomplete && headerIsHeader) {
+          progressLines = [headerRow, ...tailLines.slice(stepStart)]
+          restTail = tailLines.slice(0, stepStart - 1)
+        }
+      }
+    }
     // The chat shows at most ONE activity line: thinking progress, the
     // running tool, or the silent-turn placeholder. Details live in the panel.
     let activityLines: string[] = []
@@ -757,6 +780,18 @@ export class FeedRenderer {
     } else if (this.toolActivity !== null) {
       const elapsed = ((this.eventTime || Date.now()) - this.toolActivity.startedAt) / 1000
       activityLines = [`🔧 ${this.toolActivity.name} · ${elapsed.toFixed(1)}s`]
+    } else if (this.subagents.size > 0) {
+      // Running subagents while the main agent is quiet: ONE compact line in
+      // the thinking slot — oldest child + elapsed, (+N for the rest). Same
+      // transient logic as the thinking line: never committed. Wall clock:
+      // subagentStart carries no event time, startedAt is Date.now().
+      let oldest: { provider: string; startedAt: number } | null = null
+      for (const s of this.subagents.values()) {
+        if (oldest === null || s.startedAt < oldest.startedAt) oldest = s
+      }
+      const elapsed = oldest === null ? 0 : (Date.now() - oldest.startedAt) / 1000
+      const extra = this.subagents.size > 1 ? ` +${this.subagents.size - 1}` : ''
+      activityLines = [`◇ ${oldest?.provider ?? 'subagent'} · ${elapsed.toFixed(1)}s${extra}`]
     } else {
       const idleMs = this.turnStartedAt !== null &&
         this.base.length === this.turnMarkerBase && this.tail === ''
@@ -764,7 +799,7 @@ export class FeedRenderer {
         : 0
       if (idleMs >= 800) activityLines = [`·· thinking… ${Math.floor(idleMs / 1000)}s`]
     }
-    const raw = [...this.base, ...activityLines, ...tailLines]
+    const raw = [...this.base, ...progressLines, ...activityLines, ...restTail]
 
     // Parse the full view (cheap string ops) so every flush's buffer content
     // is the stripped text with consistent spans. Markdown tables become
@@ -1051,10 +1086,12 @@ export class FeedRenderer {
         this.dirty = false
         void this.flush()
       } else if (this.reasoningTail !== '' || this.toolActivity !== null ||
+        this.subagents.size > 0 ||
         (this.turnStartedAt !== null &&
           this.base.length === this.turnMarkerBase &&
           this.tail === '')) {
-        // The turn is silent — keep the "thinking…" placeholder ticking.
+        // The turn is silent — keep the "thinking…" placeholder ticking; a
+        // running subagent keeps its activity line ticking too.
         this.ticker = setTimeout(() => {
           this.ticker = null
           this.schedule()

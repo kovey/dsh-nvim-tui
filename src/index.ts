@@ -276,6 +276,12 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     let activeId: string | null = null
     let historyHeaders: Array<{ id: string; cwd?: string; createdAt?: number; title?: string }> = []
 
+    // Running subagents (workflow children) registry: drives the statusline
+    // running state and the input-statusline badge with per-agent timers.
+    // Seeded by subagent/start|end events; re-seeded from the host on
+    // session switch (children started before the TUI attached).
+    const runningSubagents = new Map<string, { parentId: string; label: string; startedAt: number }>()
+
     // Last-active-session state (claude --continue behaviour): recorded on
     // every switch; read at boot to auto-resume. Lives under DSH_HOME.
     const statePath = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'dsh-nvim-tui-state.json')
@@ -349,9 +355,16 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     let spinnerTimer: ReturnType<typeof setInterval> | null = null
     let spinnerIndex = 0
     let idleRefreshTimer: ReturnType<typeof setInterval> | null = null
+
+    const runningSubagentsOf = (parentId: string | null): Array<{ parentId: string; label: string; startedAt: number }> =>
+      parentId === null ? [] : [...runningSubagents.values()].filter((s) => s.parentId === parentId)
+
+    // The running-subagents BADGE lives in the feed's activity line (same
+    // slot and transient logic as the thinking line) — the registry here
+    // only drives the statusline running state + spinner.
     const ensureSpinner = () => {
       const rec = activeId === null ? undefined : sessions.get(activeId)
-      const running = rec?.status === '● running'
+      const running = rec?.status === '● running' || runningSubagentsOf(activeId).length > 0
       if (running && spinnerTimer === null) {
         spinnerTimer = setInterval(() => {
           spinnerIndex = (spinnerIndex + 1) % WHALE_EMOJI_FRAMES.length
@@ -368,7 +381,9 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     const updateStatusline = () => {
       if (chatWinId === null) return
       const rec = activeId === null ? undefined : sessions.get(activeId)
-      const running = rec?.status === '● running'
+      const subRunning = runningSubagentsOf(activeId)
+      const mainRunning = rec?.status === '● running'
+      const running = mainRunning || subRunning.length > 0
 
       // -- left: dynamic permission mode + key hints (literal % escaped:
       //    statusline treats % as the item prefix → E539 otherwise)
@@ -379,9 +394,13 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       // -- right: live statistics
       const right = []
       // The fat whale emoji + bubble cycle replaces the braille spinner.
-      if (running) right.push(`${WHALE_EMOJI_FRAMES[spinnerIndex]} ${escapeStatusline(rec.status)}`)
-      else right.push(escapeStatusline(rec?.status ?? '○ idle'))
-      if (running && rec?.runningSince) {
+      if (running) {
+        const status = mainRunning
+          ? escapeStatusline(rec!.status)
+          : `● running ◇${subRunning.length}`
+        right.push(`${WHALE_EMOJI_FRAMES[spinnerIndex]} ${status}`)
+      } else right.push(escapeStatusline(rec?.status ?? '○ idle'))
+      if (mainRunning && rec?.runningSince) {
         right.push(escapeStatusline(`${((Date.now() - rec.runningSince) / 1000).toFixed(1)}s`))
       }
       if (rec?.model) {
@@ -834,6 +853,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       ensureSpinner()
       updateStatusline()
       updateTitle()
+      void seedRunningSubagents(id)
       if (sessions.has(id)) recordState(id)
     }
 
@@ -1464,6 +1484,26 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         }
       }
       return children
+    }
+
+    /** Seed the running-subagents registry from the host: a session may have
+     *  children started before the TUI attached (workflow kicked off from
+     *  elsewhere, or a resume mid-run). Best-effort. */
+    const seedRunningSubagents = async (parentId: string) => {
+      try {
+        const children = await listSubagentChildren(parentId)
+        let changed = false
+        for (const c of children) {
+          if (!c.running || runningSubagents.has(c.id)) continue
+          runningSubagents.set(c.id, {
+            parentId,
+            label: c.label,
+            startedAt: c.createdAt ?? Date.now(),
+          })
+          changed = true
+        }
+        if (changed) { ensureSpinner(); updateStatusline() }
+      } catch { /* best-effort */ }
     }
 
     /** Clean one settled chain: hide it from the /subagents list (ledger),
@@ -3821,11 +3861,27 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       }))
       hostDisposers.push(runtimeCtx.on('subagent/start', (info) => {
         if (disposed) return
-        feedForSubagent(info)?.feed.subagentStart(info)
+        const parent = feedForSubagent(info)
+        parent?.feed.subagentStart(info)
+        const key = info?.id ?? info?.runId
+        if (parent && key) {
+          runningSubagents.set(String(key), {
+            parentId: parent.id,
+            label: `${info?.provider ?? 'subagent'} ${FeedRenderer.truncate(String(info?.id ?? ''), 8)}`,
+            startedAt: Date.now(),
+          })
+          ensureSpinner()
+          updateStatusline()
+        }
       }))
       hostDisposers.push(runtimeCtx.on('subagent/end', (info) => {
         if (disposed) return
         feedForSubagent(info)?.feed.subagentEnd(info)
+        const key = info?.id ?? info?.runId
+        if (key && runningSubagents.delete(String(key))) {
+          ensureSpinner()
+          updateStatusline()
+        }
       }))
       hostDisposers.push(runtimeCtx.on('workflow/start', (info) => {
         if (disposed) return
