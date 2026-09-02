@@ -1,5 +1,14 @@
 # 升级指南：dsh 0.1.2-alpha.3 → 0.1.2-alpha.4
 
+> **修正（v0.2.12 之后）**：下文"无破坏性变化 / nvim-tui 消费面零改动适配"
+> 的结论有误——alpha.4 的 SessionSeq 品牌化重构同时移除了 `Session.events`
+> 公共属性，v0.2.12 在恢复旧会话时会抛
+> `TypeError: Cannot read properties of undefined (reading 'length')`，
+> `/fork` 亦失效。已修复：历史恢复等 7 处消费改走 `snapshotEvents()`
+> （alpha.3 `events` 兜底），`/fork` 重写为 alpha.4 官方种子契约
+> （`seed` + `inheritedEventCount` + `meta.isSeeded`），真机恢复旧会话
+> 验证通过。升级插件请用含该修复的版本。
+
 dsh-nvim-tui v0.2.12 全面适配 DeepSeek Harness **v0.1.2-alpha.4**。逐包 diff
 结论：
 
@@ -12,8 +21,9 @@ dsh-nvim-tui v0.2.12 全面适配 DeepSeek Harness **v0.1.2-alpha.4**。逐包 d
   把结果发回父代理（父代理不自动接收子代理转录/工具输出/推理）。
 - **SessionSeq 品牌化重构**：session 事件序列号全线改为 branded number
   （`SessionSeq`/`SessionLogOffset`/`OptionalSessionSeq`），`seedLength` →
-  `isSeeded` + `inheritedEventCount`——nvim-tui 不直接消费这些字段，无
-  破坏。
+  `isSeeded` + `inheritedEventCount`，且 `Session.events` 公共属性被移除
+  （改用 `snapshotEvents()` / `ownEvents()` / `eventAt()`）。nvim-tui 的
+  历史恢复 / 分叉消费面需相应适配（见 CHANGELOG 未发布条目）。
 - 其余家族包为配套重构（invariant 模块归并、typert host 调整）。
 
 **无破坏性变化**（nvim-tui 消费面零改动适配）；peer 依赖锚点抬升至

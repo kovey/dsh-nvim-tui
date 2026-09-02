@@ -390,6 +390,10 @@ export interface HarnessSession {
     cwd?: string
     [key: string]: unknown
   }
+  /** alpha.4+: the full immutable event log (replaced the removed `events`). */
+  snapshotEvents?: () => SessionEvent[]
+  /** pre-alpha.4 hosts: public `events` property (removed by the alpha.4
+   *  SessionSeq 品牌化重构). */
   events?: SessionEvent[]
   append: (type: string, data: unknown, opts?: {
     surfaceOp?: 'append' | { op: 'replace'; start: number; end: number }
@@ -418,7 +422,7 @@ export interface InboxLike {
 /** An owned live agent handle. */
 export interface AgentHandle {
   agent: {
-    session: HarnessSession & { header: Record<string, unknown>; events: SessionEvent[] }
+    session: HarnessSession
     status?: string
     cancel: (cause: unknown) => void
     followup: (message: unknown) => void
@@ -436,6 +440,8 @@ export interface AgentsService {
     meta?: Record<string, unknown>
     agentOptions?: Record<string, unknown>
     seed?: unknown[]
+    /** alpha.4+: exact fork-inherited prefix length (pairs with meta.isSeeded). */
+    inheritedEventCount?: number
     setup?: (agentCtx: Context) => void
   }) => Promise<AgentHandle>
   resume: (options: {

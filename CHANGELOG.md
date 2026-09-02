@@ -3,6 +3,53 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [未发布]
+
+- **修复：alpha.4 下旧版会话打不开（自动恢复 / `/sessions` 恢复全部失败）**。
+  alpha.4 的 SessionSeq 品牌化重构移除了 `Session.events` 公共属性（改用
+  `snapshotEvents()` / `ownEvents()`），v0.2.12 适配时遗漏了消费面——
+  `resumeSession` 读 `session.events.length` 直接抛
+  `TypeError: Cannot read properties of undefined (reading 'length')`，
+  每次打开旧会话都被兜底成新建会话。本次修复：
+  - 统一 `sessionEvents()` 读取器（`snapshotEvents()` 优先、alpha.3 的
+    `events` 兜底），覆盖全部 7 处消费：历史恢复、孤儿工具调用修复、
+    `/trajectory`、`/rewind`、`/preset` 空白判定、子代理回放视图。
+  - **`/fork` 重写为 alpha.4 官方种子契约**（对照
+    dsh-api-session-controller 同款实现）：新鲜子会话 id +
+    `agents.create({ seed, inheritedEventCount, meta.isSeeded })`——旧路径
+    `sessions.fork() → child.events → meta.seedLength` 在 alpha.4 双重失效
+    （fork 已把子会话注册进 store、`meta.seedLength` 为非法 header 字段）。
+    种子切割规则：最后一个 `turn/end` 之后截到下一 `turn/start` 之前
+    （保证平衡回合前缀，无开放回合/悬空工具调用），并用真实 alpha.4
+    Session 校验器验证通过。
+  - 验证：真机 headless 恢复 alpha.3 旧会话（41 事件全量回放）通过；
+    check / build / smoke 全绿。
+- **修复：交互中选择会话/执行命令时 dsh 整个进程退出（终端留下乱码，
+  zsh 报 command not found）**。根因链：alpha.4 宿主新增 fail-loud——
+  **任何 unhandledRejection 都会整体 dispose 并 `process.exit(1)`**（终端
+  打印 `dsh: fatal load failure: …`，且因 runner 静音了 console、宿主直写
+  stderr，任何日志都留不下）。而命令表里 `/sessions`、`/new`、`/fork`、
+  `/model`、`/rewind` 等 20 个命令用 `fn: () => void cmd()` 火发即忘，
+  `onCommand` 调用处也无异步 catch——`/sessions` → 选择会话 →
+  `resumeSession` 一旦 reject（损坏的旧日志 / 任意宿主异常），rejection
+  直接脱缰 → 宿主 fail-loud 杀进程。修复：
+  - 命令分发统一异步护栏：`onCommand` 对 `fn(rest)` 加
+    `Promise.resolve().then().catch()`，reject 只表现为聊天区 notice
+    （`⚠ /xxx 失败: …`）+ 错误日志行，进程不再退出；
+  - 全部命令 `fn` 改为返回 Promise（移除 `void` 包装）让护栏真正接住；
+  - `quit()` 全程 try/catch、`/exit` 等不再可能因 quit 自身 reject 脱缰。
+  - 新增诊断兜底：进程级 `unhandledRejection` / `uncaughtException` 监听
+    （同步写入错误日志）与退出路径诊断（signal / nvim-exit / fatal /
+    boot-complete 标记）——此前这类死法在日志中完全无痕。
+- **修复：/sessions 列出的旧会话点开提示「未知会话」（跨工作目录打不开）**。
+  v0.2.12 的 workspace 分组会话浏览器会列出**所有工作区**的会话，但
+  `selectSession` 只允许打开当前 cwd 的历史会话（`historyHeaders` 按 cwd
+  过滤）——在非项目目录启动 TUI 时，列表里的旧会话全部「未知会话」。
+  现在 `/sessions` 可打开任意工作区的持久会话（新增全量 `historyById` +
+  打开前刷新），列表标题也改为从全量历史取；同时 `recordState` 改为记录
+  **会话自身的 cwd**（而非启动 shell 的 cwd），跨目录打开的旧会话下次在
+  其项目目录启动时可正确自动恢复。真机跨目录恢复验证通过。
+
 ## [v0.2.12（2026-09-01）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.12)
 
 覆盖提交：
