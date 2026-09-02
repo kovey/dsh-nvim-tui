@@ -42,7 +42,7 @@ import type {
 } from './types.js'
 
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
-export const BUILD_VERSION = '0.2.12'
+export const BUILD_VERSION = '0.2.13'
 export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 export const name = 'dsh-nvim-tui'

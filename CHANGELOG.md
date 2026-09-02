@@ -3,7 +3,10 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [未发布]
+## [v0.2.13（2026-09-02）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.13)
+
+覆盖提交：
+[`281ed22`](https://github.com/kovey/dsh-nvim-tui/commit/281ed22)
 
 - **修复：alpha.4 下旧版会话打不开（自动恢复 / `/sessions` 恢复全部失败）**。
   alpha.4 的 SessionSeq 品牌化重构移除了 `Session.events` 公共属性（改用
