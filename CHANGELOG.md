@@ -3,7 +3,11 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [未发布]
+## [v0.2.12（2026-09-01）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.12)
+
+覆盖提交：
+[`1aa27f2`](https://github.com/kovey/dsh-nvim-tui/commit/1aa27f2) ·
+[`75efe9c`](https://github.com/kovey/dsh-nvim-tui/commit/75efe9c)
 
 - **全面适配 DeepSeek Harness v0.1.2-alpha.4 + 子代理修改同步到聊天区**。
   alpha.4 的核心变化：父子代理双向通信——`followup`（父→子）与
