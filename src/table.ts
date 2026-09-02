@@ -122,8 +122,11 @@ function renderTable(block: string[], closed: boolean): RenderedRow[] {
  * for lines that parse normally.
  * @param {string[]} lines raw view lines
  * @param {boolean} streamOpen whether the last line may still grow
+ * @param {number} trailingStatic number of trailing non-content rows (the
+ *   feed's transient activity lines) that must not count as content after a
+ *   table block — the open-table check ignores them.
  */
-export function transformTables(lines: string[], streamOpen = false): TableEntry[] {
+export function transformTables(lines: string[], streamOpen = false, trailingStatic = 0): TableEntry[] {
   const out: TableEntry[] = []
   let fenceOpen = false
   let i = 0
@@ -145,7 +148,7 @@ export function transformTables(lines: string[], streamOpen = false): TableEntry
       while (j < lines.length && isTableRow(lines[j] ?? '')) j++
       const block = lines.slice(i, j)
       if (block.length >= 2 && isSeparator(block[1] ?? '')) {
-        const closed = j < lines.length || !streamOpen
+        const closed = j < lines.length - trailingStatic || !streamOpen
         for (const rendered of renderTable(block, closed)) {
           out.push({ table: true, ...rendered })
         }

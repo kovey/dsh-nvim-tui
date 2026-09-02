@@ -817,6 +817,9 @@ export class FeedRenderer {
     }
     // The chat shows at most ONE activity line: thinking progress, the
     // running tool, or the silent-turn placeholder. Details live in the panel.
+    // It renders at the VERY BOTTOM of the view — below the streaming tail —
+    // so growing content can never displace it (the indicator stays pinned
+    // above the statusline while the answer streams above it).
     let activityLines: string[] = []
     if (this.reasoningTail !== '') {
       const elapsed = this.reasoningStartedAt !== null
@@ -856,7 +859,7 @@ export class FeedRenderer {
         : 0
       if (idleMs >= 800) activityLines = [`·· thinking… ${Math.floor(idleMs / 1000)}s`]
     }
-    const raw = [...this.base, ...progressLines, ...activityLines, ...restTail]
+    const raw = [...this.base, ...progressLines, ...restTail, ...activityLines]
 
     // Parse the full view (cheap string ops) so every flush's buffer content
     // is the stripped text with consistent spans. Markdown tables become
@@ -892,10 +895,12 @@ export class FeedRenderer {
     }
     // streamOpen: the last line may still grow — the answer tail, or the
     // inline reasoning tail in read-only replays (an open table block there
-    // must keep its bottom border off until the stream closes).
+    // must keep its bottom border off until the stream closes). The trailing
+    // activity rows are transparent to the open-table check: a table that
+    // ends right before them is still the "last" content block.
     const streamOpen = this.tail !== '' ||
       (this.reasoningBuf === null && this.inlineReasoning && this.reasoningTail !== '')
-    for (const entry of transformTables(raw, streamOpen)) {
+    for (const entry of transformTables(raw, streamOpen, activityLines.length)) {
       if (entry.table) {
         parsed.push({ text: entry.text, spans: entry.spans, group: entry.group })
         continue

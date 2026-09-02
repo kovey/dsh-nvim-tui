@@ -19,5 +19,8 @@ export type TableEntry = {
  * for lines that parse normally.
  * @param {string[]} lines raw view lines
  * @param {boolean} streamOpen whether the last line may still grow
+ * @param {number} trailingStatic number of trailing non-content rows (the
+ *   feed's transient activity lines) that must not count as content after a
+ *   table block — the open-table check ignores them.
  */
-export declare function transformTables(lines: string[], streamOpen?: boolean): TableEntry[];
+export declare function transformTables(lines: string[], streamOpen?: boolean, trailingStatic?: number): TableEntry[];

@@ -365,6 +365,25 @@ try {
   assert.ok(!linesA2.some((l: string) => l.includes('agent working')), 'history replay skips status')
   assert.ok(linesA2.some((l: string) => l.includes('no API key')), 'finish-error chunk rendered')
 
+  // 3c. bottom-pinned indicator: while a subagent runs AND the main answer
+  // streams, the ◇ activity line stays the LAST buffer row — content streams
+  // ABOVE it, never pushing the indicator into the middle of the chat window.
+  feedA.applyEvent({ type: 'turn/start', time: 4000, data: {} })
+  feedA.subagentStart({ runId: 'run-y', provider: 'deepseek-code', id: 'uuid-y' })
+  feedA.applyEvent({ type: 'assistant/chunk', time: 4100, data: { chunk: { type: 'text-delta', text: '主线一\n主线二\n主线三' } } })
+  await new Promise((r) => setTimeout(r, 250))
+  let pinnedLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  const actIdx = pinnedLines.findIndex((l: string) => /^◇ deepseek-code · \d+\.\d+s$/.test(l))
+  assert.ok(actIdx >= 0, 'subagent indicator present while the main answer streams')
+  assert.equal(actIdx, pinnedLines.length - 1, 'subagent indicator pinned at the bottom of the chat view')
+  feedA.subagentEnd({ runId: 'run-y', provider: 'deepseek-code', id: 'uuid-y', stopReason: 'completed' })
+  feedA.applyEvent({ type: 'assistant/message', time: 4200, data: { message: { content: [{ type: 'text', text: '主线一\n主线二\n主线三' }] } } })
+  feedA.applyEvent({ type: 'turn/end', time: 4300, data: {} })
+  await new Promise((r) => setTimeout(r, 250))
+  pinnedLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(!pinnedLines.some((l: string) => /^◇ deepseek-code · \d+\.\d+s$/.test(l)),
+    'indicator gone after the run ends')
+
   // 4b. official-client parity rendering (batch 1): todo strip, compaction
   // checkpoint, retry rows, workflow-in-transcript, structured tool results.
   feedA.applyEvent({ type: 'todo/write', time: 1500, data: { todos: [
@@ -628,7 +647,7 @@ description:
   pThink = idxOf(/^·· thinking/)
   assert.ok(pHeader >= 0 && pStep >= 0 && pThink >= 0, 'updated block + thinking line both render')
   assert.ok(pHeader < pThink, 'updated incomplete block stays ABOVE the thinking line')
-  // all ✅ → ordinary tail (below the thinking line), committed on turn end
+  // all ✅ → ordinary tail (ABOVE the bottom-pinned indicator), committed on turn end
   feedB.applyEvent({ type: 'assistant/message', time: 7300, data: { turn: 2, step: 3, message: { content: [{ type: 'text', text: '任务全链进度（回调通知需求）:\n- ✅ 功能实现\n- ✅ code-review\n- ✅ 补测试' }] } } })
   feedB.applyEvent({ type: 'assistant/chunk', time: 7350, data: { chunk: { type: 'reasoning-delta', text: '完成' } } })
   await new Promise((r) => setTimeout(r, 250))
@@ -636,7 +655,10 @@ description:
   const cHeader = idxOf(/^任务全链进度/)
   const cThink = idxOf(/^·· thinking/)
   assert.ok(cHeader >= 0 && cThink >= 0, 'completed block + thinking line both render')
-  assert.ok(cThink < cHeader, 'completed block sits back in the normal tail (below thinking)')
+  assert.ok(cHeader < cThink, 'completed block sits in the normal tail (above the bottom-pinned indicator)')
+  // the transient indicator is the LAST buffer row — content streams above it
+  // and can never displace it into the middle of the chat window
+  assert.equal(cThink, stepLines.length - 1, 'activity indicator pinned at the bottom of the chat view')
   feedB.applyEvent({ type: 'turn/end', time: 7400, data: {} })
   await new Promise((r) => setTimeout(r, 250))
   const persisted = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
