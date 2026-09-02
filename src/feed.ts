@@ -503,7 +503,7 @@ export class FeedRenderer {
         } else {
           this.pushTool(callLine)
         }
-        this.toolActivity = { name: name ?? 'tool', startedAt: this.eventTime }
+        this.toolActivity = { name: name ?? 'tool', startedAt: Date.now() }
         this.schedule()
         break
       }
@@ -831,7 +831,11 @@ export class FeedRenderer {
         ? [header, ...this.reasoningTail.split('\n')]
         : [header]
     } else if (this.toolActivity !== null) {
-      const elapsed = ((this.eventTime || Date.now()) - this.toolActivity.startedAt) / 1000
+      // Wall clock on BOTH ends: while a long tool runs (foreground subagent,
+      // slow build) no session events flow, so eventTime stays frozen at the
+      // tool/call moment and an eventTime-based elapsed would sit at 0.0s the
+      // whole run. The ticker re-renders this line every ~0.5s.
+      const elapsed = (Date.now() - this.toolActivity.startedAt) / 1000
       activityLines = [`🔧 ${this.toolActivity.name} · ${elapsed.toFixed(1)}s`]
     } else if (this.subagents.size > 0) {
       // Running subagents while the main agent is quiet: ONE compact line in
