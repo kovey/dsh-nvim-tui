@@ -5,6 +5,27 @@
 
 ## [未发布]
 
+- **全面适配 DeepSeek Harness v0.1.2-alpha.4 + 子代理修改同步到聊天区**。
+  alpha.4 的核心变化：父子代理双向通信——`followup`（父→子）与
+  `reportFrom`（子→父）合并为通用 `sendMessage(sender, targetId)`（相邻
+  Agent 互发，Steer 语义：运行中目标在最近步界接收、空闲目标起新回合），
+  消息 source 统一为 `agent-message`；标准子代理提示词指示子代理把结果
+  `send_message` 回父代理。基于此：
+  - **子代理消息高亮渲染**：父会话收到的子代理消息（`agent-message` /
+    `subagent-settled` / `subagent-report` / `coordinator`）不再落入通用
+    注入上下文样式——`◇ 子代理 <id> → 本会话` 头部行（DshTuiSubagent 色）
+    + 暗色内容行；结算通知折叠为一行摘要行并保留子代理的收尾消息（去重
+    首行）。内容行用 `· ` 前缀围栏安全化（绝不匹配 FENCE_RE，杜绝天蓝
+    泄漏类回归）。
+  - **子代理修改实时同步 + diff**：runner 新增 child→parent 持久路由
+    （`childParent`，subagent/start 登记、容量上限 400、随 teardown 清
+    空）——子代理会话的 `tool/result` 文件修改 diff 实时渲染进**父聊天区**
+    （`✎ 子代理 <provider> <id> 修改 <path> (+n −m)`，meta.diffs 优先、
+    工具调用前快照兜底、每 call 每 feed 去重），父代理共享工作区，
+    子代理的编辑即刻可见。
+  - peer 依赖锚点抬升至 `^0.1.2-alpha.4`，版本 0.2.12；`tsc check` /
+    `build` / `smoke`（新增子代理渲染与围栏安全回归）全绿；alpha.4 真机
+    e2e 通过。
 - **修复：@ 提及菜单不能用导航键选择（只能选中第一项）**。`<Up>/<Down>/
   <C-n>/<C-p>` 此前只检查 / 命令菜单，@ 菜单打开时全部落入历史回退——真实
   会话里有历史时会把已输入的 @token 替换掉并关闭菜单（表现为"只能默认选

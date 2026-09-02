@@ -42,7 +42,7 @@ import type {
 } from './types.js'
 
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
-export const BUILD_VERSION = '0.2.11'
+export const BUILD_VERSION = '0.2.12'
 export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 export const name = 'dsh-nvim-tui'
@@ -168,7 +168,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
      *  falls back to the pre-call file snapshot for flows the meta misses
      *  (creates, deletes). Also runs during history REPLAYS: the persisted
      *  events carry the same meta, so diff blocks survive restarts. */
-    const maybePushFileDiff = (feed: FeedRenderer, event: SessionEvent): void => {
+    const maybePushFileDiff = (feed: FeedRenderer, event: SessionEvent, labelPrefix = ''): void => {
       if (event.type !== 'tool/result') return
       const callId = event.data?.message?.source?.callId
       // One diff render per tool call per feed: replay loops and live event
@@ -189,7 +189,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
             : d.newText === undefined
               ? t('删除')
               : t('修改')
-          feed.pushDiff(`✎ ${action} ${d.path} (+${block.stats.added} −${block.stats.removed})`, block.lines)
+          feed.pushDiff(`✎ ${labelPrefix}${action} ${d.path} (+${block.stats.added} −${block.stats.removed})`, block.lines)
         }
         return
       }
@@ -202,7 +202,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         const block = diffTexts(snap.before, after)
         if (block.stats.added === 0 && block.stats.removed === 0) return
         const action = snap.before === null ? t('新增') : after === null ? t('删除') : t('修改')
-        feed.pushDiff(`✎ ${action} ${snap.display} (+${block.stats.added} −${block.stats.removed})`, block.lines)
+        feed.pushDiff(`✎ ${labelPrefix}${action} ${snap.display} (+${block.stats.added} −${block.stats.removed})`, block.lines)
       })
     }
     // Optimistic user-bubble echo: each direct submit renders immediately
@@ -281,6 +281,11 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     // Seeded by subagent/start|end events; re-seeded from the host on
     // session switch (children started before the TUI attached).
     const runningSubagents = new Map<string, { parentId: string; label: string; startedAt: number }>()
+
+    // Durable child→parent routing (alpha.4): child session id → its parent.
+    // Survives subagent/end (settlement notices and late child events still
+    // need the parent feed); entries are pruned when their parent closes.
+    const childParent = new Map<string, { parentId: string; label: string }>()
 
     // Last-active-session state (claude --continue behaviour): recorded on
     // every switch; read at boot to auto-resume. Lives under DSH_HOME.
@@ -921,6 +926,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         }
       }
       sessions.clear()
+      childParent.clear()
       await closeNvimWindow()
     }
 
@@ -3694,6 +3700,30 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
           maybePushFileDiff(subagentView.feed, event)
           return
         }
+        // Child→parent modification sync (alpha.4): the child's file-change
+        // diffs render LIVE into the parent's chat as subagent-labeled ✎
+        // cards — the parent shares the workspace, so the child's edits are
+        // the parent's edits (the harness forwards no child transcript, but
+        // this runner sees every child session event).
+        const childLink = childParent.get(owner.id)
+        if (childLink !== undefined) {
+          if (event.type === 'tool/call' && typeof event.data?.name === 'string') {
+            const p = producedPathFromCall(event.data.name, event.data.arguments)
+            if (p !== null && typeof event.data.callId === 'string' && event.data.callId !== '') {
+              const cid = event.data.callId
+              void readFileSnapshot(p).then((before) => {
+                pendingFileSnaps.set(cid, { display: p, before })
+              })
+            }
+          }
+          if (event.type === 'tool/result') {
+            const prec = sessions.get(childLink.parentId)
+            if (prec !== undefined) {
+              maybePushFileDiff(prec.feed, event, `${t('子代理')} ${childLink.label} `)
+            }
+          }
+          return
+        }
         const rec = sessions.get(owner.id)
         if (!rec) return
         // Skip the host's user/message when this exact text was already
@@ -3865,11 +3895,21 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         parent?.feed.subagentStart(info)
         const key = info?.id ?? info?.runId
         if (parent && key) {
+          const label = `${info?.provider ?? 'subagent'} ${FeedRenderer.truncate(String(info?.id ?? ''), 8)}`
           runningSubagents.set(String(key), {
             parentId: parent.id,
-            label: `${info?.provider ?? 'subagent'} ${FeedRenderer.truncate(String(info?.id ?? ''), 8)}`,
+            label,
             startedAt: Date.now(),
           })
+          // Durable routing for the child's own session events (tool diffs,
+          // late messages) — kept after subagent/end, pruned with the parent.
+          childParent.set(String(key), { parentId: parent.id, label })
+          // Bounded memory: long-running hosts spawn unbounded children;
+          // evict the oldest routing entry past the cap.
+          if (childParent.size > 400) {
+            const oldest = childParent.keys().next()
+            if (oldest.done !== true) childParent.delete(oldest.value)
+          }
           ensureSpinner()
           updateStatusline()
         }

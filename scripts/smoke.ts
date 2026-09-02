@@ -975,6 +975,32 @@ description:
   const ctxRow = injectedLines.indexOf('· runtime context line1')
   const userOnCtx = injectedMarks.filter((m) => m[1] === ctxRow && m[3]?.hl_group === 'DshTuiUser')
   assert.equal(userOnCtx.length, 0, 'injected context rows carry no DshTuiUser color')
+  // child→parent traffic (alpha.4 bidirectional messaging): subagent sources
+  // keep their identity — a ◇ header in the subagent color + dim content rows
+  feedA.applyEvent({ type: 'user/message', data: { content: [{ type: 'text', text: '我改好了 src/x.ts，加了一个函数' }], source: { kind: 'agent-message', senderSessionId: 'child-session-12345678' } } })
+  feedA.applyEvent({ type: 'user/message', data: { content: [{ type: 'text', text: 'Background subagent child-1 finished.\nIts closing message:\n已完成修改' }], source: { kind: 'subagent-settled', form: 'notice', summary: 'Background subagent child-1 finished.', senderSessionId: 'child-1' } } })
+  // fence safety: a child message carrying a fence marker must be prefix-
+  // neutralized ('· ```') — it can never toggle the view fence state
+  feedA.applyEvent({ type: 'user/message', data: { content: [{ type: 'text', text: '看这段：\n```\n不会被当成围栏\n' }], source: { kind: 'agent-message', senderSessionId: 'child-fence' } } })
+  feedA.applyEvent({ type: 'assistant/chunk', data: { chunk: { type: 'text-delta', text: '围栏之后仍是普通文本\n' } } })
+  await new Promise((r) => setTimeout(r, 250))
+  const childLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(childLines.includes('◇ 子代理 child-se → 本会话'), 'child agent-message renders a subagent header')
+  assert.ok(childLines.includes('· 我改好了 src/x.ts，加了一个函数'), 'child message content renders dimmed under the header')
+  assert.ok(childLines.includes('◇ 子代理已结束 · Background subagent child-1 finished.'), 'settlement notice renders a subagent summary row')
+  assert.ok(childLines.includes('· 已完成修改'), 'settlement closing message renders dimmed (summary first line deduped)')
+  assert.equal(childLines.filter((l: string) => l === '· Background subagent child-1 finished.').length, 0, 'settlement summary renders once (no duplicated content line)')
+  assert.ok(childLines.includes('· 不会被当成围栏'), 'child fence line renders as dim content, never a fence marker')
+  assert.ok(childLines.includes('· ```'), 'child fence marker keeps its visible but neutralized form')
+  const childMarks: any[] = await nvim.request('nvim_buf_get_extmarks', [chatA.chatBuf, -1, 0, -1, { details: true }])
+  const childHeaderRow = childLines.indexOf('◇ 子代理 child-se → 本会话')
+  const subOnHeader = childMarks.filter((m) => m[1] === childHeaderRow && m[3]?.hl_group === 'DshTuiSubagent')
+  assert.ok(subOnHeader.length > 0, 'child message header carries the DshTuiSubagent highlight')
+  const userOnChild = childMarks.filter((m) => m[1] === childHeaderRow && m[3]?.hl_group === 'DshTuiUser')
+  assert.equal(userOnChild.length, 0, 'child message rows never carry DshTuiUser')
+  const afterFenceTextRow = childLines.indexOf('围栏之后仍是普通文本')
+  const codeOnAfter = childMarks.filter((m) => m[1] === afterFenceTextRow && m[3]?.hl_group === 'DshTuiCode')
+  assert.equal(codeOnAfter.length, 0, 'child fence line must not leak code color below the block')
   // an interrupted turn commits its prefix + a visible marker
   feedA.applyEvent({ type: 'assistant/message', data: { turn: 1, step: 1, message: { content: [{ type: 'text', text: '被打断的前缀' }] }, interrupted: true } })
   await new Promise((r) => setTimeout(r, 250))

@@ -1,4 +1,59 @@
-# 升级指南：dsh 0.1.2-alpha.2 → 0.1.2-alpha.3
+# 升级指南：dsh 0.1.2-alpha.3 → 0.1.2-alpha.4
+
+dsh-nvim-tui v0.2.12 全面适配 DeepSeek Harness **v0.1.2-alpha.4**。逐包 diff
+结论：
+
+- **父子代理双向通信（核心变化）**：`followup`（父→子）与 `reportFrom`
+  （子→父，alpha.3 的 `subagent-report` source + `SubagentReportOptions`
+  已被移除）合并为通用 **`sendMessage(sender, targetId, …)`**——相邻 Agent
+  互发消息，Steer 语义（运行中目标在最近步界接收、空闲目标起新回合）；
+  source 统一为 `agent-message`；`queuePrompt` 供宿主侧人类消息入队。
+  标准子代理提示词改为指示子代理 `send_message({ agent_id, message })`
+  把结果发回父代理（父代理不自动接收子代理转录/工具输出/推理）。
+- **SessionSeq 品牌化重构**：session 事件序列号全线改为 branded number
+  （`SessionSeq`/`SessionLogOffset`/`OptionalSessionSeq`），`seedLength` →
+  `isSeeded` + `inheritedEventCount`——nvim-tui 不直接消费这些字段，无
+  破坏。
+- 其余家族包为配套重构（invariant 模块归并、typert host 调整）。
+
+**无破坏性变化**（nvim-tui 消费面零改动适配）；peer 依赖锚点抬升至
+`^0.1.2-alpha.4`，版本横幅 0.2.12。新增功能面：子代理消息高亮渲染 +
+子代理文件修改实时 diff 同步到父聊天区（见 CHANGELOG）。
+
+## 升级步骤
+
+```bash
+# 1. 升级宿主
+npm i -g @deepseek-ai/dsh@alpha
+dsh --version        # 应输出 0.1.2-alpha.4（首次启动 profile 时共享 store
+                     # 自动抬升到 alpha.4；运行中的进程需重启生效）
+
+# 2. 更新 nvim-tui 插件
+dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui
+# 或固定版本
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.12"
+
+# 3. cordis.patch.yml 无需改动——alpha.4 未新增/删除 loader entry，
+#    alpha.3 时代的装配行（含 web-app 5 服务补全）原样可用。
+```
+
+## 验证
+
+```bash
+cd <仓库>
+npm run check && npm run build && npm run smoke
+npm run e2e -- "请只回复两个字：就绪"
+```
+
+**判定标准**：e2e 输出 `E2E PASS`，dump 内 `── turn ──` 与 `── turn end ──`
+之间有真实助手回复（alpha.4 真机实测通过）。
+
+**回滚**：`npm i -g @deepseek-ai/dsh@0.1.2-alpha.3`，插件退回
+`kovey/dsh-nvim-tui#v0.2.11`。
+
+---
+
+# 历史指南：dsh 0.1.2-alpha.2 → 0.1.2-alpha.3
 
 dsh-nvim-tui v0.2.11 全面适配 DeepSeek Harness **v0.1.2-alpha.3**。alpha.3 是
 全家族（40+ 包）的**协同版本号抬升**，逐包 diff 结论：
