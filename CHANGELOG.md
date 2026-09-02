@@ -5,6 +5,31 @@
 
 ## [Unreleased]
 
+- **新增：子代理对话窗**——`/subagents` 对 continuable 子代理打开对话窗口，
+  像跟主代理聊天一样发消息：
+  - 窗口上部为子代理实时转录（思考内联流式、回复、工具卡，复用
+    FeedRenderer 只读回放渲染层），下部为内嵌单行输入（Enter 发送 ·
+    Esc 关闭回主线 · `<C-CR>` 换行 · `<Up>/<Down>` 窗口内历史 · `<C-o>` 面板），
+    输入多行时自动长高、转录窗同步缩短，整体占位不变。
+  - 发送链路：`dsh-subagent-send` rpcnotify → 乐观回显气泡（与 harness 的
+    user/message 回放 FIFO 去重，不双渲染）→ 官方 symbol 键 host prompt 队列
+    `Symbol.for('dsh.subagent.queuePrompt')`（人机 prompt，source kind=user）：
+    运行中子代理排队为下一回合（窗口内 `⏳ 已排队` 提示），已结束子代理自动
+    冷恢复；主聊天同步 `➤ 已发给子代理 X` notice。
+  - 修复：发送报「subagents 服务未装配」——服务实例上不存在公开 `followup`
+    方法（此前调用的是幻影 API），改调 symbol 键的 `queueSubagentPrompt`
+    host 队列，`/subagents` 快捷续聊路径一并修复。
+  - 修复：发送报「Cannot read properties of undefined (reading
+    'requireContinuations')」——symbol 键方法内部依赖 `this`
+    （服务实例），必须以 `.call(service, …)` 绑定调用，不能提取为裸函数。
+  - 修复：输入行无边框、与转录框之间留一行空隙——输入浮窗改为自带圆角边框
+    （顶边紧贴转录框底边，构成一个连续完整的聊天框），操作提示移入输入行
+    底边框；`resize` 改用局部配置合并，多行输入时保留标题/边框/提示。
+  - 与只读思考链回放互斥（开一个关另一个）；`/subagents` 操作菜单新增
+    「打开对话窗口」项，打开时清除「下一条输入发给子代理」快捷寻址。
+  - 新模块 `nvim/lua/dsh_tui/subagent_chat.lua` + runner 侧
+    `openSubagentChat` / `sendToSubagent` + smoke 全覆盖。
+
 - **修复：活动指示（`·· thinking · Xs` / `🔧 工具 · Xs` / `◇ 子代理 · Xs`）
   被流式输出顶到聊天框中间**。指示行原先渲染在已提交内容与流式 tail 之间，
   内容在它下方持续流入时它随之上移。现在它固定渲染在视图**最底部**

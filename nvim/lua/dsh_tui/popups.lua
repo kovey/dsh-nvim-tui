@@ -74,6 +74,9 @@ end
 S.subagentView = { buf = nil, win = nil }
 
 function P.open_subagent_view(title)
+  -- One float family at a time: the subagent CHAT window closes silently
+  -- (the runner/lua swap owns focus; no close notification to send).
+  pcall(function() require('dsh_tui.subagent_chat').close_silent() end)
   -- Replace any previous view silently (the runner initiated the swap).
   -- The old buffer must be wiped too: with 'hide' it survives the window
   -- close, and the NEXT open's nvim_buf_set_name would collide on

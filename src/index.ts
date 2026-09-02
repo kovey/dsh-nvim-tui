@@ -16,6 +16,7 @@ import { t, setLocale, locale } from './i18n.js'
 import { matchIntent } from './nlcmd.js'
 import { WHALE_EMOJI_FRAMES } from './whale.js'
 import { ageLabel, isExpired, readCleanedIds, writeCleanedIds, orderSubagentChildren } from './subagent-clean.js'
+import { queueSubagentPromptKey } from './types.js'
 import {
   MarketEntry, fetchCatalog, readCatalog, writeCatalog, isFresh, searchCatalog,
   readInstalledPlugins, runningProfileName, installSpec, openUrl,
@@ -214,6 +215,15 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     let pendingImages: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }>> = []
     /** Open subagent transcript view: { childId, feed } (read-only replay). */
     let subagentView: { childId: string; feed: FeedRenderer } | null = null
+    /** Open subagent CHAT window: transcript feed + editable input that sends
+     *  user messages to the continuable child (like chatting with the main
+     *  agent). Mutually exclusive with the read-only view. */
+    let subagentChat: {
+      childId: string
+      parentId: string
+      label: string
+      feed: FeedRenderer
+    } | null = null
     /** /sessions float data: [{ id, title, active, kind }] (full ids). */
     let sessionEntries: Array<{ id: string; title: string; active: boolean; kind: string }> = []
     /** Pending directory-picker selection (Lua float → 'dsh-dir-selected'). */
@@ -1155,6 +1165,34 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       }
     }
 
+    /**
+     * Queue one human prompt to a continuable child through the official
+     * symbol-keyed host prompt queue (Symbol.for('dsh.subagent.queuePrompt')).
+     * The dsh-subagent service exposes NO public followup method — this face
+     * is the host-only queue: (parent, childId, content, source, signal) →
+     * inbox MessageId. Running children admit it as their next turn after the
+     * current one converges; settled children cold-resume.
+     */
+    const queueSubagentPrompt = async (parentAgent: unknown, childId: string, text: string) => {
+      const subagentsSvc = svc('subagents')
+      const fn = subagentsSvc?.[queueSubagentPromptKey]
+      if (typeof fn !== 'function') {
+        throw new Error(t('子代理续聊不可用（subagents 服务未装配）'))
+      }
+      // The symbol-keyed method reads `this` internally (requireContinuations,
+      // etc.) — invoke it BOUND to the service instance, never as a detached
+      // function (an unbound call crashes with "Cannot read properties of
+      // undefined (reading 'requireContinuations')").
+      await (fn as (...args: unknown[]) => Promise<unknown>).call(
+        subagentsSvc,
+        parentAgent,
+        childId,
+        [{ type: 'text', text }],
+        { kind: 'user' },
+        new AbortController().signal,
+      )
+    }
+
     const send = (text: string) => {
       if (disposed) return
       const rec = activeId === null ? undefined : sessions.get(activeId)
@@ -1163,22 +1201,14 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         return
       }
       // /subagents → 继续对话: this input line goes to the continuable child
-      // through the official `subagents.followup` (parent-authority check
+      // through the official host prompt queue (parent-authority check
       // built in) instead of the main agent.
       if (pendingSubagentFollowup !== null) {
         const target = pendingSubagentFollowup
         pendingSubagentFollowup = null
-        const subagentsSvc = svc('subagents')
-        if (typeof subagentsSvc?.followup !== 'function') {
-          notice(t('子代理续聊不可用（subagents 服务未装配）'))
-          return
-        }
-        const followupFn = subagentsSvc.followup
         void (async () => {
           try {
-            await followupFn(rec.handle.agent, target.childId,
-              [{ type: 'text', text }],
-              { source: { kind: 'user' }, signal: new AbortController().signal })
+            await queueSubagentPrompt(rec.handle.agent, target.childId, text)
             notice(`已发送给子代理 ${target.label}: ${text.slice(0, 60)}`)
           } catch (err) {
             notice(`子代理续聊失败: ${(err as Error).message}`)
@@ -1621,6 +1651,12 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
 
     /** Open a read-only replay of one subagent's session log in a float. */
     const openSubagentView = async (childId: string, label: string) => {
+      // One float family at a time: the chat window closes (its close handler
+      // drops the routing state).
+      if (subagentChat !== null) {
+        await luaCall('require("dsh_tui").close_subagent_chat()', []).catch(() => {})
+        subagentChat = null
+      }
       // Gather the event log: live children stream from the in-memory store
       // (new events keep arriving via session/event routing); settled children
       // are read from persistence without resuming or publishing an agent.
@@ -1677,6 +1713,120 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         await luaCall('require("dsh_tui").subagent_view_goto_thinking()', []).catch(() => {})
       }
       notice(`子代理视图: ${label}（${events.length} 事件 · q/Esc 关闭${live ? ' · 实时跟随' : ''}）`)
+    }
+
+    /**
+     * Open the subagent CHAT window for one continuable child: the child's
+     * live transcript streams into the upper feed (inline reasoning + answer
+     * + tool cards), and the lower input row sends user messages to the child
+     * through the official `subagents.followup` queue (human prompt → the
+     * child's next turn; a settled child cold-resumes, a running child admits
+     * it after the current turn converges).
+     */
+    const openSubagentChat = async (childId: string, label: string) => {
+      if (activeId === null) {
+        notice(t('无活跃会话'))
+        return
+      }
+      // One float family at a time: the read-only view closes (its close
+      // handler drops the routing state).
+      if (subagentView !== null) {
+        await luaCall('require("dsh_tui").close_subagent_view()', []).catch(() => {})
+        subagentView = null
+      }
+      const live = runtimeCtx.sessions.get(childId)
+      let events: SessionEvent[] = []
+      if (live) {
+        events = [...sessionEvents(live)]
+      } else {
+        try {
+          const persistence = svc('sessionPersistence')
+          const inspection = await persistence?.inspect?.(childId)
+          events = (inspection?.events ?? []) as SessionEvent[]
+        } catch (err) {
+          notice(`读取子代理会话失败: ${(err as Error).message}`)
+          return
+        }
+      }
+      if (events.length === 0) {
+        notice(t('子代理会话无事件（可能尚未开始）'))
+        return
+      }
+      const ids = await luaCall('return require("dsh_tui").open_subagent_chat(...)', [label])
+      if (!ids || !Number.isInteger(ids.buf) || !Number.isInteger(ids.win) ||
+        !Number.isInteger(ids.inputBuf) || !Number.isInteger(ids.inputWin)) {
+        notice(t('子代理对话窗打开失败（nvim 浮窗未创建）'))
+        return
+      }
+      // The window takes over the "next input goes to the child" quick path.
+      pendingSubagentFollowup = null
+      const feed = new FeedRenderer(nvim!, ids.buf, ids.win, {
+        idsProvider: () => luaCall('return require("dsh_tui").subagent_chat_ids()', []),
+        activeChecker: () => true,
+        // No separate reasoning panel: reasoning blocks render inline, dim.
+        reasoningBuf: null,
+        reasoningView: () => null,
+        inlineReasoning: true,
+      })
+      subagentChat = { childId, parentId: activeId, label, feed }
+      for (const e of events) {
+        feed.applyEvent(e, { history: true })
+        maybePushFileDiff(feed, e)
+      }
+      // Close the snapshot/live gap: events appended while the window opened.
+      if (live) {
+        const liveEvents = sessionEvents(live)
+        for (let i = events.length; i < liveEvents.length; i++) {
+          feed.applyEvent(liveEvents[i], { history: true })
+          maybePushFileDiff(feed, liveEvents[i])
+        }
+      }
+      await feed.flush()
+      if (!live) {
+        // Settled replay: land on the FIRST thinking block, like the view.
+        await luaCall('require("dsh_tui").subagent_chat_goto_thinking()', []).catch(() => {})
+      }
+      notice(`子代理对话窗: ${label}（Enter 发送 · Esc 关闭${live ? ' · 实时' : ''}）`)
+    }
+
+    /**
+     * Send one user message from the subagent chat window to its child.
+     * Optimistic echo (deduped against the harness's user/message replay),
+     * queued through `subagents.followup` with user provenance.
+     */
+    const sendToSubagent = (text: string) => {
+      const chat = subagentChat
+      if (chat === null || disposed) return
+      const clean = text.trim()
+      if (clean === '') return
+      const parentRec = sessions.get(chat.parentId)
+      if (parentRec === undefined) {
+        chat.feed.pushError(t('父会话已不存在，无法发送'))
+        return
+      }
+      // Optimistic echo: render the bubble now; the matching user/message
+      // replay is skipped in the session/event routing (FIFO per session).
+      chat.feed.pushUser(clean, [])
+      const q = pendingEchoes.get(chat.childId) ?? []
+      q.push(clean)
+      if (q.length > 4) q.shift()
+      pendingEchoes.set(chat.childId, q)
+      const subagentsSvc = svc('subagents')
+      if (typeof subagentsSvc?.[queueSubagentPromptKey] !== 'function') {
+        chat.feed.pushError(t('子代理续聊不可用（subagents 服务未装配）'))
+        return
+      }
+      if (runningSubagents.has(chat.childId)) {
+        chat.feed.appendNotice(t('⏳ 已排队：子代理当前回合结束后处理'))
+      }
+      void (async () => {
+        try {
+          await queueSubagentPrompt(parentRec.handle.agent, chat.childId, clean)
+          parentRec.feed?.appendNotice(`➤ 已发给子代理 ${chat.label}: ${FeedRenderer.truncate(clean, 60)}`)
+        } catch (err) {
+          chat.feed.pushError(`${t('发送失败')}: ${(err as Error).message}`)
+        }
+      })()
     }
 
     /** /subagents — child-agent directory; pick one to view its thinking. */
@@ -1741,8 +1891,9 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         const child = children.find((c) => c.id === sel)
         const action = child?.mode === 'continuable'
           ? await openPicker(t('子代理操作'), [
-              { label: '查看思考链回放', value: 'view' },
+              { label: '打开对话窗口（像主聊天一样发消息）', value: 'chat' },
               { label: '继续对话（下一条输入发给它）', value: 'continue' },
+              { label: '查看思考链回放', value: 'view' },
             ])
           : 'view'
         if (action === 'continue') {
@@ -1751,6 +1902,10 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
           return
         }
         if (action === null) return
+        if (action === 'chat') {
+          await openSubagentChat(sel, child?.label ?? sel.slice(0, 8))
+          return
+        }
         await openSubagentView(sel, child?.label ?? sel.slice(0, 8))
       } catch (err) {
         notice(`subagents 失败: ${(err as Error).message}`)
@@ -3760,6 +3915,16 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
         else if (method === 'dsh-subagent-view-closed') {
           subagentView = null
         }
+        else if (method === 'dsh-subagent-chat-closed') {
+          subagentChat = null
+        }
+        else if (method === 'dsh-subagent-send') {
+          try {
+            sendToSubagent(String(args?.[0] ?? ''))
+          } catch (err) {
+            notice(`⚠ 子代理发送失败: ${(err as Error).message}`)
+          }
+        }
         else if (method === 'dsh-dir-selected') {
           const picked = args?.[0]
           dirSettle?.(picked ?? null)
@@ -3799,6 +3964,36 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
       }
       feedDisposer = runtimeCtx.on('session/event', (owner, event) => {
         if (disposed) return
+        // Open subagent CHAT window: route the child's live events into its
+        // feed (reasoning/text/tools keep streaming in place). The harness's
+        // replay of our own optimistic user echo is skipped (FIFO dedupe).
+        if (subagentChat !== null && owner.id === subagentChat.childId) {
+          if (event.type === 'tool/call' && typeof event.data?.name === 'string') {
+            const p = producedPathFromCall(event.data.name, event.data.arguments)
+            if (p !== null && typeof event.data.callId === 'string' && event.data.callId !== '') {
+              const cid = event.data.callId
+              void readFileSnapshot(p).then((before) => {
+                pendingFileSnaps.set(cid, { display: p, before })
+              })
+            }
+          }
+          if (event.type === 'user/message') {
+            const q = pendingEchoes.get(owner.id)
+            if (q !== undefined && q.length > 0) {
+              const data = event.data as { message?: ChatMessage } | ChatMessage | undefined
+              const msg = (data as { message?: ChatMessage } | undefined)?.message ??
+                (data as ChatMessage | undefined)
+              if (FeedRenderer.messageText(msg) === q[0]) {
+                q.shift()
+                pendingEchoes.set(owner.id, q)
+                return // already rendered optimistically — no double bubble
+              }
+            }
+          }
+          subagentChat.feed.applyEvent(event)
+          maybePushFileDiff(subagentChat.feed, event)
+          return
+        }
         // Open subagent transcript view: route the child's live events into
         // its read-only feed (reasoning/text/tools keep streaming in place).
         if (subagentView !== null && owner.id === subagentView.childId) {

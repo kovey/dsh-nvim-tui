@@ -27,6 +27,12 @@ dsh --profile nvim-tui
   （紧贴右缘的浮动弹窗，聊天区保持全宽）；工具卡片、subagent/workflow
   卡片、GFM 表格框线渲染；markdown 代码块按 Claude 风格渲染
   （隐藏 ``` 围栏、语言小标 + 语法高亮）；子代理思考链回放**边思考边实时输出**
+- **子代理对话窗**：`/subagents` 对 continuable 子代理打开对话窗口——上方是
+  子代理实时转录（思考/回复/工具卡边跑边流），下方输入行像跟主代理聊天一样
+  发消息（Enter 发送 · Esc 关闭）；消息经官方子代理续聊队列（host prompt
+  queue）排队为
+  子代理的下一回合（运行中等待当前回合收敛，已结束自动冷恢复），主聊天同步
+  `➤ 已发给子代理 X` 提示
 - **状态栏**：权限模式 · 模型 · effort · 缓存命中% · 上下文占用 · Σ token ·
   TTFT/吞吐 · 时长 · 预估成本 · provider 路由 · ⏳ 排队 / ⚙ jobs / 📋 待办 ·
   `⇢` 子代理寻址
@@ -208,7 +214,7 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 会话 | `/tasks [kill <job-id>]` | 任务（jobs）列表/取消单个 |
 | 会话 | `/skills [技能名]` | 技能目录浏览（浮窗查看详情） |
 | 会话 | `/fb up\|down [备注]` | 对最后一条助手消息点赞/点踩（message-feedback） |
-| 会话 | `/subagents` | 子代理目录（思考链只读回放 + continuable 续聊 `subagents.followup`） |
+| 会话 | `/subagents` | 子代理目录（思考链只读回放 + **对话窗口** + continuable 续聊） |
 | 会话 | `/workflow` | 工作流运行视图（阶段树 + agent 序列 + 日志；转录内嵌套回放） |
 | 会话 | `/queue` | 消息队列：查看/编辑/删除排队消息、清空（agent inbox 投影，状态栏 ⏳ 计数） |
 | 会话 | `/workspace [add <目录> [标题] \| delete <id>]` | 工作区管理（dsh-workspace：分组/排序/归档） |
@@ -386,6 +392,7 @@ nvim/lua/dsh_tui/             nvim 侧 UI（按职责拆分的 Lua 模块）
   buffer.lua    buffer 原语（展示 buffer 选项、输入文本、补全插件屏蔽）
   popup_core.lua 通用浮窗族（审批 / 提问 / 选择器）+ 底部提示栏
   popups.lua    专用浮窗（技能详情、子代理视图、目录选择、进度、会话列表）
+  subagent_chat.lua 子代理对话窗（转录浮窗 + 内嵌输入行，Enter 发送 / 历史 / 动态高度）
 scripts/smoke.ts              无头冒烟测试（Node ≥23.6 直跑）
 scripts/e2e.ts                真模型端到端回归
 tsconfig.json / tsconfig.scripts.json   主构建 / scripts 检查配置

@@ -328,6 +328,12 @@ export interface UserQuestion {
         description?: string;
     }>;
 }
+/** Symbol-keyed host prompt queue on the dsh-subagent service instance
+ *  (Symbol.for('dsh.subagent.queuePrompt')): queue one human prompt as a
+ *  distinct child turn. Signature: (parentAgent, childId, content, source,
+ *  signal) → inbox MessageId. The service exposes NO public method name for
+ *  this face — only the symbol. */
+export declare const queueSubagentPromptKey: symbol;
 /** dsh-subagent directory service. */
 export interface SubagentsService {
     listChildren?: (parentSessionId: string) => Promise<Array<{
@@ -339,7 +345,8 @@ export interface SubagentsService {
         reason?: string;
         hasChildren?: boolean;
     }>>;
-    followup?: (agent: unknown, childId: string, content: unknown[], options: unknown) => Promise<unknown>;
+    /** Host prompt queue + other symbol-keyed runtime faces. */
+    [key: symbol]: unknown;
 }
 /** dsh-session-persistence: history list + read-only inspection. */
 export interface SessionPersistenceService {

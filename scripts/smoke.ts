@@ -1245,6 +1245,84 @@ description:
   await lua('require("dsh_tui").close_subagent_view()', [])
   await waitNote('dsh-subagent-view-closed')
 
+  // 9f3. subagent CHAT window: transcript float + editable input row — the
+  // user chats with a continuable child like with the main agent (Enter
+  // sends through 'dsh-subagent-send', the transcript streams into the
+  // upper feed).
+  const scIds = await lua('return require("dsh_tui").open_subagent_chat(...)', ['audit-child'])
+  assert.ok(Number.isInteger(scIds.buf) && Number.isInteger(scIds.win) &&
+    Number.isInteger(scIds.inputBuf) && Number.isInteger(scIds.inputWin),
+  'chat opens with transcript + input ids')
+  assert.equal((await nvim.request('nvim_get_mode', [])).mode, 'i', 'chat input opens in insert mode')
+  // The input float sits directly under the transcript float (same col/width),
+  // carries its own rounded border (one continuous framed chat box), and the
+  // operation hints live in the INPUT's bottom border.
+  const scCfg = await nvim.request('nvim_win_get_config', [scIds.win])
+  const scICfg = await nvim.request('nvim_win_get_config', [scIds.inputWin])
+  assert.equal(scICfg.row, scCfg.row + scCfg.height + 2, 'input float sits right below the transcript')
+  assert.equal(scICfg.col, scCfg.col, 'input float aligns with the transcript column')
+  assert.equal(scICfg.width, scCfg.width, 'input float spans the transcript width')
+  assert.notEqual(scICfg.border, 'none', 'input float carries a rounded border')
+  assert.notEqual(scCfg.border, 'none', 'transcript float carries a rounded border')
+  if (await lua('return vim.fn.has("nvim-0.10") == 1', [])) {
+    assert.ok(String(scICfg.footer).includes('Enter'), 'input bottom border carries the send hints')
+  }
+  const scInputMaps = await lua(`local out = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(${scIds.inputBuf}, "i")) do
+      table.insert(out, { lhs = m.lhs, rhs = m.rhs or "" })
+    end
+    return out`, [])
+  const scKey = (k: string) => scInputMaps.find((m: any) => m.lhs === k)
+  assert.ok(scKey('<CR>') && String(scKey('<CR>').rhs).includes('subagent_chat_submit'), 'Enter submits the chat input')
+  assert.ok(scKey('<Esc>') && String(scKey('<Esc>').rhs).includes('close_subagent_chat'), 'Esc closes the chat window')
+  assert.ok(scKey('<C-CR>'), 'C-CR inserts a literal newline')
+  assert.ok(scKey('<Up>') && scKey('<Down>'), 'Up/Down history keys mapped')
+  // The runner's FeedRenderer writes the child transcript into the upper buf.
+  const scFeed = new FeedRenderer(nvim, scIds.buf, scIds.win, {
+    idsProvider: async () => lua('return require("dsh_tui").subagent_chat_ids()', []),
+    activeChecker: () => true,
+    reasoningBuf: null,
+    reasoningView: () => null,
+    inlineReasoning: true,
+  })
+  scFeed.applyEvent({ type: 'turn/start', time: 2000, data: {} })
+  scFeed.applyEvent({ type: 'assistant/chunk', time: 2100, data: { chunk: { type: 'text-delta', text: '子代理回复内容' } } })
+  scFeed.applyEvent({ type: 'turn/end', time: 2200, data: {} })
+  await scFeed.flush()
+  const scLines = await nvim.request('nvim_buf_get_lines', [scIds.buf, 0, -1, false])
+  assert.ok(scLines.some((l: string) => l.includes('子代理回复内容')), 'child transcript renders into the chat window')
+  const scIdsLive = await lua('return require("dsh_tui").subagent_chat_ids()', [])
+  assert.ok(scIdsLive && scIdsLive.buf === scIds.buf, 'subagent_chat_ids reports the open window')
+  // Submit routes the text to the runner as 'dsh-subagent-send'.
+  await lua('vim.api.nvim_buf_set_lines(...)', [scIds.inputBuf, 0, -1, false, ['帮我再检查一遍']])
+  await lua('require("dsh_tui").subagent_chat_submit()', [])
+  hit = await waitNote('dsh-subagent-send')
+  assert.equal(hit?.args?.[0], '帮我再检查一遍', 'submit routes the text to the runner')
+  assert.deepEqual(await nvim.request('nvim_buf_get_lines', [scIds.inputBuf, 0, -1, false]), [''], 'chat input resets after submit')
+  // Multi-line input grows the input float and shrinks the transcript so
+  // the composite block keeps one constant footprint.
+  const chatH1 = await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._subagentChat.win)', [])
+  await lua('vim.api.nvim_buf_set_lines(...)', [scIds.inputBuf, 0, -1, false, ['第一行', '第二行', '第三行']])
+  await lua('require("dsh_tui").subagent_chat_resize()', [])
+  assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._subagentChat.inputWin)', []), 3, 'input float grows to 3 rows')
+  const chatH3 = await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._subagentChat.win)', [])
+  assert.equal(chatH3 + 3, chatH1 + 1, 'composite footprint stays constant (transcript shrinks by the input growth)')
+  // Close: windows close, buffers wipe, the runner is notified.
+  await lua('require("dsh_tui").close_subagent_chat()', [])
+  hit = await waitNote('dsh-subagent-chat-closed')
+  assert.ok(hit, 'close notifies the runner (dsh-subagent-chat-closed)')
+  assert.equal(await lua('return require("dsh_tui").subagent_chat_ids()', []), null, 'chat ids cleared after close')
+  assert.equal(await lua('return vim.api.nvim_buf_is_valid(...)', [scIds.buf]), false, 'transcript buffer wiped on close')
+  assert.equal(await lua('return vim.api.nvim_buf_is_valid(...)', [scIds.inputBuf]), false, 'input buffer wiped on close')
+  // Mutual exclusion with the read-only view (one float family at a time).
+  await lua('require("dsh_tui").open_subagent_chat(...)', ['audit-child'])
+  await lua('require("dsh_tui").open_subagent_view(...)', ['deepseek-code'])
+  assert.equal(await lua('return require("dsh_tui").subagent_chat_ids()', []), null, 'opening the view closes the chat window')
+  await lua('require("dsh_tui").open_subagent_chat(...)', ['audit-child'])
+  assert.equal(await lua('return require("dsh_tui").subagent_view_ids()', []), null, 'opening the chat closes the view')
+  await lua('require("dsh_tui").close_subagent_chat()', [])
+  await waitNote('dsh-subagent-chat-closed')
+
   // Multi-line notices must collapse to one line (an embedded newline in a
   // buffer "line" makes nvim_buf_set_lines throw E5108, which silently
   // killed the flush — regression from the E95 failure notice).
