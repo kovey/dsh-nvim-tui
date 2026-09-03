@@ -1,4 +1,26 @@
-# 升级指南：dsh 0.1.2-alpha.3 → 0.1.2-alpha.4
+# 升级指南：dsh 0.1.2-alpha.4 → 0.1.2-alpha.5
+
+dsh-nvim-tui v0.2.14 将 peer 依赖锚点抬升至 **`^0.1.2-alpha.5`**。本次升级
+对 TUI 消费面**零破坏**（alpha.5 的 SessionSeq 移除 `Session.events` 等破坏
+性变更在 v0.2.12 已适配完成），主要收益：
+
+- **损坏会话日志官方修复**：持久化扫描器遇到 seq gap 时保留连续前缀并
+  持久化截断修复（不再硬失败）——TUI 的历史恢复本地兜底已随之移除；
+- 官方识图模型目录（`deepseek-v4-flash-vision-exp`，text+image）进入
+  dsh-llm-deepseek 默认目录，TUI 图片消息自动切换该模型处理；
+- jobs 服务补齐 `onJobsChanged`/`onJobDone` 观察者（状态栏后台任务徽章）。
+
+升级步骤：
+
+```bash
+npm i -g @deepseek-ai/dsh@alpha
+dsh --version        # 应输出 0.1.2-alpha.5（运行中的进程需重启生效）
+# 插件侧：dsh plugin --profile <name> update --latest kovey/dsh-nvim-tui
+```
+
+---
+
+# 历史指南：dsh 0.1.2-alpha.3 → 0.1.2-alpha.4
 
 > **修正（v0.2.12 之后）**：下文"无破坏性变化 / nvim-tui 消费面零改动适配"
 > 的结论有误——alpha.4 的 SessionSeq 品牌化重构同时移除了 `Session.events`
