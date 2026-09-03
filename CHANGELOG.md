@@ -5,6 +5,13 @@
 
 ## [Unreleased]
 
+- **升级：@deepseek-ai peer 依赖锚点 alpha.4 → alpha.5**。
+  peerDependencies（dsh-agent / dsh-llm / dsh-tools optional）与
+  devDependencies（dsh-tools）抬升至 `^0.1.2-alpha.5`，workspace
+  node_modules 同步刷新为 alpha.5（含 cordis 4.0.2）；check / build /
+  smoke 全绿（TUI 消费面零改动适配——alpha.5 的 SessionSeq 移除
+  `Session.events` 等破坏性变更在 v0.2.12 已适配，本次仅锚点抬升）。
+
 - **移除 vision-bridge 依赖，识图改为官方识图模型自动切换**。
   清理自制 dsh-vision-bridge 插件（profile bundles/dependencies 已移除，
   TUI 的 ServiceMap、图片闸门、/deps 检查项全部下线）；新识图路径：图片
