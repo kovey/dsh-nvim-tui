@@ -49,6 +49,8 @@ const attachSession = async (app: App, handle: AgentHandle, modelRef: ModelRef) 
     todos: null,
     todosItems: [],
     pendingToolCalls: new Map(),
+    visionTmp: null,
+    lastTurnStartAt: 0,
   })
   // Boot banner: version + build stamp + channel (proves which code runs).
   feed.appendNotice(`dsh-nvim-tui ${BUILD_VERSION} (build ${BUILD_STAMP}) · channel ${app.channelIdValue}`)

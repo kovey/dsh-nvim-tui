@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+- **移除 vision-bridge 依赖，识图改为官方识图模型自动切换**。
+  清理自制 dsh-vision-bridge 插件（profile bundles/dependencies 已移除，
+  TUI 的 ServiceMap、图片闸门、/deps 检查项全部下线）；新识图路径：图片
+  消息发送时，当前模型声明 image 模态 → 直接发送；否则从目录中寻找官方
+  识图模型（deepseek-v4-flash-vision-exp → deepseek-vl2 → deepseek-vl）
+  临时切换（`rec.visionTmp` 记录原选择 + 切换时刻），回合结束按
+  `turn/start` 时序自动切回（switchAt 判定保证排队的普通回合不受影响）；
+  目录无识图模型时 fail fast 并给出 settings.yaml 装配提示。settings.yaml
+  已加入 `deepseek-v4-flash-vision-exp`（inputModalities: [text, image]，
+  dsh-llm-deepseek 默认目录同款）。历史带图消息警告文案同步去识图桥化。
+  /deps 的「官方识图模型」检查替代原 vision-bridge/OCR 两项。
+  check/build/smoke 全绿，dump-config 99 行 0 重复、vision-bridge 已卸载。
+
 - **新增：/deps 依赖体检 + 一键装配**。50+ 命令的宿主/第三方依赖集中体检：
   - 主机插件 10 项（agent-presets / cordis-host-runner / file-reference /
     workspace / plugin-inventory / message-feedback / session-reference /

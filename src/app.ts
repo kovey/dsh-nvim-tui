@@ -46,7 +46,6 @@ export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' 
 export interface ServiceMap {
   appExit: (code?: number) => void
   attachments: AttachmentsService
-  visionBridge: unknown
   subagents: SubagentsService
   compaction: CompactionService
   goals: GoalsService
@@ -107,6 +106,10 @@ export interface SessionRec {
   planActive: boolean
   imagePoisonWarned: boolean
   deliverables: { turn: number | undefined; paths: string[] }
+  /** Image turn in flight: previous selection to restore + switch instant. */
+  visionTmp: { prev: ReturnType<ModelSelection['currentSelection']>; switchAt: number } | null
+  /** Instant the most recent turn STARTED (vision restore ordering). */
+  lastTurnStartAt: number
   todos: { completed: number; inProgress: number; pending: number } | null
   todosItems: Array<{ content: string; status: string }>
   runningSince?: number | null

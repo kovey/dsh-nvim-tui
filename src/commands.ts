@@ -48,30 +48,31 @@ const followup = async (app: App, rec: SessionRec, text: string, images?: Array<
       app.notice(t('图片发送需要 attachments 服务（attachment-local 未装配）'))
       return
     }
-    // Gate on capability: the model must declare image input, OR a
-    // visionBridge service must be assembled (dsh-vision-bridge converts
-    // the images to text descriptions before the adapter sees them — for
-    // text-only gateways/models). Otherwise fail fast instead of letting
-    // the turn die inside the adapter (UNSUPPORTED_CONTENT).
-    let viaBridge = false
-    try {
-      const sel = app.currentSelection()
-      const info = await (app.runtimeCtx.get('llm') as LlmService | undefined)?.resolveModelInfo(sel.provider, sel.model)
-      // Only an explicit "image" modality counts as native vision — an
-      // ABSENT inputModalities field means text-only and must NOT bypass
-      // the gate (it would die in the adapter with UNSUPPORTED_CONTENT).
-      const nativeVision = info?.inputModalities?.includes('image') === true
-      if (!nativeVision) {
-        if (app.svc('visionBridge') !== undefined) {
-          viaBridge = true
-        } else {
-          app.notice(`当前模型 ${sel.provider}/${sel.model} 不支持图片输入（网关/text-only；可装配 dsh-vision-bridge 经本地 OCR 转文字，或使用原生识图模型）`)
-          return
+    // 官方识图路径：当前模型声明 image 输入 → 直接发送；否则临时切换到
+    // 官方识图模型（目录中的 deepseek-v4-flash-vision-exp 等），回合结束
+    // 自动切回原模型（boot.ts 的 turn/end 恢复）。目录里没有任何带 image
+    // 模态的模型时 fail fast——不要让回合死在适配器里（UNSUPPORTED_CONTENT）。
+    const llm = app.runtimeCtx.get('llm') as LlmService | undefined
+    const sel = app.currentSelection()
+    const curInfo = await llm?.resolveModelInfo(sel.provider, sel.model).catch(() => undefined)
+    if (curInfo?.inputModalities?.includes('image') !== true) {
+      const candidates = ['deepseek-v4-flash-vision-exp', 'deepseek-vl2', 'deepseek-vl']
+      let visionModel: string | undefined
+      for (const id of candidates) {
+        const info = await llm?.resolveModelInfo(sel.provider, id).catch(() => undefined)
+        if (info?.inputModalities?.includes('image') === true) {
+          visionModel = id
+          break
         }
       }
-    } catch {}
-    if (viaBridge) {
-      app.notice(t('📎 图片将经识图桥转成文字描述后发送'))
+      if (visionModel === undefined) {
+        app.notice(`没有可用的官方识图模型（settings.yaml 的 llm-deepseek.models 需包含声明 image 模态的模型，如 deepseek-v4-flash-vision-exp）`)
+        return
+      }
+      rec.modelRef.current = { ...sel, model: visionModel }
+      rec.visionTmp = { prev: sel, switchAt: Date.now() }
+      app.notice(`📎 图片消息: 临时切换官方识图模型 ${sel.provider}/${visionModel}（回合结束自动切回 ${sel.provider}/${sel.model}）`)
+      app.updateStatusline()
     }
     const max = attachments.imageLimits?.maxImagesPerMessage ?? 4
     if (images.length > max) {
