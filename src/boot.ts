@@ -10,7 +10,7 @@
  *
  * @module dsh-nvim-tui/boot
  */
-import { appendFileSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { spawnNvim, connectNvim } from './bridge.js'
 import { FeedRenderer } from './feed.js'
 import { t } from './i18n.js'
@@ -562,38 +562,29 @@ export async function boot(app: App): Promise<void> {
     // LAST active session of this project (claude --continue behaviour),
     // falling back to the newest persisted one; a fresh session only when
     // there is no history (or resumeLatest is disabled).
+    // (alpha.5 persistence reads corrupt logs as their preserved prefix with
+    // durable repair — no local fallback needed; a genuine resume failure
+    // surfaces loudly instead of being masked by a fresh session.)
     const resumeId = app.config.resumeSessionId ?? process.env.DSH_NVIM_TUI_RESUME
     const autoResume = app.config.resumeLatest !== false && process.env.DSH_NVIM_TUI_RESUME_LATEST !== '0'
-    try {
-      if (resumeId) {
-        await app.resumeSession(resumeId)
-      } else if (autoResume && app.historyHeaders.length > 0) {
-        const state = app.readState() as { sessionId?: unknown; cwd?: unknown } | null
-        const fromState = state?.sessionId && state.cwd === process.cwd() &&
-          app.historyHeaders.some((h) => h.id === state.sessionId)
-          ? (state.sessionId as string)
-          : null
-        const newest = [...app.historyHeaders]
-          .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0]?.id
-        const target = fromState ?? newest
-        if (target) {
-          await app.resumeSession(target)
-          app.notice(t('已自动恢复上次会话（/new 新建）'))
-        } else {
-          await app.createSession()
-        }
+    if (resumeId) {
+      await app.resumeSession(resumeId)
+    } else if (autoResume && app.historyHeaders.length > 0) {
+      const state = app.readState() as { sessionId?: unknown; cwd?: unknown } | null
+      const fromState = state?.sessionId && state.cwd === process.cwd() &&
+        app.historyHeaders.some((h) => h.id === state.sessionId)
+        ? (state.sessionId as string)
+        : null
+      const newest = [...app.historyHeaders]
+        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0]?.id
+      const target = fromState ?? newest
+      if (target) {
+        await app.resumeSession(target)
+        app.notice(t('已自动恢复上次会话（/new 新建）'))
       } else {
         await app.createSession()
       }
-    } catch (err) {
-      // A broken history session must never take the whole TUI down:
-      // log it, fall back to a fresh session.
-      const e = err as Error | undefined
-      try {
-        appendFileSync(app.errorLogPath,
-          `${new Date().toISOString()} 自动恢复: ${e?.stack ?? String(err)}\n`)
-      } catch {}
-      app.notice(`⚠ 历史会话恢复失败（${e?.message ?? String(err)}），已新建会话`)
+    } else {
       await app.createSession()
     }
     app.refreshList()
