@@ -5,6 +5,18 @@
 
 ## [Unreleased]
 
+- **重构：runner 侧 index.ts 拆分（4440 行 → 领域模块）**。共享状态与核心
+  服务收拢为单一 `App` 对象（`src/app.ts`，对应 nvim 侧 `state.lua` 的角色）：
+  index.ts 降为纯组合根（对应 `init.lua` 门面），行为域拆入
+  `statusline.ts`（状态栏/glance/whale 动画）、`sessions.ts`（会话生命周期 +
+  会话类命令）、`subagents.ts`（子代理目录/回放/对话窗）、`transcript.ts`
+  （转录修复/导出/trajectory/rewind/queue）、`commands.ts`（消息发送 + 通用
+  斜杠命令）、`market-install.ts`（插件市场安装）、`boot.ts`（nvim 启动/通知
+  循环/宿主事件接线）。模块通过 `app.registerCommands()` 注册自己的命令、
+  install 阶段填充跨模块槽位（late binding），新增功能只需落进所属模块——
+  纯重构，行为不变，check/build/smoke 全绿。顺带修复 onCommand 里
+  `/skills:` 前缀重复调用两次的旧 bug。
+
 - **新增：子代理对话窗**——`/subagents` 对 continuable 子代理打开对话窗口，
   像跟主代理聊天一样发消息：
   - 窗口上部为子代理实时转录（思考内联流式、回复、工具卡，复用

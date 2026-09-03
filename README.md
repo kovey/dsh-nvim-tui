@@ -367,7 +367,15 @@ npm publish        # prepublishOnly 门禁：check（双 tsconfig）→ build �
 
 ```
 src/                          TypeScript 源码（strict，唯一手写源）
-  index.ts    Cordis 插件入口：spawn nvim → RPC → agent 生命周期 → 事件桥
+  index.ts    组合根：build App → install 各模块 → boot（对应 init.lua 门面）
+  app.ts      共享状态 + 服务面（App 对象；对应 state.lua 的角色）
+  boot.ts     nvim 启动 / RPC 通知循环 / 宿主事件接线 / headless 兜底
+  statusline.ts 状态栏渲染、glance 段显隐、whale 动画、事件折叠统计
+  sessions.ts 会话生命周期 + 会话类命令（/sessions /new /fork /workspace …）
+  subagents.ts 子代理目录、思考链回放、子代理对话窗
+  transcript.ts 转录修复（孤儿工具调用）、/export /trajectory /rewind /queue
+  commands.ts 消息发送（followup/续聊队列）+ 通用斜杠命令
+  market-install.ts 插件市场浏览 + 安装进度 UI
   feed.ts     转录渲染器：DSH 事件 → chat buffer 行模型（节流刷新）
   types.ts    共享类型层：SessionEvent 判别联合 + 宿主服务结构接口
   i18n.ts     界面字典（zh 字面量 → en 查表，未知键回退中文）

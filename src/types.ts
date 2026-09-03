@@ -485,3 +485,17 @@ export interface RuntimeCtx {
   agentDefaultModel: ModelSelection
   llm?: LlmService
 }
+
+/** Runner configuration (cordis.patch.yml `config:` block / RunnerConfig row).
+ *  Also accepts arbitrary extra keys (forwarded to module configs). */
+export interface RunnerConfig {
+  headless?: boolean
+  watchdogMs?: number
+  dumpPath?: string
+  theme?: Record<string, unknown> | null
+  loadUserConfig?: boolean
+  resumeSessionId?: string
+  resumeLatest?: boolean
+  prompt?: string
+  [key: string]: unknown
+}
