@@ -78,8 +78,6 @@ export interface CommandSpec {
   fn: (arg: string) => unknown
 }
 
-export type CommandFn = (arg: string) => unknown
-
 export interface ModelRef {
   current: ReturnType<ModelSelection['currentSelection']>
   assembled?: unknown

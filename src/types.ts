@@ -114,31 +114,12 @@ export type SessionEvent =
   | (SessionEventBase & { type: 'tool-workflow/agent-end'; data?: { runId?: string; seq?: number; outcome?: string } })
   | (SessionEventBase & { type: 'tool-workflow/run-end'; data?: { runId?: string; stopReason?: string } })
 
-/** agent/status host event payload. */
-export interface AgentStatusPayload {
-  agent?: { session?: { id?: string } }
-  status?: string
-}
-
 /** subagent/start / subagent/end payload. */
 export interface SubagentInfo {
   runId?: string
   provider?: string
   id?: string
   stopReason?: string
-}
-
-/** workflow/start payload. */
-export interface WorkflowInfo {
-  id?: string
-  meta?: { name?: string; [key: string]: unknown }
-  [key: string]: unknown
-}
-
-/** workflow/end result. */
-export interface WorkflowResult {
-  stopReason?: string
-  error?: string
 }
 
 /** approval/request payload. */
@@ -372,18 +353,6 @@ export interface MessageFeedbackService {
     note?: string
     ifVersion: unknown
   }) => Promise<{ ok: boolean; error?: { code?: string } }>
-}
-
-/** dsh-user-questions waterfall request (0.1.2-alpha.2: `user-questions/request` event). */
-export interface UserQuestionRequest {
-  questions?: UserQuestion[]
-  agent?: { session?: { id?: string } }
-  signal?: AbortSignal
-}
-
-/** dsh-user-questions answer (the waterfall's resolved value). */
-export interface UserQuestionAnswer {
-  answers: Array<{ id: string; selected?: string[]; custom?: string }>
 }
 
 /** dsh-agent-presets service. */
