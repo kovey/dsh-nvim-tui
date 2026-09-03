@@ -66,7 +66,7 @@ export interface ServiceMap {
   messageFeedback: MessageFeedbackService
   sessionPersistence: SessionPersistenceService
   agentPresets: AgentPresetsService
-  workspaces: WorkspacesService
+  workspaceRegistry: WorkspacesService
 }
 
 /** One slash command: metadata for /help + the completion catalog, plus the

@@ -267,7 +267,7 @@ const forkSession = async (app: App, directive: string | undefined): Promise<str
 const sessionsCommand = async (app: App): Promise<void> => {
   await app.refreshHistory()
   app.refreshList()
-  const ws = app.svc('workspaces')
+  const ws = app.svc('workspaceRegistry')
   const workspaceRows = typeof ws?.list === 'function' ? ws.list() : []
   const archived = new Set(ws?.archivedSessionIds ?? [])
   const rows: Array<{ label: string; value: string }> = [
@@ -331,9 +331,9 @@ const sessionsCommand = async (app: App): Promise<void> => {
  *  Bare /workspace opens a sessions-style popup: workspace directory,
  *  create-via-directory-picker, rename (next input) and delete actions. */
 const workspaceCommand = async (app: App, a: string | undefined): Promise<void> => {
-  const ws = app.svc('workspaces')
+  const ws = app.svc('workspaceRegistry')
   if (ws === undefined || typeof ws.list !== 'function') {
-    app.notice(t('workspaces 服务未装配（profile 加入 dsh-workspace 后可用）'))
+    app.notice(t('workspaceRegistry 服务未装配（profile 加入 dsh-workspace 后可用）'))
     return
   }
   const arg = (a ?? '').trim()
@@ -417,9 +417,9 @@ const workspaceCommand = async (app: App, a: string | undefined): Promise<void> 
 
 /** /archive [id] — hide a session from every list (non-destructive). */
 const archiveCommand = async (app: App, a: string | undefined): Promise<void> => {
-  const ws = app.svc('workspaces')
+  const ws = app.svc('workspaceRegistry')
   if (typeof ws?.archiveSession !== 'function') {
-    app.notice(t('归档不可用（workspaces 服务未装配）'))
+    app.notice(t('归档不可用（workspaceRegistry 服务未装配）'))
     return
   }
   const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)

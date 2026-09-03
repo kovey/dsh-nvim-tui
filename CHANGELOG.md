@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+- **修复：/workspace、/archive 与 /sessions 工作区分组不可用（服务键名错误）**。
+  命令核查看板发现 TUI 消费 `ctx.get('workspaces')`，而 alpha.5 的
+  `dsh-workspace` 注册键是 `workspaceRegistry`（profile 装配行本身正确）——
+  `/workspace` 恒报「服务未装配」、`/archive` 恒「归档不可用」、`/sessions`
+  静默退化为无分组列表。4 处消费点 + ServiceMap 键名已改为
+  `workspaceRegistry`；方法签名逐一对齐 alpha.5 WorkspaceRegistry
+  （list/create/delete/archiveSession/archivedSessionIds/实体 setTitle），
+  全部匹配无需改动。顺带启用 `/search`：profile patch 覆盖
+  `session-query-sqlite` 为 `openAt: first-search` + 持久化路径
+  `dshHomePath('session-query.db')`（dsh-base 默认 :memory: + never 库从不
+  建立，搜索恒空）；首次搜索触发全量索引。check/build/smoke 全绿，
+  dump-config 验证 100 行 0 重复。
+
 - **移除：历史会话恢复失败的本地兜底（boot 自动恢复 catch → 新建会话）**。
   dsh 0.1.2-alpha.5 的持久化读取已官方修复损坏日志的处理——扫描器遇到
   seq gap 时保留连续前缀并持久化截断修复（不再硬失败），此前

@@ -928,9 +928,9 @@ const onInput = (app: App, text: string): void => {
     void (async () => {
       try {
         if (target.kind === 'workspace') {
-          const ws = app.svc('workspaces')
+          const ws = app.svc('workspaceRegistry')
           const ent = ws?.list?.().find((w) => w.id === target.id)
-          if (ent?.setTitle === undefined) { app.notice(t('工作区重命名不可用（workspaces 服务未装配）')); return }
+          if (ent?.setTitle === undefined) { app.notice(t('工作区重命名不可用（workspaceRegistry 服务未装配）')); return }
           await ent.setTitle(name)
           app.notice(`工作区已重命名: ${name}`)
         } else {
