@@ -147,7 +147,11 @@ export async function boot(app: App): Promise<void> {
     // Session elapsed / stats tick slowly while idle (the spinner interval
     // already covers the running state at 180ms).
     app.idleRefreshTimer = setInterval(() => {
-      if (!app.disposed) app.updateStatusline()
+      if (!app.disposed) {
+        app.refreshBgJobs()
+        app.ensureSpinner()
+        app.updateStatusline()
+      }
     }, 30000)
 
     // Event dispatch: each session's transcript goes to its own feed.

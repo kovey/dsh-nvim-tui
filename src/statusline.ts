@@ -52,7 +52,9 @@ const runningSubagentsOf = (app: App, parentId: string | null): Array<{ parentId
 // only drives the statusline running state + spinner.
 const ensureSpinner = (app: App) => {
   const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
-  const running = rec?.status === '● running' || runningSubagentsOf(app, app.activeId).length > 0
+  const running = rec?.status === '● running' ||
+    runningSubagentsOf(app, app.activeId).length > 0 ||
+    (rec?.bgJobs ?? 0) > 0
   if (running && app.spinnerTimer === null) {
     app.spinnerTimer = setInterval(() => {
       app.spinnerIndex = (app.spinnerIndex + 1) % WHALE_EMOJI_FRAMES.length
@@ -64,6 +66,33 @@ const ensureSpinner = (app: App) => {
   }
 }
 
+/**
+ * The right-side running badge (pure): main turn → '● running'; live
+ * subagents → '● running ◇N'; otherwise background jobs keep the whale
+ * spinning with '🔧 后台 N'; nothing running → null (statusline shows idle).
+ */
+export function runningBadge(mainRunning: boolean, subRunning: number, bgJobs: number): string | null {
+  if (mainRunning) return '● running'
+  if (subRunning > 0) return `● running ◇${subRunning}`
+  if (bgJobs > 0) return `🔧 后台 ${bgJobs}`
+  return null
+}
+
+/** Re-read the ACTIVE session's live background jobs (running + stopping). */
+const refreshBgJobs = (app: App) => {
+  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  if (rec === undefined) return
+  const jobs = app.svc('jobs')
+  let count = 0
+  if (jobs !== undefined) {
+    try {
+      count = jobs.list(rec.handle.agent)
+        .filter((j) => j.status === 'running' || j.status === 'stopping').length
+    } catch {}
+  }
+  rec.bgJobs = count
+}
+
 /** Statusline: left = permission mode + hints; right = model/effort,
  *  cache, context, tokens, elapsed, cost, route (+ spinner while running). */
 const updateStatusline = (app: App) => {
@@ -71,7 +100,9 @@ const updateStatusline = (app: App) => {
   const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
   const subRunning = runningSubagentsOf(app, app.activeId)
   const mainRunning = rec?.status === '● running'
-  const running = mainRunning || subRunning.length > 0
+  const bgJobs = rec?.bgJobs ?? 0
+  const badge = runningBadge(mainRunning, subRunning.length, bgJobs)
+  const running = badge !== null
 
   // -- left: dynamic permission mode + key hints (literal % escaped:
   //    statusline treats % as the item prefix → E539 otherwise)
@@ -83,10 +114,7 @@ const updateStatusline = (app: App) => {
   const right = []
   // The fat whale emoji + bubble cycle replaces the braille spinner.
   if (running) {
-    const status = mainRunning
-      ? escapeStatusline(rec!.status)
-      : `● running ◇${subRunning.length}`
-    right.push(`${WHALE_EMOJI_FRAMES[app.spinnerIndex]} ${status}`)
+    right.push(`${WHALE_EMOJI_FRAMES[app.spinnerIndex]} ${escapeStatusline(badge!)}`)
   } else right.push(escapeStatusline(rec?.status ?? '○ idle'))
   if (mainRunning && rec?.runningSince) {
     right.push(escapeStatusline(`${((Date.now() - rec.runningSince) / 1000).toFixed(1)}s`))
@@ -234,7 +262,31 @@ export function installStatusline(app: App): void {
   app.foldEvent = (rec, event) => foldEvent(app, rec, event)
   app.updateStatusline = () => updateStatusline(app)
   app.ensureSpinner = () => ensureSpinner(app)
+  app.refreshBgJobs = () => refreshBgJobs(app)
   app.runningSubagentsOf = (parentId) => runningSubagentsOf(app, parentId)
+  // Background jobs keep the statusline honest while the agent is idle:
+  // every visible-set change re-reads the active session's live jobs and
+  // re-arms the spinner; a settled job notices its label when it belongs
+  // to the active session.
+  const jobs = app.svc('jobs')
+  if (typeof jobs?.onJobsChanged === 'function') {
+    app.hostDisposers.push(jobs.onJobsChanged(() => {
+      app.refreshBgJobs()
+      app.ensureSpinner()
+      app.updateStatusline()
+    }))
+  }
+  if (typeof jobs?.onJobDone === 'function') {
+    app.hostDisposers.push(jobs.onJobDone((snap, owner) => {
+      app.refreshBgJobs()
+      app.ensureSpinner()
+      app.updateStatusline()
+      const sid = (owner as { session?: { id?: string } } | undefined)?.session?.id
+      if (sid !== undefined && sid === app.activeId) {
+        app.notice(`✓ 后台任务 ${snap?.label ?? '?'} · ${snap?.status ?? '结束'}`)
+      }
+    }))
+  }
   const specs: CommandSpec[] = [
     { name: '/glance', desc: t('状态栏段显隐'), usage: t('<cache|context|tokens|cost|elapsed|total>'), group: t('显示'), fn: (a) => glanceCommand(app, a) },
     { name: '/density', desc: t('紧凑卡片模式'), usage: t('紧凑卡片'), group: t('显示'), fn: () => densityCommand(app) },

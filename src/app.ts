@@ -110,6 +110,8 @@ export interface SessionRec {
   visionTmp: { prev: ReturnType<ModelSelection['currentSelection']>; switchAt: number } | null
   /** Instant the most recent turn STARTED (vision restore ordering). */
   lastTurnStartAt: number
+  /** Live background jobs of this session (running + stopping). */
+  bgJobs: number
   todos: { completed: number; inProgress: number; pending: number } | null
   todosItems: Array<{ content: string; status: string }>
   runningSince?: number | null
@@ -223,6 +225,7 @@ export interface App {
   foldEvent: (rec: SessionRec, event: SessionEvent) => void
   updateStatusline: () => void
   ensureSpinner: () => void
+  refreshBgJobs: () => void
   runningSubagentsOf: (parentId: string | null) => Array<{ parentId: string; label: string; startedAt: number }>
   sessionEvents: (session: HarnessSession) => SessionEvent[]
   synthesizeToolResult: (rec: SessionRec, callId: string, seq: number | undefined, turn: unknown, step: unknown) => void
@@ -373,6 +376,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
 
     foldEvent: () => {},
     updateStatusline: () => {},
+    refreshBgJobs: () => {},
     ensureSpinner: () => {},
     runningSubagentsOf: () => [],
     sessionEvents: () => [],

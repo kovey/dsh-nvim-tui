@@ -75,6 +75,8 @@ export interface SessionRec {
     } | null;
     /** Instant the most recent turn STARTED (vision restore ordering). */
     lastTurnStartAt: number;
+    /** Live background jobs of this session (running + stopping). */
+    bgJobs: number;
     todos: {
         completed: number;
         inProgress: number;
@@ -250,6 +252,7 @@ export interface App {
     foldEvent: (rec: SessionRec, event: SessionEvent) => void;
     updateStatusline: () => void;
     ensureSpinner: () => void;
+    refreshBgJobs: () => void;
     runningSubagentsOf: (parentId: string | null) => Array<{
         parentId: string;
         label: string;

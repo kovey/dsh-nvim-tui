@@ -435,6 +435,13 @@ export interface JobsService {
         status: string;
         startedAt?: number;
     }>;
+    /** Effect-scoped observer: fires after every visible-set commit. */
+    onJobsChanged?: (listener: (owner: unknown) => void) => () => void;
+    /** Effect-scoped completion listener: terminal snapshot + exact owner. */
+    onJobDone?: (listener: (snap: {
+        label?: string;
+        status?: string;
+    }, owner: unknown) => void) => () => void;
 }
 /** dsh-skill service. */
 export interface SkillsService {

@@ -251,6 +251,10 @@ export interface PlanModeService {
 export interface JobsService {
   kill: (jobId: string, agent: unknown, reason: string) => string
   list: (agent: unknown) => Array<{ id: string; label?: string; status: string; startedAt?: number }>
+  /** Effect-scoped observer: fires after every visible-set commit. */
+  onJobsChanged?: (listener: (owner: unknown) => void) => () => void
+  /** Effect-scoped completion listener: terminal snapshot + exact owner. */
+  onJobDone?: (listener: (snap: { label?: string; status?: string }, owner: unknown) => void) => () => void
 }
 
 /** dsh-skill service. */

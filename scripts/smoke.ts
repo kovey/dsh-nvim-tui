@@ -20,6 +20,7 @@ import { diffTexts, fileDiffsFromMeta } from '../lib/diff.js'
 import { t, setLocale, locale } from '../lib/i18n.js'
 import { matchIntent } from '../lib/nlcmd.js'
 import { ageLabel, isExpired, orderSubagentChildren } from '../lib/subagent-clean.js'
+import { runningBadge } from '../lib/statusline.js'
 import { readPatchRowIds, packageExists } from '../lib/deps.js'
 import os from 'node:os'
 import {
@@ -1344,6 +1345,13 @@ description:
   assert.equal(formatElapsed(234), '234ms', 'sub-second stays in ms')
   assert.equal(formatElapsed(65000), '1m 5s', '65s → 1m 5s')
   assert.equal(formatElapsed(3600000 + 30000), '1h 0m', 'hours form')
+
+  // 9g1. running badge: background jobs keep a live-looking statusline
+  // when the agent is idle (a bare '○ idle' made users think the task died).
+  assert.equal(runningBadge(true, 0, 0), '● running', 'main turn badge')
+  assert.equal(runningBadge(false, 2, 0), '● running ◇2', 'subagents badge')
+  assert.equal(runningBadge(false, 0, 3), '🔧 后台 3', 'background jobs keep a running badge')
+  assert.equal(runningBadge(false, 0, 0), null, 'nothing running → idle')
 
   // 9g2. /deps helpers: patch-row parsing (comments ignored) + package probe.
   const depsPatch = path.join(os.tmpdir(), `deps-patch-${process.pid}.yml`)

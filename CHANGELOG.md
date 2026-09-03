@@ -3,6 +3,16 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [Unreleased]
+
+- **修复：后台 bash 运行时状态栏误显「○ idle」**。此前 spinner 只由
+  `agent/status` 驱动——后台任务（tool-jobs）在跑、agent 空闲时状态栏显示
+  空闲，让人以为任务停了。现在订阅 `jobs.onJobsChanged`/`onJobDone`（+30s
+  空闲兜底刷新），活动会话的 running/stopping 后台任务计数进 `rec.bgJobs`：
+  空闲但 bgJobs>0 时鲸鱼继续旋转、徽章显示 `🔧 后台 N`；后台任务结束时
+  在聊天区 notice 其 label 与结果。badge 组合抽为纯函数 `runningBadge`
+  （smoke 覆盖四态）。
+
 ## [v0.2.14（2026-09-03）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.14)
 
 覆盖提交：
