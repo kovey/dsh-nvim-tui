@@ -137,8 +137,9 @@ export async function boot(app: App): Promise<void> {
         app.dirSettle = null
       }
       else if (method === 'dsh-at-query') {
-        const query = args?.[0]?.query ?? ''
-        void app.guard('文件引用补全', app.atQuery)(String(query))
+        const query = String(args?.[0]?.query ?? '')
+        const start = Number(args?.[0]?.start ?? 0)
+        void app.guard('文件引用补全', app.atQuery)(query, start)
       }
       else if (method === 'dsh-quit') void app.quit(0)
       else if (method === 'dsh-paste-image') app.pasteClipboardImage()

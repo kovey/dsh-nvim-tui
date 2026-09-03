@@ -148,13 +148,27 @@ function AM.update()
   local cur = vim.api.nvim_win_get_cursor(S.input_win)
   local line = vim.api.nvim_buf_get_lines(S.input_buf, cur[1] - 1, cur[1], false)[1] or ''
   local before = line:sub(1, cur[2])
-  local s, pre, query = before:match('()(%A)@([^%s"\'@]*)$')
-  if s == nil then
-    AM.close()
-    return
+  local startCol, query
+  -- '@' preceded by a non-word char (space/punctuation) — emails don't fire.
+  -- s is the 1-based byte position of that char, so the 0-based byte offset
+  -- of '@' (what accept() splices with) is s + #pre - 1.
+  local s, pre, q = before:match('()(%A)@([^%s"\'@]*)$')
+  if s ~= nil then
+    startCol = s + #pre - 1
+    query = q
+  else
+    -- '@' at the very START of the line (首位): no preceding character
+    -- exists to satisfy the %A guard, so match the bare token explicitly.
+    local q2 = before:match('^@([^%s"\'@]*)$')
+    if q2 == nil then
+      AM.close()
+      return
+    end
+    startCol = 0
+    query = q2
   end
   if S.channel then
-    vim.rpcnotify(S.channel, 'dsh-at-query', { query = query })
+    vim.rpcnotify(S.channel, 'dsh-at-query', { query = query, start = startCol })
   end
 end
 

@@ -592,7 +592,7 @@ const localFileCandidates = async (cwd: string, query: string): Promise<Array<{ 
 /** @-completion query from the input line (dsh-at-query notify).
  *  Files first, then @session references (the official client's unified
  *  `@file`/`@session` source, in the same deterministic order). */
-const atQuery = async (app: App, query: string): Promise<void> => {
+const atQuery = async (app: App, query: string, start = 0): Promise<void> => {
   const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
   const agent = rec?.handle.agent
   let items: Array<{ path: string; mention: string }> = []
@@ -620,7 +620,7 @@ const atQuery = async (app: App, query: string): Promise<void> => {
       }
     } catch {}
   }
-  await app.luaCall('require("dsh_tui").set_at_menu(...)', [items]).catch(() => {})
+  await app.luaCall('require("dsh_tui").set_at_menu(...)', [items, start]).catch(() => {})
 }
 
 /** /attach [path] — image → durable attachment; file/dir → @-mention.

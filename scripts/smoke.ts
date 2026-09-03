@@ -810,11 +810,16 @@ description:
   const waitNote = async (method: string, timeoutMs = 2000) => {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
-      const hit = notes.find((n) => n.method === method)
-      if (hit) return hit
+      const idx = notes.findIndex((n) => n.method === method)
+      if (idx >= 0) return notes.splice(idx, 1)[0]
       await new Promise((r) => setTimeout(r, 20))
     }
     return null
+  }
+  const drainNotes = (method: string) => {
+    for (let i = notes.length - 1; i >= 0; i--) {
+      if (notes[i].method === method) notes.splice(i, 1)
+    }
   }
 
   // 9a. input submit + history
@@ -1256,7 +1261,14 @@ description:
   assert.ok(Number.isInteger(scIds.buf) && Number.isInteger(scIds.win) &&
     Number.isInteger(scIds.inputBuf) && Number.isInteger(scIds.inputWin),
   'chat opens with transcript + input ids')
-  assert.equal((await nvim.request('nvim_get_mode', [])).mode, 'i', 'chat input opens in insert mode')
+  // The chat input lands in insert mode; window/autocmd settling may take a
+  // tick or two in headless (WinEnter/InsertEnter handlers), so poll briefly.
+  let chatMode = (await nvim.request('nvim_get_mode', [])).mode
+  for (let i = 0; i < 20 && chatMode !== 'i'; i++) {
+    await new Promise((r) => setTimeout(r, 50))
+    chatMode = (await nvim.request('nvim_get_mode', [])).mode
+  }
+  assert.equal(chatMode, 'i', 'chat input opens in insert mode')
   // The input float sits directly under the transcript float (same col/width),
   // carries its own rounded border (one continuous framed chat box), and the
   // operation hints live in the INPUT's bottom border.
@@ -1448,8 +1460,23 @@ description:
     'running subagents first, newest-first within groups')
 
   // 9h. @-file-reference menu: accept replaces the token in the input line.
+  // Detection must fire at the line START too (首位 @) — the %A guard had no
+  // preceding character to match there and the menu never opened.
+  drainNotes('dsh-at-query')
+  await nvim.request('nvim_win_set_cursor', [ids.inputWin, [1, 3]])
+  await nvim.request('nvim_buf_set_lines', [ids.inputBuf, 0, -1, false, ['@fi']])
+  await lua('require("dsh_tui").update_at_menu()', [])
+  hit = await waitNote('dsh-at-query')
+  assert.equal((hit?.args?.[0] as { query?: string })?.query, 'fi', 'line-start @token detected')
+  assert.equal((hit?.args?.[0] as { start?: number })?.start, 0, 'line-start @token offset is 0')
+  drainNotes('dsh-at-query')
+  await nvim.request('nvim_win_set_cursor', [ids.inputWin, [1, 10]])
   await nvim.request('nvim_buf_set_lines', [ids.inputBuf, 0, -1, false, ['请读 @fi']])
   await nvim.request('nvim_win_set_cursor', [ids.inputWin, [1, 10]])
+  await lua('require("dsh_tui").update_at_menu()', [])
+  hit = await waitNote('dsh-at-query')
+  assert.equal((hit?.args?.[0] as { query?: string })?.query, 'fi', 'mid-line @token detected')
+  assert.equal((hit?.args?.[0] as { start?: number })?.start, 7, 'mid-line @token offset is the @ byte column')
   await lua('require("dsh_tui").set_at_menu(...)', [[{ path: 'src/a.txt', mention: '@src/a.txt' }, { path: 'src/b.md', mention: '@src/b.md' }], 7])
   assert.ok(await lua('return require("dsh_tui").at_menu_open()', []), 'at-menu opens')
   await lua('require("dsh_tui").at_next()', [])

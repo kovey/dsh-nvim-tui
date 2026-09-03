@@ -246,7 +246,7 @@ export interface App {
   pickModel: (arg: string | undefined) => Promise<void>
   stopCommand: () => void
   openDirPicker: (startPath: string) => Promise<string | null>
-  atQuery: (query: string) => Promise<void>
+  atQuery: (query: string, start?: number) => Promise<void>
   forkSession: (directive: string | undefined) => Promise<string | undefined>
   listSubagentChildren: (parentId: string) => Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number }>>
   seedRunningSubagents: (parentId: string) => Promise<void>
