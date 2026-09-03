@@ -3,7 +3,18 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [Unreleased]
+## [v0.2.14（2026-09-02）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.14)
+
+覆盖提交：
+[`2e3b730`](https://github.com/kovey/dsh-nvim-tui/commit/2e3b730) ·
+[`5f451e5`](https://github.com/kovey/dsh-nvim-tui/commit/5f451e5) ·
+[`62ea542`](https://github.com/kovey/dsh-nvim-tui/commit/62ea542) ·
+[`834b2c4`](https://github.com/kovey/dsh-nvim-tui/commit/834b2c4) ·
+[`6b3cc34`](https://github.com/kovey/dsh-nvim-tui/commit/6b3cc34) ·
+[`7b1a872`](https://github.com/kovey/dsh-nvim-tui/commit/7b1a872) ·
+[`25ea711`](https://github.com/kovey/dsh-nvim-tui/commit/25ea711) ·
+[`834327f`](https://github.com/kovey/dsh-nvim-tui/commit/834327f) ·
+[`6b85e8f`](https://github.com/kovey/dsh-nvim-tui/commit/6b85e8f)
 
 - **升级：@deepseek-ai peer 依赖锚点 alpha.4 → alpha.5**。
   peerDependencies（dsh-agent / dsh-llm / dsh-tools optional）与
