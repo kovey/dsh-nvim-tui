@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+- **修复：新会话没有主页介绍与鲸鱼动画**。空态判定只看「缓冲区是否为空」，
+  而每个新会话的首条内容就是 attach 时的 boot banner notice（`· dsh-nvim-tui
+  …`）→ 空态永远不成立，hero 欢迎块与鲸鱼壁纸从未渲染。现在**仅含 notice
+  行（`· ` 前缀）的 feed 也算空态**：hero + 鲸鱼照常渲染，banner/「session X」
+  等 notice 保留在英雄块下方可见；一旦出现真实内容（用户/助手行）即隐藏。
+  顺带修复同块内 `parsed` 数组未清空、与 `lines` 长度错位的隐患。smoke
+  新增空态三断言（banner-only 渲染 hero / notice 保留 / 真实内容后隐藏）。
+
 - **修复：后台 bash 运行时状态栏误显「○ idle」**。此前 spinner 只由
   `agent/status` 驱动——后台任务（tool-jobs）在跑、agent 空闲时状态栏显示
   空闲，让人以为任务停了。现在订阅 `jobs.onJobsChanged`/`onJobDone`（+30s

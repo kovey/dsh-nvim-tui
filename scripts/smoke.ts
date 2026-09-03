@@ -1580,9 +1580,9 @@ description:
     whale: true,
   })
   await whaleFeed.flush()
-  let whaleLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
-  assert.ok(whaleLines.some((l: string) => l.includes('▀')), 'empty state shows the whale wallpaper (half-block body)')
-  assert.ok(whaleLines.some((l: string) => l.includes('█')), 'whale body rendered')
+  let heroLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
+  assert.ok(heroLines.some((l: string) => l.includes('▀')), 'empty state shows the whale wallpaper (half-block body)')
+  assert.ok(heroLines.some((l: string) => l.includes('█')), 'whale body rendered')
   const whaleMarks = await nvim.request('nvim_buf_get_extmarks', [whaleBuf, -1, 0, -1, { details: true }])
   const whaleGroups = new Set((whaleMarks as any[]).map((m) => (Array.isArray(m) ? (m[3]?.hl_group ?? m[4]?.hl_group) : undefined)).filter(Boolean))
   assert.ok([...whaleGroups].some((g) => String(g).startsWith('DshTuiWhale')), 'whale glyphs carry per-pixel color groups')
@@ -1594,14 +1594,14 @@ description:
   assert.notDeepEqual(whaleAnimated, whaleSnapshot, 'wallpaper animates (ticker advances frames)')
   whaleFeed.applyEvent({ type: 'user/message', time: 1, data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } })
   await whaleFeed.flush()
-  whaleLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
-  assert.ok(whaleLines.some((l: string) => l.includes('> hi')), 'content renders above the whale')
-  assert.ok(!whaleLines.some((l: string) => l.includes('🐳') || l.includes('🫧')), 'no emoji watermark once content exists')
+  heroLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
+  assert.ok(heroLines.some((l: string) => l.includes('> hi')), 'content renders above the whale')
+  assert.ok(!heroLines.some((l: string) => l.includes('🐳') || l.includes('🫧')), 'no emoji watermark once content exists')
   whaleFeed.setWhale(false)
   await new Promise((r) => setTimeout(r, 80))
   await whaleFeed.flush()
-  whaleLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
-  assert.ok(!whaleLines.some((l: string) => l.includes('▀')), 'whale off removes the art')
+  heroLines = await nvim.request('nvim_buf_get_lines', [whaleBuf, 0, -1, false])
+  assert.ok(!heroLines.some((l: string) => l.includes('▀')), 'whale off removes the art')
   // Welcome lines (project intro + usage) render under the whale while empty.
   const welcomeBuf = await nvim.request('nvim_create_buf', [false, true])
   const welcomeFeed = new FeedRenderer(nvim, welcomeBuf, ids.chatWin!, {
@@ -1649,6 +1649,32 @@ description:
   const appended = await nvim.request('nvim_buf_get_lines', [ids.inputBuf, 0, -1, false])
   assert.equal(appended[0], 'hi@note ', 'append_input inserts at cursor')
   await nvim.request('nvim_buf_set_lines', [ids.inputBuf, 0, -1, false, ['']])
+
+  // 9m. empty-state hero + whale: a feed holding ONLY notice lines (boot
+  // banner, "session X" notices) is still empty — the hero renders, the
+  // notices ride below it; any real content hides the hero.
+  const whaleChat = await nvim.lua('return require("dsh_tui").ensure_chat(...)', ['session-whale']) as { chatBuf: number; chatWin: number }
+  const heroStateFeed = new FeedRenderer(nvim, whaleChat.chatBuf, whaleChat.chatWin, {
+    activeChecker: () => true,
+    whale: true,
+    welcome: () => ({
+      above: [{ text: '▄███▄ HERO-BANNER' }],
+      below: [{ text: 'usage hint line' }],
+    }),
+  })
+  heroStateFeed.appendNotice('boot banner notice')
+  await heroStateFeed.flush()
+  let heroStateLines = await nvim.request('nvim_buf_get_lines', [whaleChat.chatBuf, 0, -1, false])
+  log('whale empty-state:', JSON.stringify(heroStateLines.filter((l: string) => l.trim() !== '').slice(0, 8)))
+  assert.ok(heroStateLines.some((l: string) => l.includes('HERO-BANNER')), 'hero renders with only a banner notice')
+  assert.ok(heroStateLines.some((l: string) => l.includes('boot banner notice')), 'banner notice stays visible below the hero')
+  assert.ok(heroStateLines.some((l: string) => l.includes('usage hint line')), 'usage hints render')
+  heroStateFeed.pushUser('你好', [])
+  await heroStateFeed.flush()
+  heroStateLines = await nvim.request('nvim_buf_get_lines', [whaleChat.chatBuf, 0, -1, false])
+  assert.ok(!heroStateLines.some((l: string) => l.includes('HERO-BANNER')), 'hero hides once real content exists')
+  heroStateFeed.setWhale(false) // stop the animation interval
+  await heroStateFeed.flush()
 
   nvim.off('notification', onNote)
 

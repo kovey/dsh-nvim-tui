@@ -988,8 +988,13 @@ export class FeedRenderer {
     // carries the emoji animation instead (its own timer). Each half-block
     // glyph carries a per-span color group (fg/bg pixel pair).
     if (this.whale) {
-      const empty = lines.length === 0 || (lines.length === 1 && lines[0] === '')
-      if (empty) {
+      // A feed holding ONLY notice lines (the boot banner, "session X"
+      // notices, /clear) is still EMPTY: the hero + whale render and the
+      // notices ride below the block. Any real content (user/assistant
+      // lines) hides them.
+      const nonEmpty = lines.filter((l) => l.trim() !== '')
+      const contentLines = nonEmpty.filter((l) => !l.startsWith('· '))
+      if (contentLines.length === 0) {
         const { h, w } = await this.winSize()
         const hero = this.welcome?.() ?? {}
         const above = hero.above ?? []
@@ -1005,6 +1010,7 @@ export class FeedRenderer {
         // Vertical centering of the whole block (whale sits mid-screen).
         const topPad = Math.max(0, Math.floor((h - block.length) / 2))
         lines.length = 0
+        parsed.length = 0
         for (let i = 0; i < topPad; i++) {
           lines.push('')
           parsed.push({ text: '', spans: [], group: undefined })
@@ -1012,6 +1018,11 @@ export class FeedRenderer {
         for (const b of block) {
           lines.push(b.text)
           parsed.push({ text: b.text, spans: b.spans, group: b.group })
+        }
+        // The banner/notices stay visible at the bottom of the hero.
+        for (const l of nonEmpty) {
+          lines.push(l)
+          parsed.push({ text: l, spans: [], group: 'DshTuiNotice' })
         }
         this.ensureWhaleTicker()
       } else {
