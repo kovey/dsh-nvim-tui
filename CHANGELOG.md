@@ -5,6 +5,18 @@
 
 ## [Unreleased]
 
+- **新增：/deps 依赖体检 + 一键装配**。50+ 命令的宿主/第三方依赖集中体检：
+  - 主机插件 10 项（agent-presets / cordis-host-runner / file-reference /
+    workspace / plugin-inventory / message-feedback / session-reference /
+    session-stats / code-runtime / subagent-model-selection-settings）按
+    运行时服务键实查；配置生效性 3 项（/search 索引 openAt、vision-bridge、
+    feishu 凭据）；系统命令 2 项（pnpm、本地 OCR 二进制 feishu-ocr）。
+  - `/deps` 浮窗分组报告 ✓/✗/⚠；`/deps install` picker 选择后把缺失行
+    幂等写入 profile 的 cordis.patch.yml（结构行解析忽略注释、防重复 id、
+    包存在性先探 dsh 安装目录），loader 用户补丁 watcher 热重载生效。
+  - 冒烟覆盖：patch 行解析（注释不算行）、包探针（真/假包）。
+  - check / build / smoke 全绿，真实 harness 冷启动零错误。
+
 - **修复：/workspace、/archive 与 /sessions 工作区分组不可用（服务键名错误）**。
   命令核查看板发现 TUI 消费 `ctx.get('workspaces')`，而 alpha.5 的
   `dsh-workspace` 注册键是 `workspaceRegistry`（profile 装配行本身正确）——

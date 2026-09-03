@@ -15,6 +15,7 @@
  *   transcript.ts     transcript repair/export/trajectory/rewind/queue
  *   commands.ts       messaging + generic slash commands
  *   market-install.ts plugin market + install progress UI
+ *   deps.ts           dependency health check + one-click assembly (/deps)
  *   boot.ts           nvim spawn, notification loop, host event wiring
  *
  * Flow: spawn nvim (built-in TUI renders the terminal) → connect the socket →
@@ -36,6 +37,7 @@ import { installSubagents } from './subagents.js'
 import { installTranscript } from './transcript.js'
 import { installCommands } from './commands.js'
 import { installMarketInstall } from './market-install.js'
+import { installDeps } from './deps.js'
 import { boot } from './boot.js'
 import type { RuntimeCtx, RunnerConfig } from './types.js'
 
@@ -62,6 +64,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     installTranscript(app)
     installCommands(app)
     installMarketInstall(app)
+    installDeps(app)
     app.boot = () => boot(app)
     void app.boot()
   })

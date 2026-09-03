@@ -20,6 +20,8 @@ import { diffTexts, fileDiffsFromMeta } from '../lib/diff.js'
 import { t, setLocale, locale } from '../lib/i18n.js'
 import { matchIntent } from '../lib/nlcmd.js'
 import { ageLabel, isExpired, orderSubagentChildren } from '../lib/subagent-clean.js'
+import { readPatchRowIds, packageExists } from '../lib/deps.js'
+import os from 'node:os'
 import {
   parseStars, buildCatalog, searchCatalog, parsePluginYaml,
   setDisabledRows, readDisabledIds, isNpmName, depMatchesEntry, repoRoot, installSpec,
@@ -1342,6 +1344,36 @@ description:
   assert.equal(formatElapsed(234), '234ms', 'sub-second stays in ms')
   assert.equal(formatElapsed(65000), '1m 5s', '65s → 1m 5s')
   assert.equal(formatElapsed(3600000 + 30000), '1h 0m', 'hours form')
+
+  // 9g2. /deps helpers: patch-row parsing (comments ignored) + package probe.
+  const depsPatch = path.join(os.tmpdir(), `deps-patch-${process.pid}.yml`)
+  fs.writeFileSync(depsPatch, [
+    '# 注释里的 id: feishu 行不能算结构行',
+    '- insert:',
+    '    - id: agent-presets',
+    "      name: '@deepseek-ai/dsh-agent-presets'",
+    '# - id: commented-out',
+    '- id: session-query-sqlite',
+    '  config:',
+    '    openAt: first-search',
+    '',
+  ].join('\n'))
+  const patchIds = readPatchRowIds(depsPatch)
+  assert.ok(patchIds.has('agent-presets'), 'insert row id parsed')
+  assert.ok(patchIds.has('session-query-sqlite'), 'override row id parsed')
+  assert.ok(!patchIds.has('feishu'), 'comment mentions are not rows')
+  assert.ok(!patchIds.has('commented-out'), 'commented rows are not rows')
+  fs.unlinkSync(depsPatch)
+  const installProbe = process.env.DSH_NVIM_TUI_INSTALL_ROOT ??
+    [path.join(os.homedir(), '.nvm', 'versions', `node/${process.versions.node}`, 'lib', 'node_modules', '@deepseek-ai')]
+      .find((p) => fs.existsSync(p))
+  if (installProbe !== undefined) {
+    process.env.DSH_NVIM_TUI_INSTALL_ROOT = path.dirname(path.dirname(installProbe))
+    assert.equal(packageExists('@deepseek-ai/dsh-workspace', 'package.json'), true, 'installed package detected')
+    assert.equal(packageExists('@deepseek-ai/dsh-not-a-real-package', 'package.json'), false, 'absent package rejected')
+  } else {
+    log('skip packageExists probes (no dsh install found)')
+  }
   const mdHead = FeedRenderer.parseLine('## 标题行', false, true)
   assert.equal(mdHead.text, '标题行', 'heading markers stripped')
   assert.equal(mdHead.group, 'DshTuiHeading', 'heading group')

@@ -15,6 +15,7 @@
  *   transcript.ts     transcript repair/export/trajectory/rewind/queue
  *   commands.ts       messaging + generic slash commands
  *   market-install.ts plugin market + install progress UI
+ *   deps.ts           dependency health check + one-click assembly (/deps)
  *   boot.ts           nvim spawn, notification loop, host event wiring
  *
  * Flow: spawn nvim (built-in TUI renders the terminal) → connect the socket →
