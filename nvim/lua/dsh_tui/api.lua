@@ -26,7 +26,6 @@ API.version = '0.1.0'
 --- ExtRegistered / ExtWindowClosed / ExtEvent / SessionEvent.
 function API.emit(event, data)
   S.lastEvent = data
-  S.lastEvents[event] = data
   pcall(vim.api.nvim_exec_autocmds, 'User', {
     pattern = 'DshTui' .. event,
     data = data,
@@ -246,24 +245,6 @@ function API.is_ext_buf(buf)
     if reg.panel ~= nil and reg.panel.buf == buf then return true end
   end
   return false
-end
-
---- Register an extension-owned window/buffer (called by the float/panel
---- primitives). Foreign windows that are NOT registered keep the guards'
---- current behaviour.
-function API.own_window(id, win, kind)
-  local reg = S.extReg[id]
-  if reg == nil then return nil, 'not registered: ' .. tostring(id) end
-  reg.windows[win] = kind or 'float'
-  return true
-end
-
---- Forget an extension-owned window (its WinClosed hook, or close()).
-function API.disown_window(id, win)
-  local reg = S.extReg[id]
-  if reg == nil then return nil end
-  reg.windows[win] = nil
-  return true
 end
 
 --- Forget stale handles: every window/buffer handle that no longer exists
