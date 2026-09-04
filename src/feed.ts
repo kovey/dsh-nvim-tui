@@ -167,6 +167,14 @@ export class FeedRenderer {
   /** cardId → rendered extmark range (markId + buffer rows). */
   cardRanges: Map<string, { markId: number; startRow: number; endRow: number }>
   cardNs: number | null
+  /** Cached viewport width: the cap renderTable wraps overwide tables
+   *  against (refreshed by winSize, throttled once per 2s per flush). */
+  lastWinW: number
+  lastWinAt: number
+  /** Cached reasoning-panel width for the panel table cap (throttled the
+   *  same way — a per-flush width RPC would tax the streaming path). */
+  lastPanelW: number
+  lastPanelAt: number
   whale: boolean // blue whale wallpaper (empty) + watermark (content)
   welcome: (() => { above?: WelcomeLine[]; below?: WelcomeLine[] }) | null // empty-state hero block
   whaleFrame: number // animation frame index (wallpaper only)
@@ -223,6 +231,10 @@ export class FeedRenderer {
     this.cardHandlers = new Map()
     this.cardRanges = new Map()
     this.cardNs = null
+    this.lastWinW = 100
+    this.lastWinAt = 0
+    this.lastPanelW = 52
+    this.lastPanelAt = 0
     this.ticker = null
     this.eventTime = 0
   }
@@ -278,7 +290,7 @@ export class FeedRenderer {
       // User echoes stay verbatim EXCEPT markdown tables, which get the same
       // bordered-table beautification as assistant content (rows keep the
       // `> ` quote prefix).
-      for (const entry of transformTables(text.split('\n'), false, 0)) {
+      for (const entry of transformTables(text.split('\n'), false, 0, this.lastWinW)) {
         this.base.push(`> ${entry.table ? entry.text : entry.raw}`)
       }
     }
@@ -910,7 +922,9 @@ export class FeedRenderer {
     }
   }
 
-  /** Current window size via the ids provider (fallback 40×100). */
+  /** Current window size via the ids provider (fallback 40×100). Success
+   *  updates the table width cache (lastWinW) that renderTable caps
+   *  overflow against. */
   private async winSize(): Promise<{ h: number; w: number }> {
     try {
       const ids = (await this.idsProvider?.()) as { win?: number } | null
@@ -919,10 +933,11 @@ export class FeedRenderer {
           this.nvim.request('nvim_win_get_height', [ids.win]) as Promise<number>,
           this.nvim.request('nvim_win_get_width', [ids.win]) as Promise<number>,
         ])
+        this.lastWinW = w
         return { h, w }
       }
     } catch {}
-    return { h: 40, w: 100 }
+    return { h: 40, w: this.lastWinW }
   }
 
   schedule(): void {
@@ -940,6 +955,13 @@ export class FeedRenderer {
       // A flush is in flight; remember that newer content arrived.
       this.dirty = true
       return
+    }
+    // Keep the table width cap fresh (throttled: one probe per 2s — the
+    // cap only matters when an overwide table renders, and the hot
+    // streaming path must not pay an RPC roundtrip per flush).
+    if (Date.now() - this.lastWinAt > 2000) {
+      this.lastWinAt = Date.now()
+      void this.winSize().catch(() => {})
     }
     const tailLines = this.tail === '' ? [] : this.tail.split('\n')
     // Task step-progress block: a TRAILING run of `- ✅/⏳/⬜ …` lines (with
@@ -1072,7 +1094,7 @@ export class FeedRenderer {
         const block = raw.slice(i, j)
         if (block.length >= 2 && isSeparator(block[1] ?? '')) {
           const closed = j < raw.length - trailingStatic || !streamOpen
-          for (const r of renderTable(block, closed)) {
+          for (const r of renderTable(block, closed, this.lastWinW)) {
             parsed.push({ text: r.text, spans: r.spans, group: r.group })
           }
           i = j - 1
@@ -1391,7 +1413,20 @@ export class FeedRenderer {
     // chat path already does this). Table blocks EXPAND to bordered rows,
     // which breaks the incremental paths' one-raw-line = one-buffer-row
     // assumption — their presence switches this flush to a full rewrite.
-    const entries = transformTables(full, this.reasoningTail !== '', 0)
+    // The width cap = the panel window's real width (its clamp is 30..52),
+    // so overwide tables wrap inside the panel instead of soft-wrapping
+    // against its edge. Throttled probe: a per-flush width RPC would tax
+    // the streaming path.
+    if (Date.now() - this.lastPanelAt > 2000) {
+      this.lastPanelAt = Date.now()
+      const view0 = this.reasoningView?.()
+      if (view0?.win != null && typeof view0.win === 'number') {
+        void this.nvim.request('nvim_win_get_width', [view0.win])
+          .then((w: number) => { this.lastPanelW = w })
+          .catch(() => {})
+      }
+    }
+    const entries = transformTables(full, this.reasoningTail !== '', 0, this.lastPanelW)
     if (entries.some((e) => e.table)) {
       const rows = entries.map((e) => (e.table ? e.text : e.raw))
       const groups = entries.map((e) =>

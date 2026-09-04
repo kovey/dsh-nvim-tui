@@ -150,6 +150,14 @@ export declare class FeedRenderer {
         endRow: number;
     }>;
     cardNs: number | null;
+    /** Cached viewport width: the cap renderTable wraps overwide tables
+     *  against (refreshed by winSize, throttled once per 2s per flush). */
+    lastWinW: number;
+    lastWinAt: number;
+    /** Cached reasoning-panel width for the panel table cap (throttled the
+     *  same way — a per-flush width RPC would tax the streaming path). */
+    lastPanelW: number;
+    lastPanelAt: number;
     whale: boolean;
     welcome: (() => {
         above?: WelcomeLine[];
@@ -269,7 +277,9 @@ export declare class FeedRenderer {
     /** Animate the wallpaper: advance one frame and re-render (empty only). */
     private ensureWhaleTicker;
     private stopWhaleTicker;
-    /** Current window size via the ids provider (fallback 40×100). */
+    /** Current window size via the ids provider (fallback 40×100). Success
+     *  updates the table width cache (lastWinW) that renderTable caps
+     *  overflow against. */
     private winSize;
     schedule(): void;
     flush(): Promise<void>;

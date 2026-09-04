@@ -32,8 +32,11 @@ interface RenderedRow {
  * on fence markers inside verbatim diff rows).
  * @param {string[]} block raw table lines (block[1] is the separator)
  * @param {boolean} closed whether to draw the bottom border
+ * @param {number} maxWidth total display-width cap (Infinity = natural).
+ *   Overflow shrinks columns (widest first, floor 3) and wraps cell text
+ *   into bordered continuation lines.
  */
-export declare function renderTable(block: string[], closed: boolean): RenderedRow[];
+export declare function renderTable(block: string[], closed: boolean, maxWidth?: number): RenderedRow[];
 /**
  * Detect table blocks across raw view lines (fence-aware) and return the
  * FINAL output entry stream: one entry per OUTPUT line (a table block expands
@@ -45,4 +48,4 @@ export declare function renderTable(block: string[], closed: boolean): RenderedR
  *   feed's transient activity lines) that must not count as content after a
  *   table block — the open-table check ignores them.
  */
-export declare function transformTables(lines: string[], streamOpen?: boolean, trailingStatic?: number): TableEntry[];
+export declare function transformTables(lines: string[], streamOpen?: boolean, trailingStatic?: number, maxWidth?: number): TableEntry[];

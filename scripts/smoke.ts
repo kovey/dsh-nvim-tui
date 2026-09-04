@@ -21,6 +21,7 @@ import { t, setLocale, locale } from '../lib/i18n.js'
 import { matchIntent } from '../lib/nlcmd.js'
 import { ageLabel, isExpired, orderSubagentChildren } from '../lib/subagent-clean.js'
 import { runningBadge } from '../lib/statusline.js'
+import stringWidth from 'string-width'
 import { matchSessionEventFilter } from '../lib/ext-api.js'
 import { readPatchRowIds, packageExists } from '../lib/deps.js'
 import { encodeSessionLog, encodeHeaderOnlyLog } from '../lib/subagent-clean.js'
@@ -815,6 +816,30 @@ description:
   assert.ok(chatAfterDiff.some((l: string) => /^│ 列A │ 列B/.test(l)), 'table after diff fence header aligned')
   assert.ok(!chatAfterDiff.some((l: string) => l === '|---|---|'), 'table after diff fence raw separator replaced')
   feedB.applyEvent({ type: 'turn/end', time: 7570, data: {} })
+
+  // overwide tables wrap INSIDE the frame: columns shrink (widest first)
+  // and cell content flows into continuation lines, EVERY one bordered —
+  // nvim's soft-wrap used to bend the box out of shape (continuation rows
+  // lost their │ and the corners no longer lined up).
+  const longCell = '很长很长的单元格内容'.repeat(12)
+  feedB.applyEvent({ type: 'assistant/message', time: 7580, data: { turn: 8, step: 1, message: { content: [{ type: 'text', text: `| 阶段 | 说明 |\n|---|---|\n| P1 | ${longCell} |` }] } } })
+  await new Promise((r) => setTimeout(r, 150))
+  const wrapLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  log('wrapped table:', JSON.stringify(wrapLines.slice(-14)))
+  const wrapStart = wrapLines.findIndex((l: string) => l.includes('阶段') && l.includes('说明'))
+  assert.ok(wrapStart >= 0, 'wrapped table header present')
+  const wrapBlock = wrapLines.slice(wrapStart)
+  const wrapData = wrapBlock.filter((l: string) => l.startsWith('│'))
+  assert.ok(wrapData.length >= 4, `long cell wrapped into continuation lines (got ${wrapData.length})`)
+  for (const l of wrapData) {
+    assert.ok(l.endsWith('│'), 'every continuation line keeps the right border')
+    assert.equal(l.split('│').length, 4, 'every line keeps the internal separators')
+  }
+  const wrapJoined = wrapData.map((l: string) => l.replace(/│/g, '')).join('')
+  assert.ok(wrapJoined.includes('很长很长的单元格内容很长很长的单元格内容'), 'wrapped content preserved in order')
+  const wrapWidths = wrapBlock.map((l: string) => stringWidth(l))
+  assert.ok(Math.max(...wrapWidths) <= 101, 'wrapped table stays within the viewport width (no soft-wrap)')
+  feedB.applyEvent({ type: 'turn/end', time: 7590, data: {} })
 
   // inline spans are byte-indexed: CJK bold must cover exactly the text bytes
   feedB.applyEvent({ type: 'assistant/message', time: 7300, data: { turn: 3, step: 1, message: { content: [{ type: 'text', text: '前缀 **中文加粗** 后缀' }] } } })
