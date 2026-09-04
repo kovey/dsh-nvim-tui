@@ -60,11 +60,15 @@ export interface ExtCardOpts {
     plugin: string;
     title: string;
     body: string;
-    /** Action hints rendered as a footer row (informational in v1). */
+    /** Action hints rendered as a footer row. With onAction, they become
+     *  interactive: cursor on the card + 1-9 fires action N, Enter opens
+     *  the action picker (both only on the main chat window). */
     actions?: Array<{
         label: string;
         value: string;
     }>;
+    /** Interactive activation callback (value = the fired action's value). */
+    onAction?: (value: string) => void;
     /** Auto-dismiss after this many milliseconds. */
     ttlMs?: number;
 }

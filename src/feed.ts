@@ -101,6 +101,9 @@ export interface ExtCardOpts {
   title: string
   body: string
   actions?: Array<{ label: string; value: string }>
+  /** Interactive activation (P4-③): invoked with the action's value when
+   *  the user activates the card in the chat (1-9 / Enter). */
+  onAction?: (value: string) => void
 }
 
 /** Handle returned by pushExtCard: update/dismiss the block in place. */
@@ -159,6 +162,11 @@ export class FeedRenderer {
    *  view from base, so deletions propagate). */
   extCards: Map<string, { start: number; length: number }>
   extCardSeq: number
+  /** Interactive cards (P4-③): cardId → action surface. */
+  cardHandlers: Map<string, { actions: Array<{ label: string; value: string }>; onAction?: (value: string) => void }>
+  /** cardId → rendered extmark range (markId + buffer rows). */
+  cardRanges: Map<string, { markId: number; startRow: number; endRow: number }>
+  cardNs: number | null
   whale: boolean // blue whale wallpaper (empty) + watermark (content)
   welcome: (() => { above?: WelcomeLine[]; below?: WelcomeLine[] }) | null // empty-state hero block
   whaleFrame: number // animation frame index (wallpaper only)
@@ -212,6 +220,9 @@ export class FeedRenderer {
     this.dense = false
     this.extCards = new Map()
     this.extCardSeq = 0
+    this.cardHandlers = new Map()
+    this.cardRanges = new Map()
+    this.cardNs = null
     this.ticker = null
     this.eventTime = 0
   }
@@ -227,6 +238,7 @@ export class FeedRenderer {
     this.calls.clear()
     this.toolActivity = null
     this.extCards.clear()
+    this.cardHandlers.clear()
     if (this.ticker !== null) clearTimeout(this.ticker)
     if (this.reasoningBuf !== null) {
       this.panelLines = []
@@ -302,13 +314,16 @@ export class FeedRenderer {
 
   /** Ext card (P1 extension API): a `▣ plugin · title` header block with an
    *  indented body and optional action hints. Returns a handle that updates
-   *  or dismisses the block IN PLACE (tracked base range). */
+   *  or dismisses the block IN PLACE (tracked base range). With `onAction`
+   *  set, the chat buffer gains activation: cursor on the card + 1-9 fires
+   *  the action directly, Enter opens the action picker. */
   pushExtCard(opts: ExtCardOpts, cardId?: string): ExtCardHandle {
     const id = cardId ?? `ext-${opts.plugin}-${++this.extCardSeq}`
     const lines = this.extCardLines(opts)
     const start = this.base.length
     this.base.push(...lines)
     this.extCards.set(id, { start, length: lines.length })
+    this.cardHandlers.set(id, { actions: opts.actions ?? [], onAction: opts.onAction })
     this.schedule()
     return {
       id,
@@ -320,6 +335,7 @@ export class FeedRenderer {
         this.base.splice(rec.start, rec.length, ...nextLines)
         this.shiftExtCards(rec.start, nextLines.length - rec.length)
         rec.length = nextLines.length
+        this.cardHandlers.set(id, { actions: merged.actions ?? [], onAction: merged.onAction })
         this.schedule()
       },
       dismiss: () => {
@@ -327,6 +343,7 @@ export class FeedRenderer {
         if (rec === undefined) return
         this.base.splice(rec.start, rec.length)
         this.extCards.delete(id)
+        this.cardHandlers.delete(id)
         this.shiftExtCards(rec.start, -rec.length)
         this.schedule()
       },
@@ -350,6 +367,57 @@ export class FeedRenderer {
     for (const rec of this.extCards.values()) {
       if (rec.start > afterStart) rec.start += delta
     }
+  }
+
+  /** Sync the interactive-card extmark ranges (P4-③): one block mark per
+   *  card covering its RENDERED rows (post markdown-transform). Marks are
+   *  re-placed only when a card's range changed; dismissed cards' marks
+   *  are deleted. */
+  private async syncCardMarks(newRows: Map<string, { startRow: number; endRow: number }>): Promise<void> {
+    if (this.cardNs === null) {
+      this.cardNs = await this.nvim.request('nvim_create_namespace', ['dsh_tui_extcards']) as number
+    }
+    const ns = this.cardNs
+    for (const [cardId, range] of newRows) {
+      const prev = this.cardRanges.get(cardId)
+      if (prev !== undefined && prev.startRow === range.startRow && prev.endRow === range.endRow) continue
+      if (prev !== undefined) {
+        await this.nvim.request('nvim_buf_del_extmark', [this.bufId, ns, prev.markId]).catch(() => {})
+      }
+      const markId = await this.nvim.request('nvim_buf_set_extmark', [
+        this.bufId, ns, range.startRow, 0,
+        { end_row: range.endRow, end_col: 0, priority: 1 },
+      ]) as number
+      this.cardRanges.set(cardId, { markId, startRow: range.startRow, endRow: range.endRow })
+    }
+    for (const [cardId, prev] of this.cardRanges) {
+      if (newRows.has(cardId)) continue
+      await this.nvim.request('nvim_buf_del_extmark', [this.bufId, ns, prev.markId]).catch(() => {})
+      this.cardRanges.delete(cardId)
+    }
+  }
+
+  /** Activate the interactive card under an extmark (P4-③). actionIdx null
+   *  → returns the action list for the picker; otherwise fires action N and
+   *  returns { invoked: true }. Null when no interactive card owns the mark
+   *  (action-less cards stay display-only). */
+  activateCard(markId: number, actionIdx: number | null): Array<{ label: string; value: string }> | { invoked: boolean } | null {
+    let cardId: string | null = null
+    for (const [id, r] of this.cardRanges) {
+      if (r.markId === markId) {
+        cardId = id
+        break
+      }
+    }
+    if (cardId === null) return null
+    const entry = this.cardHandlers.get(cardId)
+    if (entry === undefined || typeof entry.onAction !== 'function' || entry.actions.length === 0) return null
+    if (actionIdx === null) return entry.actions
+    const act = entry.actions[actionIdx - 1]
+    if (act === undefined) return null
+    // Exceptions propagate to boot.ts's guard (feed notice), never into nvim.
+    entry.onAction(act.value)
+    return { invoked: true }
   }
 
   pushError(text: unknown): void {
@@ -942,6 +1010,10 @@ export class FeedRenderer {
       if (idleMs >= 800) activityLines = [`·· thinking… ${Math.floor(idleMs / 1000)}s`]
     }
     const raw = [...this.base, ...progressLines, ...restTail, ...activityLines]
+    // Raw-line → rendered-row mapping (interactive cards need their
+    // POST-transform rows: tables expand, fences collapse — base offsets
+    // alone cannot be trusted).
+    const rowStartOfRaw: number[] = new Array(raw.length).fill(0)
 
     // Parse the full view (cheap string ops) so every flush's buffer content
     // is the stripped text with consistent spans. Markdown tables become
@@ -989,6 +1061,7 @@ export class FeedRenderer {
     // markdown table below it rendered raw.
     const trailingStatic = activityLines.length
     for (let i = 0; i < raw.length; i++) {
+      rowStartOfRaw[i] = parsed.length
       const line = raw[i] ?? ''
       // Table block: only outside code fences. Diff rows are handled below
       // and never reach this check, so their fence markers cannot desync
@@ -1133,6 +1206,17 @@ export class FeedRenderer {
       this.stopWhaleTicker()
     }
 
+    // Ext-card rendered rows (computed BEFORE the diff — the hero path can
+    // rewrite `parsed`, but cards are content and exclude the hero anyway).
+    const newCardRows = new Map<string, { startRow: number; endRow: number }>()
+    for (const [cardId, rec] of this.extCards) {
+      if (rec.length <= 0) continue
+      const first = rowStartOfRaw[rec.start] ?? 0
+      const afterEnd = rec.start + rec.length
+      const endRow = (afterEnd < raw.length ? rowStartOfRaw[afterEnd] : parsed.length) - 1
+      if (endRow >= first) newCardRows.set(cardId, { startRow: first, endRow })
+    }
+
     // Diff against the last flushed view: tables expand blocks (3 raw lines
     // → 5 bordered lines), so row positions cannot be tracked by base length.
     const lastView = this.lastView ?? []
@@ -1259,6 +1343,9 @@ export class FeedRenderer {
         // Fire-and-forget: a wedged cursor RPC must never block the feed.
         void this.moveCursor(lines.length)
       }
+      // Interactive-card marks (P4-③): one block extmark per card covering
+      // its RENDERED rows, so the chat keymaps can resolve cursor → card.
+      await this.syncCardMarks(newCardRows).catch(() => {})
     })()
     try {
       await this.flushing

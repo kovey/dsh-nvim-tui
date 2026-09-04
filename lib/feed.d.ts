@@ -73,6 +73,9 @@ export interface ExtCardOpts {
         label: string;
         value: string;
     }>;
+    /** Interactive activation (P4-③): invoked with the action's value when
+     *  the user activates the card in the chat (1-9 / Enter). */
+    onAction?: (value: string) => void;
 }
 /** Handle returned by pushExtCard: update/dismiss the block in place. */
 export interface ExtCardHandle {
@@ -132,6 +135,21 @@ export declare class FeedRenderer {
         length: number;
     }>;
     extCardSeq: number;
+    /** Interactive cards (P4-③): cardId → action surface. */
+    cardHandlers: Map<string, {
+        actions: Array<{
+            label: string;
+            value: string;
+        }>;
+        onAction?: (value: string) => void;
+    }>;
+    /** cardId → rendered extmark range (markId + buffer rows). */
+    cardRanges: Map<string, {
+        markId: number;
+        startRow: number;
+        endRow: number;
+    }>;
+    cardNs: number | null;
     whale: boolean;
     welcome: (() => {
         above?: WelcomeLine[];
@@ -164,12 +182,29 @@ export declare class FeedRenderer {
     pushWorkflow(line: string): void;
     /** Ext card (P1 extension API): a `▣ plugin · title` header block with an
      *  indented body and optional action hints. Returns a handle that updates
-     *  or dismisses the block IN PLACE (tracked base range). */
+     *  or dismisses the block IN PLACE (tracked base range). With `onAction`
+     *  set, the chat buffer gains activation: cursor on the card + 1-9 fires
+     *  the action directly, Enter opens the action picker. */
     pushExtCard(opts: ExtCardOpts, cardId?: string): ExtCardHandle;
     /** Card block lines: blank separator + header + indented body + hints. */
     private extCardLines;
     /** After a splice at `afterStart`, adjust every later card's base offset. */
     private shiftExtCards;
+    /** Sync the interactive-card extmark ranges (P4-③): one block mark per
+     *  card covering its RENDERED rows (post markdown-transform). Marks are
+     *  re-placed only when a card's range changed; dismissed cards' marks
+     *  are deleted. */
+    private syncCardMarks;
+    /** Activate the interactive card under an extmark (P4-③). actionIdx null
+     *  → returns the action list for the picker; otherwise fires action N and
+     *  returns { invoked: true }. Null when no interactive card owns the mark
+     *  (action-less cards stay display-only). */
+    activateCard(markId: number, actionIdx: number | null): Array<{
+        label: string;
+        value: string;
+    }> | {
+        invoked: boolean;
+    } | null;
     pushError(text: unknown): void;
     /** Extract plain text from a message (content blocks or raw text). */
     static messageText(message: ChatMessage | undefined): string;

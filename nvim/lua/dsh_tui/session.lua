@@ -20,6 +20,16 @@ function SE.ensure_chat(id)
     -- <C-o> toggles the reasoning panel from the chat buffer too.
     vim.api.nvim_buf_set_keymap(buf, 'n', '<C-o>',
       '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>', { noremap = true })
+    -- Interactive ext cards: cursor on a card + 1-9 fires its action,
+    -- Enter opens the action picker (both no-op elsewhere — the chat
+    -- stays display-only).
+    vim.api.nvim_buf_set_keymap(buf, 'n', '<Enter>',
+      '<Cmd>lua require("dsh_tui.api").card_activate()<CR>', { noremap = true })
+    for i = 1, 9 do
+      vim.api.nvim_buf_set_keymap(buf, 'n', tostring(i),
+        string.format('<Cmd>lua require("dsh_tui.api").card_activate(%d)<CR>', i),
+        { noremap = true })
+    end
     PC.lock_display_keys(buf) -- chat output is display-only (renderer writes via API)
     vim.api.nvim_buf_set_name(buf, 'dsh-chat-' .. tostring(id))
     S.chats[id] = buf

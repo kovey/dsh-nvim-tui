@@ -215,6 +215,28 @@ export async function boot(app: App): Promise<void> {
         // Lua-side extensions surface transient notices through the runner.
         const text = String((args?.[0] as { text?: unknown } | undefined)?.text ?? args?.[0] ?? '')
         if (text !== '') app.notice(text)
+      } else if (method === 'dsh-ext-card-activate') {
+        // Interactive ext card: the chat keymap resolved the card mark under
+        // the cursor (active session feed). action null → open the action
+        // picker; a number → fire that action directly.
+        const payload = (args?.[0] ?? {}) as { mark?: unknown; action?: unknown }
+        const mark = Number(payload.mark)
+        if (!Number.isInteger(mark)) return
+        const feed = app.activeFeed()
+        if (feed === undefined) return
+        try {
+          const action = typeof payload.action === 'number' ? payload.action : null
+          const res = feed.activateCard(mark, action)
+          if (res === null || 'invoked' in res) return
+          if (res.length === 0) return
+          void app.openPicker('卡片操作', res).then((value) => {
+            if (value === null) return
+            const idx = res.findIndex((i) => i.value === value) + 1
+            if (idx > 0) feed.activateCard(mark, idx)
+          })
+        } catch (err) {
+          app.notice(`⚠ 卡片操作失败: ${(err as Error).message}`)
+        }
       }
     })
 

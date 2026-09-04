@@ -73,11 +73,14 @@ await tui.nvim.request('nvim_eval', ['slow()'], { timeoutMs: 2000 })
 ### 2.2 UI 原语层 `tui.ui`
 
 ```ts
-// 卡片：渲染进指定会话 feed，可原地更新/关闭（headless 落入 e2e dump）
+// 卡片：渲染进指定会话 feed，可原地更新/关闭（headless 落入 e2e dump）。
+// 带 onAction 时动作可交互：光标停在卡片上按 1-9 直接触发，Enter 弹动作
+// 选择浮窗（仅主会话 chat 窗口）。
 const card = tui.ui.card({
   sessionId: tui.getActiveSessionId()!,  // 省略 = 当前活跃会话
   plugin: 'dsh-git', title: '分支清理', body: '已删除 3 个合并分支',
-  actions: [{ label: '确认', value: 'yes' }],   // v1 为提示行，非交互按钮
+  actions: [{ label: '确认', value: 'yes' }, { label: '详情', value: 'detail' }],
+  onAction: (value) => tui.ui.notice('选择了 ' + value),
   ttlMs: 8000,                                   // 可选自动消失
 })
 card.update({ body: '重新扫描完成' })
@@ -287,5 +290,5 @@ Node → Lua: runner 调 api.rpc_dispatch(extId, method, args) / api.rpc_event(.
 ## 八、路线图（未实现项）
 
 - region 布局（chat 让出顶部/底部区域的真实分屏槽）—— 当前面板为右缘浮动槽。
-- card actions 交互化（终端内按钮 = 浮动 overlay + 键位）。
-- 面板多槽并发。
+- 面板多槽并发（当前为单槽互斥）。
+- 卡片动作的确认/输入型交互（当前为单选动作）。

@@ -26,6 +26,20 @@
     examples/dsh-plugin/（进入 npm files 白名单）；smoke 新增扩展接口全
     覆盖段（含 boot 守卫豁免、双向 RPC、钩子、命令目录合并、注销清理）。
 
+- **扩展接口增强（1/2/3/4）**：
+  - **dsh-ext 有界应答**：`vim.rpcrequest` 实测阻塞不可从 Lua 取消，但阻塞
+    期间 nvim 继续处理事件（处理器内嵌套 nvim 调用安全，据此移除了错误的
+    死锁守卫）；runner 对每条请求做超时竞速（默认 30s，`luaExt.on` 可
+    per-handler 覆盖、`luaExt.call` 可 per-call 覆盖），超时回结构化错误、
+    处理器后台继续、结果丢弃。
+  - **Lua 侧晚订阅补发**：User 事件保持实时流不重放；晚加载插件
+    （lazy.nvim VeryLazy）用 `api.snapshot()`（boot/会话/窗口句柄快照）+
+    register 的 `on_ready`/`on_active_session` 同步回调对齐初始态。
+  - **卡片交互化**：`ui.card` 的 actions + `onAction` 变成真交互——卡片在
+    chat 缓冲获得渲染行块 extmark（flush 期跟踪 markdown 变换后的行范围），
+    光标停在卡片上按 `1-9` 直接触发动作、`Enter` 弹出动作选择浮窗
+    （复用 TUI picker）；`dsh-ext-card-activate` 路由到回调。
+
 ## [v0.2.16（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.16)
 
 覆盖提交：

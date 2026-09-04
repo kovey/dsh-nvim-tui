@@ -2372,6 +2372,73 @@ description:
       'no ext group mark left after dismiss')
   }
 
+  // 13i2. interactive cards: rendered-row extmarks, activation (direct +
+  // picker list), update range tracking, dismiss cleanup, chat keymaps
+  const cardNs = await lua(`return vim.api.nvim_create_namespace('dsh_tui_extcards')`, []) as number
+  let firedActions: string[] = []
+  const intCard = feedA.pushExtCard({
+    plugin: 'smoke', title: '交互卡片', body: '选择一项',
+    actions: [{ label: '甲', value: 'a' }, { label: '乙', value: 'b' }],
+    onAction: (v: string) => { firedActions.push(v) },
+  })
+  await new Promise((r) => setTimeout(r, 250))
+  let intMarks: any[] = await nvim.request('nvim_buf_get_extmarks', [chatA.chatBuf, cardNs, 0, -1, { details: true }])
+  assert.equal(intMarks.length, 1, 'one interactive-card mark placed')
+  const intLines0 = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  const intHeaderRow = intLines0.findIndex((l: string) => l.includes('交互卡片'))
+  assert.ok(intMarks[0][1] <= intHeaderRow && intMarks[0][3].end_row >= intHeaderRow,
+    'card mark spans the rendered card block')
+  // activation: picker-list form + direct index form + out-of-range + unknown
+  const intMarkId = intMarks[0][0] as number
+  assert.deepEqual(feedA.activateCard(intMarkId, null),
+    [{ label: '甲', value: 'a' }, { label: '乙', value: 'b' }], 'activateCard(null) returns the action list')
+  assert.deepEqual(feedA.activateCard(intMarkId, 2), { invoked: true }, 'direct action reports invocation')
+  assert.deepEqual(firedActions, ['b'], 'action 2 fired with its value')
+  feedA.activateCard(intMarkId, 9)
+  assert.deepEqual(firedActions, ['b'], 'out-of-range action is a no-op')
+  assert.equal(feedA.activateCard(999_999, 1), null, 'unknown mark resolves to null')
+  // update() grows the block → the mark range follows the rendered rows
+  const beforeRows = intMarks[0][3].end_row - intMarks[0][1]
+  intCard.update({ body: '选择一项\n多了两行\n第三行' })
+  await new Promise((r) => setTimeout(r, 250))
+  intMarks = await nvim.request('nvim_buf_get_extmarks', [chatA.chatBuf, cardNs, 0, -1, { details: true }])
+  assert.equal(intMarks.length, 1, 'card mark survives the update')
+  assert.equal(intMarks[0][3].end_row - intMarks[0][1], beforeRows + 2, 'mark range grows with the card body')
+  // dismiss removes the mark
+  intCard.dismiss()
+  await new Promise((r) => setTimeout(r, 250))
+  intMarks = await nvim.request('nvim_buf_get_extmarks', [chatA.chatBuf, cardNs, 0, -1, { details: true }])
+  assert.equal(intMarks.length, 0, 'dismissed interactive card mark removed')
+  // chat keymaps: Enter + digits route to api.card_activate
+  const chatMaps = await lua(`local out = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(${chatA.chatBuf}, "n")) do out[m.lhs] = m.rhs or "" end
+    return out`, [])
+  assert.ok(String(chatMaps['<CR>'] ?? chatMaps['<Enter>']).includes('card_activate'), 'Enter maps to card activation')
+  for (const d of ['1', '2', '3']) {
+    assert.ok(String(chatMaps[d]).includes('card_activate'), d + ' maps to card activation')
+  }
+  // cursor on a card row → rpcnotify with the mark id; elsewhere → silent
+  const actNotes: unknown[] = []
+  const onActNote = (m: string, a: unknown[]): void => { if (m === 'dsh-ext-card-activate') actNotes.push(a[0]) }
+  nvim.on('notification', onActNote)
+  const cursorCard = feedA.pushExtCard({
+    plugin: 'smoke', title: '光标卡片', body: '正文', actions: [{ label: 'x', value: 'v' }], onAction: () => {},
+  })
+  await new Promise((r) => setTimeout(r, 250))
+  const curLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  const curRow = curLines.findIndex((l: string) => l.includes('光标卡片'))
+  await nvim.request('nvim_win_set_cursor', [chatA.chatWin, [curRow + 1, 0]])
+  assert.equal(await lua(`return require("dsh_tui.api").card_activate(1)`, []), true, 'card_activate hits the card under the cursor')
+  await new Promise((r) => setTimeout(r, 120))
+  assert.equal(actNotes.length, 1, 'activation routed to the runner')
+  assert.equal((actNotes[0] as { mark?: unknown; action?: unknown }).action, 1, 'activation carries the action index')
+  await nvim.request('nvim_win_set_cursor', [chatA.chatWin, [1, 0]])
+  await lua(`require("dsh_tui.api").card_activate()`, [])
+  await new Promise((r) => setTimeout(r, 120))
+  assert.equal(actNotes.length, 1, 'no card under the cursor → no notification')
+  nvim.off('notification', onActNote)
+  cursorCard.dismiss()
+
   // 13j. unregister closes extension windows, cleans up the extension's
   // slash commands, and drops the entry
   const f2 = await lua(`return require("dsh_tui.api").float_open("smoke-ext", { lines = { "x" } })`, []) as { win: number }

@@ -387,6 +387,44 @@ function API.input_get()
 end
 
 -- ===========================================================================
+-- P4-③: interactive card activation (chat keymaps → runner)
+-- ===========================================================================
+
+--- Resolve the interactive card under the chat cursor and route activation
+--- to the runner (feed.activateCard). actionIdx nil = open the action
+--- picker (Enter); 1-9 = fire that action directly. Returns true when a
+--- card mark owned the cursor row (false = no card there, key falls
+--- through as a no-op — the chat stays display-only).
+function API.card_activate(actionIdx)
+  if S.chat_win == nil or not vim.api.nvim_win_is_valid(S.chat_win) then
+    return false
+  end
+  local buf = vim.api.nvim_win_get_buf(S.chat_win)
+  local row = (vim.api.nvim_win_get_cursor(S.chat_win)[1] or 1) - 1
+  local ns = vim.api.nvim_create_namespace('dsh_tui_extcards')
+  -- Query the WHOLE namespace and filter by row: get_extmarks' row-range
+  -- query does not intersect block marks that START above the range.
+  local marks = vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })
+  local markId = nil
+  for _, m in ipairs(marks or {}) do
+    local startRow = m[2]
+    local endRow = (m[4] and m[4].end_row) or (startRow + 1)
+    if row >= startRow and row < endRow then
+      markId = m[1]
+      break
+    end
+  end
+  if markId == nil then
+    return false
+  end
+  if S.channel then
+    vim.rpcnotify(S.channel, 'dsh-ext-card-activate',
+      { mark = markId, action = actionIdx })
+  end
+  return true
+end
+
+-- ===========================================================================
 -- P2: the right-edge panel slot (the reasoning panel's geometry generalized)
 -- ===========================================================================
 
