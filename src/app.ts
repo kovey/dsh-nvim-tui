@@ -58,6 +58,7 @@ export interface ServiceMap {
   tools: ToolsService
   sessionQuery: SessionQueryService
   sessionProjections: SessionProjectionsService
+  sessionProjectionCache: SessionProjectionsService
   pluginInventory: PluginInventoryService
   loader: LoaderService
   sessionReferenceResolver: SessionReferenceService
@@ -161,8 +162,8 @@ export interface App {
   // -- registries -------------------------------------------------------------
   sessions: Map<string, SessionRec>
   activeId: string | null
-  historyHeaders: Array<{ id: string; cwd?: string; createdAt?: number; title?: string }>
-  historyById: Map<string, { id: string; cwd?: string; createdAt?: number; title?: string }>
+  historyHeaders: Array<{ id: string; cwd?: string; createdAt?: number; title?: string; origin?: string; inheritedEventCount?: number }>
+  historyById: Map<string, { id: string; cwd?: string; createdAt?: number; title?: string; origin?: string; inheritedEventCount?: number }>
   sessionEntries: Array<{ id: string; title: string; active: boolean; kind: string }>
   runningSubagents: Map<string, { parentId: string; label: string; startedAt: number }>
   childParent: Map<string, { parentId: string; label: string }>
@@ -462,10 +463,30 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     try {
       const all = await persistence.list()
       const cwd = process.cwd()
-      app.historyHeaders = all.filter((h) => h.cwd === cwd && /^session-/.test(h.id) && h.origin !== 'subagent')
+      // Persisted titles live in the projection cache (SessionHeader carries
+      // no title field): read the cached `title` projection per header so a
+      // user rename survives restarts in /sessions without opening the log.
+      // The cache is its own service (`sessionProjectionCache`); fall back to
+      // the base registry for profiles that expose the read there.
+      const projections = svc('sessionProjectionCache') ?? svc('sessionProjections')
+      const cachedTitle = (h: { id: string; inheritedEventCount?: number }): string | undefined => {
+        if (typeof projections?.cachedSnapshot !== 'function') return undefined
+        try {
+          const snap = projections.cachedSnapshot(h, h.inheritedEventCount ?? 0, ['title'])
+          const title = snap?.values?.title
+          return typeof title === 'string' && title !== '' ? title : undefined
+        } catch {
+          return undefined
+        }
+      }
+      app.historyHeaders = all
+        .filter((h) => h.cwd === cwd && /^session-/.test(h.id) && h.origin !== 'subagent')
+        .map((h) => ({ ...h, title: cachedTitle(h) ?? h.title }))
       app.historyById.clear()
       for (const h of all) {
-        if (/^session-/.test(h.id) && h.origin !== 'subagent') app.historyById.set(h.id, h)
+        if (/^session-/.test(h.id) && h.origin !== 'subagent') {
+          app.historyById.set(h.id, { ...h, title: cachedTitle(h) ?? h.title })
+        }
       }
     } catch {}
   }
@@ -548,7 +569,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     }))
     for (const h of app.historyHeaders) {
       if (!app.sessions.has(h.id)) {
-        entries.push({ id: h.id, title: '', active: false, kind: 'history' })
+        entries.push({ id: h.id, title: h.title ?? '', active: false, kind: 'history' })
       }
     }
     app.sessionEntries = entries

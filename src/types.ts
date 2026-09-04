@@ -175,6 +175,8 @@ export interface SessionPersistenceService {
     parentSession?: string
     createdAt?: number
     title?: string
+    /** Log offset of seeded history (projection-cache reads need it). */
+    inheritedEventCount?: number
   }>>
   inspect?: (id: string) => Promise<{ events?: unknown[]; meta?: { id?: string; cwd?: string } } | undefined>
   /** Raw physical artifact access (the backend decodes its own encoding). */
@@ -277,6 +279,9 @@ export interface PluginInventoryService {
 export interface SessionProjectionsService {
   stateOf?: (session: unknown, key: string) => unknown
   snapshot?: (session: unknown) => Record<string, unknown>
+  /** Persisted projection-cache read by session header (zero log I/O). */
+  cachedSnapshot?: (meta: unknown, inheritedEventCount: number, keys?: string[]) =>
+    { values?: Record<string, unknown> } | undefined
 }
 
 /** dsh-workspace registry (workspace grouping + session archive). */

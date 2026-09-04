@@ -21,6 +21,7 @@ export interface ServiceMap {
     tools: ToolsService;
     sessionQuery: SessionQueryService;
     sessionProjections: SessionProjectionsService;
+    sessionProjectionCache: SessionProjectionsService;
     pluginInventory: PluginInventoryService;
     loader: LoaderService;
     sessionReferenceResolver: SessionReferenceService;
@@ -143,12 +144,16 @@ export interface App {
         cwd?: string;
         createdAt?: number;
         title?: string;
+        origin?: string;
+        inheritedEventCount?: number;
     }>;
     historyById: Map<string, {
         id: string;
         cwd?: string;
         createdAt?: number;
         title?: string;
+        origin?: string;
+        inheritedEventCount?: number;
     }>;
     sessionEntries: Array<{
         id: string;

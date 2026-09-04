@@ -937,7 +937,9 @@ const onInput = (app: App, text: string): void => {
         } else {
           const sessionTitle = app.svc('sessionTitle')
           if (sessionTitle === undefined) { app.notice(t('session-title 服务未装配')); return }
-          sessionTitle.rename(app.runtimeCtx.sessions.get(target.id), name)
+          const live = app.runtimeCtx.sessions.get(target.id)
+          if (live === undefined) { app.notice(t('会话已不在线（可能已退出或未成功恢复），无法重命名')); return }
+          sessionTitle.rename(live, name)
           app.notice(t('会话标题已更新'))
         }
       } catch (err) {

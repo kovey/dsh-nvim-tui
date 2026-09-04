@@ -150,7 +150,11 @@ const createSession = async (app: App, cwdPath?: string) => {
 }
 
 /** Resume a persisted session, replay its history into the chat. */
-const resumeSession = async (app: App, id: string) => {
+/** Resume a persisted session WITHOUT switching the active view — used by
+ *  row actions (e.g. rename) that need a live session but must not move the
+ *  user away from the current chat. Returns the live id, or undefined. */
+const ensureLiveSession = async (app: App, id: string): Promise<string | undefined> => {
+  if (app.sessions.has(id)) return id
   const selection = app.currentSelection()
   const modelRef = { current: selection, assembled: void 0 }
   const handle = await app.runtimeCtx.agents.resume({
@@ -172,8 +176,14 @@ const resumeSession = async (app: App, id: string) => {
     rec.feed.applyEvent(event, { history: true })
     app.maybePushFileDiff(rec.feed, event)
   }
-  await switchTo(app, sid)
   app.refreshList()
+  return sid
+}
+
+const resumeSession = async (app: App, id: string) => {
+  const sid = await ensureLiveSession(app, id)
+  if (sid === undefined) return
+  await switchTo(app, sid)
   app.notice(`已恢复 ${sid}`)
   return sid
 }
@@ -309,7 +319,47 @@ const sessionsCommand = async (app: App): Promise<void> => {
     return
   }
   if (sel.startsWith('sess:')) {
-    await selectSession(app, sel.slice(5))
+    const sid = sel.slice(5)
+    // Session row actions — the official workspace browser's per-row menu
+    // counterpart: open / rename / archive. The harness (0.1.2-rc.1) does
+    // not expose a durable session DELETE; archive is the official way to
+    // remove a session from the lists.
+    const act = await app.openPicker(`会话 ${sid}`, [
+      { label: '打开会话', value: 'open' },
+      { label: '重命名（下一条输入作为新名称）', value: 'rename' },
+      { label: '归档（从列表隐藏）', value: 'archive' },
+    ])
+    if (act === null) return
+    if (act === 'open') {
+      await selectSession(app, sid)
+      return
+    }
+    if (act === 'rename') {
+      if (app.runtimeCtx.sessions.get(sid) === undefined) {
+        // Persisted-only session: resume it in the background — sessionTitle
+        // .rename requires the exact LIVE session object, but renaming must
+        // NOT switch the active view.
+        await ensureLiveSession(app, sid)
+      }
+      app.pendingRename = { kind: 'session', id: sid }
+      app.notice(t('下一条输入将作为该会话的新标题（空输入取消）'))
+      return
+    }
+    if (act === 'archive') {
+      const ws2 = app.svc('workspaceRegistry')
+      if (typeof ws2?.archiveSession !== 'function') {
+        app.notice(t('归档不可用（workspaceRegistry 服务未装配）'))
+        return
+      }
+      try {
+        await ws2.archiveSession(sid)
+        app.notice(`已归档 ${sid}（从各列表隐藏）`)
+        app.refreshList()
+      } catch (err) {
+        app.notice(`归档失败: ${(err as Error).message}`)
+      }
+      return
+    }
     return
   }
   if (sel.startsWith('ws:')) {
@@ -493,7 +543,7 @@ export function installSessions(app: App): void {
   app.selectSession = (id) => selectSession(app, id)
   app.forkSession = (directive) => forkSession(app, directive)
   const specs: CommandSpec[] = [
-    { name: '/sessions', desc: t('会话浏览器（工作区分组）'), usage: t('会话列表'), group: t('系统'), fn: () => sessionsCommand(app) },
+    { name: '/sessions', desc: t('会话浏览器（打开/重命名/归档）'), usage: t('会话列表'), group: t('系统'), fn: () => sessionsCommand(app) },
     { name: '/workspace', desc: t('工作区管理'), usage: t('[add <目录> [标题] | delete <id>]'), group: t('会话'), fn: (a) => workspaceCommand(app, a) },
     { name: '/archive', desc: t('归档会话（从列表隐藏）'), usage: t('[会话id]'), group: t('会话'), fn: (a) => archiveCommand(app, a) },
     { name: '/new', desc: t('新建会话（可带目录）'), usage: t('[目录]'), group: t('会话'), fn: (a) => createSession(app, (a ?? '').trim() || undefined) },
