@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+- **升级：dsh 依赖锚点 alpha.5 → 0.1.2-rc.1 + 全量 API 核对**。
+  peerDependencies（dsh-agent / dsh-llm / dsh-tools）与 devDependencies
+  抬升至 `^0.1.2-rc.1`，workspace node_modules 同步刷新。适配核查：
+  rc.1 与 alpha.5 的 14 个依赖包 lib/types 逐文件零差异；TUI 消费的宿主
+  服务方法逐一在 rc.1 定义中验证（jobs / subagents / workspaceRegistry /
+  agentPresets / permissionPresets / fileReferences / settings / sessionQuery
+  / messageFeedback / goals / tools / pluginInventory / agentDefaultModel /
+  sessionPersistence 等）。真机验证：rc.1 宿主冷启动零错误 +
+  真实模型 e2e 回合 PASS。README/UPGRADE 同步 rc.1（next dist-tag）。
+
 - **修复：@ 引用文件在输入行首位时不弹补全**。检测正则要求 @ 前存在一个
   非字母字符，行首没有前置字符 → 永不匹配。现在行首 token 用独立分支显式
   匹配（start=0）；同时把 @ 的 0-based 字节偏移随 dsh-at-query 通知传给

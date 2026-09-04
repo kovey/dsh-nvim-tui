@@ -1,4 +1,26 @@
-# 升级指南：dsh 0.1.2-alpha.4 → 0.1.2-alpha.5
+# 升级指南：dsh 0.1.2-alpha.5 → 0.1.2-rc.1
+
+dsh-nvim-tui v0.2.14 将 peer 依赖锚点抬升至 **`^0.1.2-rc.1`**。升级前已做
+全量 API 核对：rc.1 与 alpha.5 的类型面**逐文件零差异**（dsh-agent /
+dsh-llm / dsh-tools / dsh-session 等 14 个包的 lib/types 全部 diff 为空），
+TUI 消费的宿主服务方法（jobs.onJobsChanged/onJobDone、subagents.listChildren、
+workspaceRegistry、agentPresets、permissionPresets、fileReferences、settings、
+sessionQuery、messageFeedback put/list/delete、goals get/create/pause/resume/
+complete/clear、tools.schemas、pluginInventory.list、agentDefaultModel
+currentSelection/saveSelection 等）逐一在 rc.1 定义中存在且签名一致。
+真机验证：rc.1 宿主冷启动零错误 + 真实模型 e2e 回合 PASS。
+
+升级步骤：
+
+```bash
+npm i -g @deepseek-ai/dsh@next   # next dist-tag 即 0.1.2-rc.1
+dsh --version                    # 应输出 0.1.2-rc.1（运行中的进程需重启生效）
+# 插件侧：dsh plugin --profile <name> update --latest kovey/dsh-nvim-tui
+```
+
+---
+
+# 历史指南：dsh 0.1.2-alpha.4 → 0.1.2-alpha.5
 
 dsh-nvim-tui v0.2.14 将 peer 依赖锚点抬升至 **`^0.1.2-alpha.5`**。本次升级
 对 TUI 消费面**零破坏**（alpha.5 的 SessionSeq 移除 `Session.events` 等破坏
