@@ -103,7 +103,8 @@ dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.14"
 | [Neovim](https://neovim.io) | **0.9**（推荐 **0.10+**） | 0.10+ 完整体验（输入框四边边框、弹窗提示嵌入边框）；0.9 可运行但降级（`❯` 提示列与左边框以虚拟文本呈现、弹窗提示为分离提示条） |
 | Node.js | 23.6+ | 由 dsh 提供（`engines` 声明），一般无需单独安装 |
 
-> 开发与 CI 实测：dsh 0.1.2-rc.1 / nvim 0.12.4。
+> 开发与 CI 实测：dsh 0.1.2-rc.1 / nvim 0.12.5（smoke 全量在 0.12.4 与
+> 0.12.5 双版本通过）。
 
 > 升级宿主：`npm i -g @deepseek-ai/dsh@next`（当前 next dist-tag 即
 > 0.1.2-rc.1；v0.2.14 起 peer 依赖锚定 `^0.1.2-rc.1`，与旧宿主
