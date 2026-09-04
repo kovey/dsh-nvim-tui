@@ -3,7 +3,16 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [Unreleased]
+## [v0.2.15（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.15)
+
+覆盖提交：
+[`c912e85`](https://github.com/kovey/dsh-nvim-tui/commit/c912e85) ·
+[`e32d65f`](https://github.com/kovey/dsh-nvim-tui/commit/e32d65f) ·
+[`c4cda22`](https://github.com/kovey/dsh-nvim-tui/commit/c4cda22) ·
+[`6a1602f`](https://github.com/kovey/dsh-nvim-tui/commit/6a1602f) ·
+[`ec2e66f`](https://github.com/kovey/dsh-nvim-tui/commit/ec2e66f) ·
+[`483caac`](https://github.com/kovey/dsh-nvim-tui/commit/483caac) ·
+[`188d695`](https://github.com/kovey/dsh-nvim-tui/commit/188d695)
 
 - **修复：子代理链清理的截断分支是死路径（truncateStored 在 alpha.5/rc.1
   均不存在），存储从未真正释放**。改用官方 raw-artifact 面重写：
