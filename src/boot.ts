@@ -13,6 +13,7 @@
 import { writeFileSync } from 'node:fs'
 import { spawnNvim, connectNvim } from './bridge.js'
 import { FeedRenderer } from './feed.js'
+import { EXT_API_VERSION } from './ext-api.js'
 import { t } from './i18n.js'
 import type { ChatMessage, GoalState, MessageContent } from './types.js'
 import type { App } from './app.js'
@@ -44,6 +45,16 @@ export async function boot(app: App): Promise<void> {
     const channelId = await app.nvim.channelId
     app.channelIdValue = channelId
     await app.luaCall('require("dsh_tui").attach(...)', [channelId])
+    // Extension handshake: agree on the API major version (a mismatch
+    // surfaces as a boot notice).
+    void app.luaCall('require("dsh_tui.api").handshake(...)', [EXT_API_VERSION])
+      .then((res: unknown) => {
+        const r = res as { ok?: unknown; error?: unknown } | null | undefined
+        if (r !== null && r !== undefined && typeof r === 'object' && r.ok === false) {
+          app.notice(`⚠ ${String(r.error ?? '扩展接口握手失败')}`)
+        }
+      })
+      .catch((err: unknown) => app.notice(`⚠ 扩展接口握手失败: ${(err as Error).message}`))
     // Slash-command catalog for the completion menu (name + description);
     // nvim shows it as soon as the input starts with '/'.
     await app.luaCall('require("dsh_tui").set_commands(...)', [app.commandCatalog()]).catch(() => {})
@@ -77,10 +88,17 @@ export async function boot(app: App): Promise<void> {
           reply({ ok: false, error: `no ext handler: ${extId}.${m || '?'}` })
           return
         }
+        // NESTED-CALL DEADLOCK GUARD: nvim is blocked inside vim.rpcrequest
+        // waiting for THIS answer — any nvim API call we make from inside
+        // the handler can never be answered. ext-api's nvim/ui layers check
+        // this flag and reject with a clear error instead of hanging.
+        app.extBusInHandler = true
         try {
           const value = await handler(m, Array.isArray(payload.args) ? payload.args : [])
+          app.extBusInHandler = false
           reply({ ok: true, value })
         } catch (err) {
+          app.extBusInHandler = false
           reply({ ok: false, error: err instanceof Error ? err.message : String(err) })
         }
       })()
@@ -181,8 +199,9 @@ export async function boot(app: App): Promise<void> {
         const spec = (args?.[0] ?? {}) as { id?: unknown; events?: unknown }
         const id = typeof spec.id === 'string' ? spec.id : ''
         if (id === '') return
-        const ev = Array.isArray(spec.events) ? spec.events.filter((e): e is string => typeof e === 'string') : undefined
-        app.extLuaSubs.set(id, ev === undefined || ev.length === 0 ? 'all' : new Set(ev))
+        const raw = Array.isArray(spec.events) ? spec.events.filter((e): e is string => typeof e === 'string') : undefined
+        const wantsAll = raw === undefined || raw.length === 0 || raw.includes('all')
+        app.extLuaSubs.set(id, wantsAll ? 'all' : new Set(raw))
       } else if (method === 'dsh-ext-unregister') {
         const id = typeof args?.[0] === 'string' ? args[0] : ''
         if (id !== '') app.extLuaSubs.delete(id)

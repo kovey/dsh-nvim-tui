@@ -214,9 +214,22 @@ export function installExtApi(app: App): void {
   /** Node-side floats opened via ui.float: key → win id. */
   const nodeFloats = new Map<string, number>()
   let floatSeq = 0
+  /** Last payload per fired event — late subscribers of one-shot lifecycle
+   *  events (tui:ready / tui:active-session) get an immediate replay. */
+  const lastFired = new Map<string, { payload: unknown }>()
+
+  /** Nested-call deadlock guard: inside a dsh-ext handler nvim is blocked
+   *  in vim.rpcrequest — any nvim round-trip from here can never be
+   *  answered. Reject loudly instead of wedging both sides. */
+  const assertNotInExtHandler = (what: string): void => {
+    if (app.extBusInHandler) {
+      throw new Error(`${what}: dsh-ext 处理器内禁止调用 nvim（nvim 正阻塞等待本应答，会死锁）`)
+    }
+  }
 
   /** Fire a tui:* event; subscriber throws are contained (feed notice). */
   const fire = (event: ExtEventName, payload: unknown): void => {
+    lastFired.set(event, { payload })
     const set = listeners.get(event)
     if (set === undefined || set.size === 0) return
     for (const cb of [...set]) {
@@ -230,6 +243,7 @@ export function installExtApi(app: App): void {
 
   const nvimLayer: ExtNvimLayer = {
     request: (method, args = [], opts) => {
+      assertNotInExtHandler('nvim.request')
       if (app.nvim === null) return Promise.reject(new Error('nvim not connected'))
       const p = app.nvim.request(method, args as never[]) as Promise<unknown>
       if (opts?.timeoutMs === undefined) return p
@@ -240,11 +254,16 @@ export function installExtApi(app: App): void {
       ])
     },
     call: (fn, args = []) => {
+      assertNotInExtHandler('nvim.call')
       if (app.nvim === null) return Promise.reject(new Error('nvim not connected'))
       return app.nvim.call(fn, args as never[]) as Promise<unknown>
     },
-    lua: (code, args = []) => app.luaCall(code, args),
+    lua: (code, args = []) => {
+      assertNotInExtHandler('nvim.lua')
+      return app.luaCall(code, args)
+    },
     ex: async (cmd) => {
+      assertNotInExtHandler('nvim.ex')
       if (app.nvim === null) throw new Error('nvim not connected')
       await app.nvim.command(cmd)
     },
@@ -257,9 +276,11 @@ export function installExtApi(app: App): void {
     }),
     capabilities: () => ({
       headless: app.headless,
-      card: !app.headless,
-      float: !app.headless,
-      picker: !app.headless,
+      // cards/floats/pickers render fine in headless too (useful for e2e
+      // dumps); the panel slot is the one primitive gated off.
+      card: true,
+      float: true,
+      picker: true,
       panel: !app.headless,
       rpc: true,
     }),
@@ -271,6 +292,16 @@ export function installExtApi(app: App): void {
         listeners.set(event, set)
       }
       set.add(cb)
+      // Late-subscribe replay: one-shot lifecycle events already fired are
+      // re-delivered immediately so consumers never miss boot.
+      const last = lastFired.get(event)
+      if (last !== undefined) {
+        try {
+          cb(last.payload)
+        } catch (err) {
+          app.notice(`⚠ 扩展事件 ${event} 处理失败: ${(err as Error).message}`)
+        }
+      }
       return () => {
         set.delete(cb)
       }
@@ -316,6 +347,7 @@ export function installExtApi(app: App): void {
         return handle
       },
       float: async (opts) => {
+        assertNotInExtHandler('ui.float')
         if (app.nvim === null) throw new Error('nvim not connected')
         const id = `f${++floatSeq}`
         const res = await app.luaCall('return require("dsh_tui.api").float_open(...)', [
@@ -329,12 +361,16 @@ export function installExtApi(app: App): void {
         return { id, win: res.win, buf: res.buf }
       },
       floatClose: async (id) => {
+        assertNotInExtHandler('ui.floatClose')
         const win = nodeFloats.get(id)
         nodeFloats.delete(id)
         if (win === undefined) return
         await app.luaCall('require("dsh_tui.api").float_close(...)', ['__node__', win]).catch(() => {})
       },
-      picker: (opts) => app.openPicker(opts.title, opts.items),
+      picker: (opts) => {
+        assertNotInExtHandler('ui.picker')
+        return app.openPicker(opts.title, opts.items)
+      },
       notice: (text) => app.notice(text),
       statuslineSegment: (id, text, priority = 100) => {
         const clean = String(text)
@@ -343,6 +379,7 @@ export function installExtApi(app: App): void {
         app.updateStatusline()
       },
       panel: async (opts) => {
+        assertNotInExtHandler('ui.panel')
         if (app.nvim === null || app.headless) return null
         const res = await app.luaCall('return require("dsh_tui.api").panel_claim(...)', [
           '__node__', { width: opts.width, title: opts.title, footer: opts.footer, lines: opts.lines ?? [] },
@@ -355,6 +392,7 @@ export function installExtApi(app: App): void {
         return { win: res.win, buf: res.buf }
       },
       panelRelease: async () => {
+        assertNotInExtHandler('ui.panelRelease')
         if (app.nvim === null) return
         await app.luaCall('require("dsh_tui.api").panel_release(...)', ['__node__']).catch(() => {})
       },

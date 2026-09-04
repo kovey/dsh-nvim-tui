@@ -189,6 +189,10 @@ export interface App {
   extNodeHandlers: Map<string, (method: string, args: unknown[]) => unknown | Promise<unknown>>
   /** Statusline segments contributed by extensions (id → text+priority). */
   extStatusSegments: Map<string, { text: string; priority: number }>
+  /** TRUE while a dsh-ext request handler runs (nvim is blocked inside
+   *  vim.rpcrequest waiting for the answer — nested nvim calls deadlock).
+   *  ext-api's nvim/ui layers reject calls while this is set. */
+  extBusInHandler: boolean
 
   // -- pending UI state --------------------------------------------------------
   pendingInput: string[]
@@ -355,6 +359,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     extLuaSubs: new Map(),
     extNodeHandlers: new Map(),
     extStatusSegments: new Map(),
+    extBusInHandler: false,
 
     svc,
     luaCall,
@@ -720,10 +725,13 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     app.childParent.clear()
     // Extension surface: broadcast teardown (Node subscribers + nvim-side
     // User DshTuiShutdown autocmd) so extensions release windows/handles
-    // BEFORE the nvim window closes.
+    // BEFORE the nvim window closes. The QUIT path already fired both
+    // pre-close (the window is gone by the time teardown runs) — skip there.
     try {
-      app.extFire('tui:teardown', {})
-      void app.luaCall('require("dsh_tui.api").emit(...)', ['Shutdown', {}]).catch(() => {})
+      if (!app.quitting) {
+        app.extFire('tui:teardown', {})
+        void app.luaCall('require("dsh_tui.api").emit(...)', ['Shutdown', {}]).catch(() => {})
+      }
     } catch {}
     app.extLuaSubs.clear()
     await app.closeNvimWindow()
@@ -737,6 +745,12 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     app.quitting = true
     app.exitDiag('quit', `code=${code}`, `disposed=${app.disposed}`)
     try {
+      // Tell nvim-side extensions BEFORE the window closes — the teardown
+      // path below runs after ':qa!' and can no longer reach them.
+      try {
+        app.extFire('tui:teardown', {})
+        void app.luaCall('require("dsh_tui.api").emit(...)', ['Shutdown', {}]).catch(() => {})
+      } catch {}
       await app.closeNvimWindow() // the window closes right away, no waiting on the agent
       await Promise.race([app.teardown(), app.sleep(2500)])
       app.requestExit(code)

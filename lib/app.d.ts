@@ -199,6 +199,10 @@ export interface App {
         text: string;
         priority: number;
     }>;
+    /** TRUE while a dsh-ext request handler runs (nvim is blocked inside
+     *  vim.rpcrequest waiting for the answer — nested nvim calls deadlock).
+     *  ext-api's nvim/ui layers reject calls while this is set. */
+    extBusInHandler: boolean;
     pendingInput: string[];
     pendingImages: Array<SaveImageAttachment | Extract<MessageContent, {
         type: 'image';

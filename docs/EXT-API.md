@@ -62,7 +62,10 @@ await tui.nvim.request('nvim_eval', ['slow()'], { timeoutMs: 2000 })
 ```
 
 纪律：**扩展回调内禁止长时同步 `nvim.request`**（单通道串行，会卡死整个 TUI
-渲染）。重活用 `tui.on('tui:ready')` 后自行调度，或把长时逻辑放在回调之外。
+渲染）。**dsh-ext 处理器内（`luaExt.on` 的回调）禁止任何 nvim 调用**——nvim
+此时正阻塞在 `vim.rpcrequest` 等待本应答，再发 RPC 必然死锁；本 API 会直接
+抛错拒绝（`dsh-ext 处理器内禁止调用 nvim…`），需要数据请用 Node 侧能力
+（child_process / fetch）或在处理器外预取。
 
 ### 2.2 UI 原语层 `tui.ui`
 
@@ -103,6 +106,10 @@ const off2 = tui.onSessionEvent(
   { type: ['turn/end', 'tool/result'], sessionId: undefined },
   (sessionId, ev) => { /* 实时事件 + 历史回放 */ })
 off(); off2()
+
+// 一次性生命周期事件（tui:ready / tui:active-session）晚订阅自动补发，
+// boot 之后注册的消费者不会错过。
+const off3 = tui.on('tui:ready', () => tui.ui.notice('TUI 已就绪'))
 
 tui.getActiveSessionId()      // string | null
 tui.submit('帮我检查这个仓库')  // 走输入框提交路径
@@ -160,7 +167,7 @@ local ok, err = api.register {
   id = 'git-panel',            -- 必填，^[%w_%.-]+$；重复注册被拒
   name = 'Git 面板',
   version = '1.0.0',
-  events = { 'turn/end' },     -- 订阅镜像会话事件（省略/'all' = 全部）
+  events = { 'turn/end' },     -- 订阅镜像会话事件（省略 / {} / 'all' / 含 'all' = 全部）
 }
 if not ok then error(err) end
 ```
@@ -175,15 +182,17 @@ local f, err = api.float_open('git-panel', {
 })
 api.float_close('git-panel', f.win)
 
--- 右侧面板槽（单槽互斥；TUI 负责 resize 重锚定与聚焦归还）
+-- 右侧面板槽（单槽互斥；q/Esc 释放；TUI 负责 resize 重锚定与聚焦归还）
 local p, err = api.panel_claim('git-panel', { width = 52, title = 'Git', footer = ' q 关闭 ', lines = {} })
 api.panel_release('git-panel')
 ```
 
+unregister 会顺带清理该扩展注册的斜杠命令（不留死目录项）。
+
 ### 3.2 句柄 / 输入 / 事件
 
 ```lua
-api.handles()            -- { chatWin, inputWin, inputBuf, reasoningWin, … }（永远现取）
+api.handles()            -- { chatWin, inputWin, inputBuf, reasoningWin, panelWin, panelBuf, … }（永远现取）
 api.input_get()
 api.input_fill('text') / api.input_append('tail')
 
@@ -238,12 +247,15 @@ Node → Lua: runner 调 api.rpc_dispatch(extId, method, args) / api.rpc_event(.
 ## 五、兼容性与版本策略
 
 - **服务名 `'nvim-tui'`、`dsh-ext` 协议 `{ v = 1, … }`、`dsh_tui.api` 表名**发布后冻结。
-- `EXT_API_VERSION` / `api.version` 采用 semver；boot 时 Node 与 Lua 面互报能力，
-  不匹配按最低公共集运行并 notice。
+- `EXT_API_VERSION` / `api.version` 采用 semver；**boot handshake**：runner 在
+  attach 后调用 `api.handshake(EXT_API_VERSION)` 比对主版本，不匹配时 boot
+  notice 提示（`扩展接口握手失败/版本不匹配`）。
 - 弃用策略：稳定面字段只增不改；确需破坏时先加新名、旧名保留一个 minor 版本
   并在 notice 中提示。
 - **不承诺兼容**：`require('dsh_tui').M.*` 其余字段、`src/app.ts` 的 App、所有
   `dsh-*` 内部通知、`S._*` 状态字段。
+- 能力语义：`capabilities()` 的 `card/float/picker` 在 headless 下同样可用
+  （内容落 e2e dump，便于测试）；`panel` 在 headless 下被禁用并返回 null。
 
 ## 六、信任模型
 

@@ -42,6 +42,8 @@ end
 --- Register a third-party extension. Returns its registry table on success,
 --- or nil + an error message. Duplicate ids are rejected.
 ---   spec = { id, name?, version?, events? = { 'assistant/message', ... } }
+--- `events` omitted, empty, the literal string 'all', or a list containing
+--- 'all' = receive EVERY session event kind (mirror).
 function API.register(spec)
   if type(spec) ~= 'table' or not valid_id(spec.id) then
     return nil, 'api.register: spec.id (string) is required'
@@ -49,6 +51,24 @@ function API.register(spec)
   local id = spec.id
   if S.extReg[id] ~= nil then
     return nil, 'already registered: ' .. id
+  end
+  -- Normalize the event subscription: nil = all kinds.
+  local events = spec.events
+  if type(events) == 'string' then
+    if events ~= 'all' then events = { events } else events = nil end
+  elseif type(events) == 'table' then
+    local kinds = {}
+    local all = false
+    for _, e in ipairs(events) do
+      if type(e) == 'string' then
+        if e == 'all' then all = true else kinds[#kinds + 1] = e end
+      end
+    end
+    -- NOTE: `all and nil or kinds` would return kinds — Lua evaluates the
+    -- `or` branch when the first operand is truthy. Explicit if instead.
+    if all then events = nil else events = kinds end
+  else
+    events = nil
   end
   local reg = {
     id = id,
@@ -59,7 +79,7 @@ function API.register(spec)
     panel = nil,    -- { win, buf, width, title } (P2)
     rpc = {},       -- method -> fn (P3)
     submitHooks = {}, -- before_submit fns (P3)
-    eventKinds = spec.events,
+    eventKinds = events,
     sessionCbs = {},  -- session-event mirror callbacks (P3)
   }
   S.extReg[id] = reg
@@ -67,12 +87,13 @@ function API.register(spec)
   -- Tell the runner about the subscription (mirrors its event filter).
   if S.channel then
     vim.rpcnotify(S.channel, 'dsh-ext-register',
-      { id = id, name = reg.name, version = reg.version, events = spec.events })
+      { id = id, name = reg.name, version = reg.version, events = events })
   end
   return reg
 end
 
---- Unregister: close every registered window/panel, drop the entry.
+--- Unregister: close every registered window/panel, drop the extension's
+--- Lua-side commands from the completion catalog, then drop the entry.
 --- Returns true, or nil + error when unknown.
 function API.unregister(id)
   local reg = S.extReg[id]
@@ -88,6 +109,13 @@ function API.unregister(id)
     and vim.api.nvim_win_is_valid(reg.panel.win) then
     pcall(vim.api.nvim_win_close, reg.panel.win, true)
   end
+  -- Remove this extension's slash commands (a dead owner must not leave
+  -- catalog entries behind).
+  for name, c in pairs(S.extCommands) do
+    if c.owner == id then
+      S.extCommands[name] = nil
+    end
+  end
   S.extReg[id] = nil
   if S.channel then
     vim.rpcnotify(S.channel, 'dsh-ext-unregister', id)
@@ -101,9 +129,32 @@ function API.registered(id)
 end
 
 --- Current TUI handles — ALWAYS re-resolve through here (the self-heal
---- layer rebuilds windows, so cached raw ids go stale).
+--- layer rebuilds windows, so cached raw ids go stale). Includes the
+--- occupied ext panel slot when one exists.
 function API.handles()
-  return require('dsh_tui').ids()
+  local ids = require('dsh_tui').ids()
+  ids.panelWin = S.extPanel ~= nil and S.extPanel.win or nil
+  ids.panelBuf = S.extPanel ~= nil and S.extPanel.buf or nil
+  return ids
+end
+
+--- Boot handshake (called by the runner right after attach): compares the
+--- runner's EXT_API_VERSION with this module's. Returns { ok = true } when
+--- the major versions match, or { ok = false, error = message } (structured
+--- like the rest of the RPC surface — only the first return value travels).
+function API.handshake(runnerVersion)
+  if type(runnerVersion) ~= 'string' then
+    return { ok = false, error = 'handshake: version (string) required' }
+  end
+  local mine = tostring(API.version or '0')
+  local major = mine:match('^(%d+)') or '0'
+  local theirMajor = runnerVersion:match('^(%d+)') or '-1'
+  if major ~= theirMajor then
+    return { ok = false,
+      error = 'ext api 版本不匹配: runner ' .. runnerVersion .. ' vs lua ' .. mine }
+  end
+  S.extRunnerVersion = runnerVersion
+  return { ok = true }
 end
 
 -- ===========================================================================
@@ -337,12 +388,22 @@ function API.panel_claim(id, opts)
     return { err = 'panel slot occupied by ' .. tostring(S.extPanel.id) }
   end
   opts = type(opts) == 'table' and opts or {}
+  local lines = opts.lines
+  if type(lines) ~= 'table' then lines = {} end
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = 'nofile'
   vim.bo[buf].bufhidden = 'wipe'
   vim.bo[buf].swapfile = false
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, opts.lines or {})
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   require('dsh_tui.popup_core').lock_display_keys(buf)
+  -- q/Esc release the slot (the panel is a display surface; closing is the
+  -- one edit the owner does not need to Nop).
+  vim.api.nvim_buf_set_keymap(buf, 'n', 'q',
+    string.format('<Cmd>lua require("dsh_tui.api").panel_release(%q)<CR>', id),
+    { noremap = true })
+  vim.api.nvim_buf_set_keymap(buf, 'n', '<Esc>',
+    string.format('<Cmd>lua require("dsh_tui.api").panel_release(%q)<CR>', id),
+    { noremap = true })
   local cfg = API.panel_geometry(opts.width, opts.title, opts.footer)
   cfg.border = 'rounded'
   cfg.style = 'minimal'

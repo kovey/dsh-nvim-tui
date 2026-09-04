@@ -2195,6 +2195,16 @@ description:
   assert.ok(await lua(`return require("dsh_tui.api").register({ id = "smoke-ext", name = "SmokeExt", events = { "turn/end" } }) ~= nil`, []), 'api.register succeeds')
   assert.equal(await lua('return require("dsh_tui.api").registered("smoke-ext")', []), true, 'registered() true')
   assert.ok(String(await lua(`local ok, err = require("dsh_tui.api").register({ id = "smoke-ext" }); return err`, [])).includes('already registered'), 'duplicate register rejected')
+  // events normalization: omitted / empty / 'all' (string or list member) = every kind
+  await lua(`require("dsh_tui.api").register({ id = "smoke-all", events = { "turn/start", "all" } })`, [])
+  assert.equal(await lua(`return require("dsh_tui.state").extReg["smoke-all"].eventKinds`, []), null,
+    "'all' inside the events list normalizes to nil (every kind)")
+  await lua(`require("dsh_tui.api").register({ id = "smoke-all2", events = "all" })`, [])
+  assert.equal(await lua(`return require("dsh_tui.state").extReg["smoke-all2"].eventKinds`, []), null,
+    "the literal 'all' string normalizes to nil too")
+  // boot handshake: major-version agreement
+  assert.equal((await lua(`return require("dsh_tui.api").handshake("0.1.0")`, [])).ok, true, 'handshake ok on matching major')
+  assert.equal((await lua(`return require("dsh_tui.api").handshake("9.0.0")`, [])).ok, false, 'handshake fails on major mismatch')
 
   // 13b. managed float + boot-guard exemption (an unregistered window still
   // gets swept while the registered float survives)
@@ -2220,6 +2230,10 @@ description:
   const extPanelCfg = await nvim.request('nvim_win_get_config', [extPanel.win])
   assert.equal(extPanelCfg.relative, 'editor', 'ext panel is editor-relative')
   assert.equal(extPanelCfg.anchor, 'NE', 'ext panel anchors top-right')
+  const panelMaps = await lua(`local out = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(${extPanel.buf}, "n")) do table.insert(out, m.lhs) end
+    return out`, [])
+  assert.ok(panelMaps.includes('q') && panelMaps.includes('<Esc>'), 'ext panel binds q/Esc to release the slot')
   assert.equal(await lua(`return require("dsh_tui.api").panel_release("smoke-ext")`, []), true, 'panel_release frees the slot')
   assert.equal(await lua(`return vim.api.nvim_win_is_valid(${extPanel.win})`, []), false, 'released panel window closed')
 
@@ -2333,11 +2347,18 @@ description:
       'no ext group mark left after dismiss')
   }
 
-  // 13j. unregister closes extension windows and drops the entry
+  // 13j. unregister closes extension windows, cleans up the extension's
+  // slash commands, and drops the entry
   const f2 = await lua(`return require("dsh_tui.api").float_open("smoke-ext", { lines = { "x" } })`, []) as { win: number }
+  await lua(`require("dsh_tui.api").register_command("smoke-ext", "extping2", "临时命令", function() end)`, [])
   assert.equal(await lua(`return require("dsh_tui.api").unregister("smoke-ext")`, []), true, 'unregister succeeds')
   assert.equal(await lua(`return vim.api.nvim_win_is_valid(${f2.win})`, []), false, 'unregister closes ext windows')
   assert.equal(await lua(`return require("dsh_tui.api").registered("smoke-ext")`, []), false, 'entry dropped after unregister')
+  await lua(`vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "/extping2" })`, [])
+  await lua(`require("dsh_tui").update_cmd_menu()`, [])
+  assert.equal((await lua(`return require("dsh_tui").cmd_menu_state()`, [])).open, false,
+    'unregister removes the ext slash command from the catalog')
+  await lua(`vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "" })`, [])
 
   // 12. require() must survive rtp resets (lazy.nvim rebuilds runtimepath and
   // enables vim.loader — package.preload keeps dsh_tui resolvable).

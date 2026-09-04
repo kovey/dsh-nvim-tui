@@ -12,6 +12,8 @@
   "files": [
     "lib",
     "nvim",
+    "docs",
+    "examples",
     "cordis.patch.yml",
     "README.md",
     "UPGRADE.md"

@@ -1,4 +1,27 @@
 # Changelog
+## [未发布]
+
+- **插件开放接口（EXT-API，P0–P4）**。本插件对外开放稳定接口，其他 dsh 插件
+  与 nvim 插件可在 TUI 内渲染 UI、使用 nvim 窗口、读写输入、订阅会话事件：
+  - Node 面（dsh 插件）：`ctx.get('nvim-tui')` → `TuiExtApi` —— nvim 执行层
+    白名单（request/call/lua/ex，带超时）、ui 原语（card 可原地更新/关闭、
+    float/picker/notice/statuslineSegment、右缘 panel 单槽）、斜杠命令注册
+    （重名拒绝）、`tui:*` 生命周期事件（晚订阅补发）与 onSessionEvent 镜像
+    订阅、dsh-ext 双向总线（luaExt.call/emit/on，处理器内 nvim 调用死锁
+    守卫）。
+  - Lua 面（TUI 实例内的 nvim 插件）：`require('dsh_tui').api` —— 登记制
+    register/unregister（所有权守卫放行已登记窗口，未登记维持严管）、
+    float_open/close、panel_claim/release（单槽互斥、resize 重锚定、q/Esc
+    释放）、before_submit 否决/改写、Lua 侧斜杠命令（并入 / 补全目录）、
+    rpc_call/rpc_register 双向总线、session-event 镜像与
+    `User DshTui*` 事件族（payload 经 api.last_event() 读取）。
+  - 版本协商：boot handshake（EXT_API_VERSION 主版本比对，不匹配 notice）；
+    状态表钉在 `_G.__dsh_tui_state` 单例（vim.g 走 Dict 转换丢同一性），
+    vim.loader.enable / rtp 重建后模块重载仍共享同一注册表。
+  - 文档与示例：docs/EXT-API.md；examples/nvim/git-panel.lua 与
+    examples/dsh-plugin/（进入 npm files 白名单）；smoke 新增扩展接口全
+    覆盖段（含 boot 守卫豁免、双向 RPC、钩子、命令目录合并、注销清理）。
+
 
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
