@@ -595,6 +595,17 @@ description:
       m[3]?.end_col === Buffer.byteLength(line, 'utf8') && typeof m[3]?.hl_group === 'string')
     assert.ok(cover, `panel row ${i} fully highlighted (${JSON.stringify(line)})`)
   }
+  // Markdown tables inside reasoning render as the bordered, aligned table
+  // (the chat view's own beautifier): a GFM block in the stream tail expands
+  // to box-drawing rows in the panel buffer.
+  feedB.applyEvent({ type: 'assistant/chunk', time: 5260, data: { chunk: { type: 'reasoning-delta', text: '\n| 阶段 | 内容 |\n|---|---|\n| P1 | 方案 |' } } })
+  await new Promise((r) => setTimeout(r, 120))
+  reasonLines = await nvim.request('nvim_buf_get_lines', [reasonB.reasoningBuf, 0, -1, false])
+  log('reasoning panel (markdown table):', JSON.stringify(reasonLines))
+  assert.ok(reasonLines.some((l: string) => l.startsWith('┌──')), 'table top border in panel')
+  assert.ok(reasonLines.some((l: string) => /^│ 阶段 │ 内容/.test(l)), 'table header row aligned')
+  assert.ok(reasonLines.some((l: string) => /^│ P1\s+│ 方案/.test(l)), 'table body row aligned')
+  assert.ok(!reasonLines.includes('|---|'), 'raw separator line replaced by borders')
   feedB.applyEvent({ type: 'assistant/chunk', time: 5300, data: { chunk: { type: 'text-delta', text: '答案是 42' } } })
   await new Promise((r) => setTimeout(r, 120))
   linesB2 = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
@@ -757,6 +768,53 @@ description:
       `row ${rowIdx}: table rows no longer dim (DshTuiDivider)`)
   }
 
+  // chat-view markdown table: an assistant message carrying a GFM table
+  // (the roadmap shape reported raw) must render as the bordered table.
+  feedB.applyEvent({ type: 'turn/start', time: 7350, data: {} })
+  feedB.applyEvent({ type: 'assistant/message', time: 7400, data: { turn: 4, step: 1, message: { content: [{ type: 'text', text: '分期路线：\n| 阶段 | 内容 | 规模 |\n|---|---|---|\n| P1 | ctx.tui 门面 + 文档 + 示例插件 | 小、稳 |\n| P2 | block renderer + Lua api | 中 |' }] } } })
+  await new Promise((r) => setTimeout(r, 120))
+  const chatTable = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  log('chat markdown table:', JSON.stringify(chatTable.slice(-12)))
+  assert.ok(chatTable.some((l: string) => l.startsWith('┌──')), 'chat table top border')
+  assert.ok(chatTable.some((l: string) => /^│ P1\s+│ ctx\.tui/.test(l)), 'chat table P1 row aligned')
+  assert.ok(!chatTable.includes('|---|---|---|'), 'chat raw separator replaced')
+  feedB.applyEvent({ type: 'turn/end', time: 7450, data: {} })
+  // The REAL event text (bold/code-markup cells, heading above): replay it
+  // the way a resumed session does and the table must still transform.
+  feedB.applyEvent({ type: 'turn/start', time: 7460, data: {} })
+  feedB.applyEvent({ type: 'assistant/message', time: 7470, data: { turn: 5, step: 1, message: { content: [{ type: 'text', text: '## 8. 分期路线\n\n| 阶段 | 内容 | 规模 |\n|---|---|---|\n| **P1** | `ctx.tui` 门面（读 + notify/picker/command/send + `tui/*` 事件）+ PLUGINS.md + 公开 d.ts + 1 个示例插件 | 小、稳 |\n| **P2** | block renderer 注册 + Lua api/autocmds + luaPlugins 装载 | 中 |\n| **P3** | input veto/transform、状态栏段、分屏辅助 | 按反馈 |' }] } } })
+  await new Promise((r) => setTimeout(r, 120))
+  const chatRealTable = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  log('chat real event table:', JSON.stringify(chatRealTable.slice(-12)))
+  assert.ok(chatRealTable.some((l: string) => l.startsWith('┌──')), 'real event table top border')
+  assert.ok(chatRealTable.some((l: string) => /^│ P1\s+│ ctx\.tui/.test(l)), 'real event table P1 row aligned')
+  assert.ok(!chatRealTable.some((l: string) => l === '|---|---|---|'), 'real event raw separator replaced')
+  feedB.applyEvent({ type: 'turn/end', time: 7490, data: {} })
+  // history replay flag: a resumed session re-applies the same events with
+  // {history:true} — the table must still transform.
+  feedB.applyEvent({ type: 'turn/start', time: 7500, data: {} }, { history: true })
+  feedB.applyEvent({ type: 'assistant/message', time: 7510, data: { turn: 6, step: 1, message: { content: [{ type: 'text', text: '## 8. 分期路线\n\n| 阶段 | 内容 | 规模 |\n|---|---|---|\n| **P1** | `ctx.tui` 门面（读 + notify/picker/command/send + `tui/*` 事件）+ PLUGINS.md + 公开 d.ts + 1 个示例插件 | 小、稳 |' }] } } }, { history: true })
+  await new Promise((r) => setTimeout(r, 120))
+  const chatHistTable = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  log('chat history-flag table:', JSON.stringify(chatHistTable.slice(-10)))
+  assert.ok(chatHistTable.some((l: string) => l.startsWith('┌──')), 'history-flag table top border')
+  assert.ok(!chatHistTable.some((l: string) => l === '|---|---|---|'), 'history-flag raw separator replaced')
+  feedB.applyEvent({ type: 'turn/end', time: 7530, data: {} }, { history: true })
+  // Regression: a diff card whose verbatim rows contain an ODD fence marker
+  // must not desync the fence state — a markdown table right after it still
+  // renders bordered (the old pre-pass left it raw forever).
+  feedB.applyEvent({ type: 'turn/start', time: 7540, data: {} })
+  feedB.pushDiff('✎ 修改 README.md (+1 −0)', ['+ ```', '+ const x = 1'])
+  feedB.applyEvent({ type: 'assistant/message', time: 7550, data: { turn: 7, step: 1, message: { content: [{ type: 'text', text: '| 列A | 列B |\n|---|---|\n| a | b |' }] } } })
+  await new Promise((r) => setTimeout(r, 120))
+  const chatAfterDiff = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  log('chat table after diff fence:', JSON.stringify(chatAfterDiff.slice(-10)))
+  assert.ok(chatAfterDiff.some((l: string) => l.includes('+ ```')), 'diff verbatim row kept')
+  assert.ok(chatAfterDiff.some((l: string) => l.startsWith('┌──')), 'table after diff fence still bordered')
+  assert.ok(chatAfterDiff.some((l: string) => /^│ 列A │ 列B/.test(l)), 'table after diff fence header aligned')
+  assert.ok(!chatAfterDiff.some((l: string) => l === '|---|---|'), 'table after diff fence raw separator replaced')
+  feedB.applyEvent({ type: 'turn/end', time: 7570, data: {} })
+
   // inline spans are byte-indexed: CJK bold must cover exactly the text bytes
   feedB.applyEvent({ type: 'assistant/message', time: 7300, data: { turn: 3, step: 1, message: { content: [{ type: 'text', text: '前缀 **中文加粗** 后缀' }] } } })
   await new Promise((r) => setTimeout(r, 120))
@@ -778,6 +836,16 @@ description:
   const imgLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
   assert.ok(imgLines.includes('> 看这张图'), 'image message text rendered')
   assert.ok(imgLines.includes('> 📎 图片 (image/png · 640×480 · 1.2KB)'), 'image attachment label rendered')
+
+  // user-pasted markdown tables beautify too (rows keep the > quote prefix)
+  feedB.applyEvent({ type: 'user/message', time: 7410, data: { message: { content: [{ type: 'text', text: '看这个：\n| 阶段 | 内容 |\n|---|---|\n| P1 | 方案 |' }] } } })
+  await new Promise((r) => setTimeout(r, 120))
+  const userTable = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  log('user table echo:', JSON.stringify(userTable.slice(-8)))
+  assert.ok(userTable.includes('> 看这个：'), 'plain user line kept verbatim')
+  assert.ok(userTable.some((l: string) => l.startsWith('> ┌──')), 'user table top border quoted')
+  assert.ok(userTable.some((l: string) => /^> │ P1\s+│ 方案/.test(l)), 'user table row aligned + quoted')
+  assert.ok(!userTable.includes('> |---|'), 'user table raw separator replaced')
 
   // steer lines render with the ➤ marker
   feedB.pushBlock('steer', '换个方案试试')

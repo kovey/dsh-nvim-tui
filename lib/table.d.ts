@@ -12,6 +12,28 @@ export type TableEntry = {
     table: false;
     raw: string;
 };
+declare const isTableRow: (line: string) => boolean;
+declare const isSeparator: (line: string) => boolean;
+export { isTableRow, isSeparator };
+/** One bordered row with per-cell bold spans. */
+interface RenderedRow {
+    text: string;
+    group: string | null;
+    spans: Array<{
+        s: number;
+        e: number;
+        group: string;
+    }>;
+}
+/**
+ * Render one validated table block (header + separator + body lines).
+ * Exported so the chat feed can render blocks inline against its own
+ * fence/diff state machine (a whole-view pre-pass desyncs its fence state
+ * on fence markers inside verbatim diff rows).
+ * @param {string[]} block raw table lines (block[1] is the separator)
+ * @param {boolean} closed whether to draw the bottom border
+ */
+export declare function renderTable(block: string[], closed: boolean): RenderedRow[];
 /**
  * Detect table blocks across raw view lines (fence-aware) and return the
  * FINAL output entry stream: one entry per OUTPUT line (a table block expands

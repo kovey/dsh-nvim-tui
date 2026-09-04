@@ -27,6 +27,8 @@ export type TableEntry =
 const isTableRow = (line: string): boolean => /^\s*\|.*\|\s*$/.test(line)
 const isSeparator = (line: string): boolean => /^\s*\|(\s*:?-{2,}:?\s*\|)+\s*$/.test(line)
 
+export { isTableRow, isSeparator }
+
 /** Strip inline emphasis from one cell: models frequently wrap table cells
  *  in `**…**` or `` `…` `` — inside a bordered table the markers would show
  *  literally, so drop them (the whole table is bold anyway). */
@@ -52,10 +54,13 @@ interface RenderedRow {
 
 /**
  * Render one validated table block (header + separator + body lines).
+ * Exported so the chat feed can render blocks inline against its own
+ * fence/diff state machine (a whole-view pre-pass desyncs its fence state
+ * on fence markers inside verbatim diff rows).
  * @param {string[]} block raw table lines (block[1] is the separator)
  * @param {boolean} closed whether to draw the bottom border
  */
-function renderTable(block: string[], closed: boolean): RenderedRow[] {
+export function renderTable(block: string[], closed: boolean): RenderedRow[] {
   const header = splitCells(block[0] ?? '') ?? []
   const seps = splitCells(block[1] ?? '') ?? []
   const body = block.slice(2).map((l) => splitCells(l) ?? [])
