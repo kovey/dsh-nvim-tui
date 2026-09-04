@@ -45,6 +45,12 @@
     VimResized 统一走 `api.panel_reflow()`；注销/面板被外力关闭时出栈并
     重排。
 
+- **/sessions 会话分组（移入工作区 / 移出分组）**。会话行操作菜单新增
+  「移入工作区 / 移出分组」：列出全部工作区选择 attach（官方 registry 校验
+  会话规范化 cwd === 工作区路径，不匹配的错误原样透出 notice），当前所在
+  工作区时提供「移出分组」；`WorkspaceEntityLike` 类型补 attachSession/
+  detachSession（配套 dsh-workspaces-adapter 需透传 attachSession）。
+
 - **修复：markdown 表格超宽内容折行错乱**。列宽原先取整列最长单元格且无
   上限——超宽表格被 nvim 软折行后，续行没有 `│` 边框、框线错位。现在
   `renderTable` 增加最大宽度预算（chat 用视口宽度、思考面板用面板实际

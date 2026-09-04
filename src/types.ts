@@ -291,6 +291,11 @@ export interface WorkspaceEntityLike {
   title: string
   sessionIds: readonly string[]
   setTitle?: (title: string) => Promise<void>
+  /** Explicitly account a session to this workspace (official registry
+   *  validates the session's canonical cwd against the workspace path). */
+  attachSession?: (sessionId: string) => Promise<void>
+  /** Remove a session from this workspace's accounting (keeps the log). */
+  detachSession?: (sessionId: string) => Promise<void>
 }
 export interface WorkspacesService {
   list: () => WorkspaceEntityLike[]
