@@ -26,6 +26,7 @@ API.version = '0.1.0'
 --- ExtRegistered / ExtWindowClosed / ExtEvent / SessionEvent.
 function API.emit(event, data)
   S.lastEvent = data
+  S.lastEvents[event] = data
   pcall(vim.api.nvim_exec_autocmds, 'User', {
     pattern = 'DshTui' .. event,
     data = data,
@@ -37,15 +38,41 @@ function API.last_event()
   return S.lastEvent
 end
 
+--- One-shot initialization state for LATE-loading extensions (lazy.nvim
+--- VeryLazy plugins register after the User events already fired): read
+--- this at register time instead of relying on DshTuiReady/Attach/… which
+--- are NOT replayed.
+function API.snapshot()
+  local ids = API.handles()
+  return {
+    started = S.started,
+    attached = S.channel ~= nil,
+    activeSession = S.activeId,
+    runnerVersion = S.extRunnerVersion,
+    layoutName = S.layoutName,
+    chatWin = ids.chatWin,
+    chatBuf = ids.chatBuf,
+    inputWin = ids.inputWin,
+    inputBuf = ids.inputBuf,
+    panelWin = ids.panelWin,
+    panelBuf = ids.panelBuf,
+  }
+end
+
 local function valid_id(id)
   return type(id) == 'string' and id ~= '' and id:match('^[%w_%.-]+$') ~= nil
 end
 
 --- Register a third-party extension. Returns its registry table on success,
 --- or nil + an error message. Duplicate ids are rejected.
----   spec = { id, name?, version?, events? = { 'assistant/message', ... } }
+---   spec = { id, name?, version?, events? = { 'assistant/message', ... },
+---            on_ready? = fn(reg, { ready, runnerVersion }),
+---            on_active_session? = fn(reg, { id }) }
 --- `events` omitted, empty, the literal string 'all', or a list containing
 --- 'all' = receive EVERY session event kind (mirror).
+--- `on_ready` / `on_active_session` fire SYNCHRONOUSLY during register when
+--- the TUI already booted — the late-load alignment path (User events are
+--- never replayed).
 function API.register(spec)
   if type(spec) ~= 'table' or not valid_id(spec.id) then
     return nil, 'api.register: spec.id (string) is required'
@@ -90,6 +117,26 @@ function API.register(spec)
   if S.channel then
     vim.rpcnotify(S.channel, 'dsh-ext-register',
       { id = id, name = reg.name, version = reg.version, events = events })
+  end
+  -- LATE-LOAD REPLAY: User events are a LIVE-only stream (never replayed —
+  -- replay would double-fire for every earlier subscriber). Extensions
+  -- registering after boot (lazy.nvim VeryLazy) align their initial state
+  -- through the spec's synchronous callbacks (invoked here exactly once)
+  -- and api.snapshot().
+  if S.started and S.channel ~= nil and type(spec.on_ready) == 'function' then
+    local ok, err = pcall(spec.on_ready, reg, {
+      ready = true,
+      runnerVersion = S.extRunnerVersion,
+    })
+    if not ok then
+      API.emit('ExtHookError', { id = id, error = tostring(err) })
+    end
+  end
+  if S.activeId ~= nil and type(spec.on_active_session) == 'function' then
+    local ok, err = pcall(spec.on_active_session, reg, { id = S.activeId })
+    if not ok then
+      API.emit('ExtHookError', { id = id, error = tostring(err) })
+    end
   end
   return reg
 end

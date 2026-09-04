@@ -173,8 +173,12 @@ local ok, err = api.register {
   name = 'Git 面板',
   version = '1.0.0',
   events = { 'turn/end' },     -- 订阅镜像会话事件（省略 / {} / 'all' / 含 'all' = 全部）
+  on_ready = function(reg, p) end,            -- 晚加载对齐：TUI 已启动时注册即刻同步调用
+  on_active_session = function(reg, p) end,   -- 同上，载荷 { id }
 }
 if not ok then error(err) end
+-- 晚加载插件的初始态快照（User 事件不重放，从这里拿 boot/会话现状）:
+local snap = api.snapshot()    -- { started, attached, activeSession, runnerVersion, layoutName, chatWin, inputBuf, panelWin, … }
 ```
 
 ### 3.1 窗口原语（登记制）
@@ -208,6 +212,9 @@ api.last_event()         -- 最近一次 User DshTui* 事件的载荷
 --   DshTuiReady / DshTuiAttach / DshTuiActiveSession / DshTuiLayoutRebuilt
 --   DshTuiShutdown / DshTuiExtRegistered / DshTuiExtWindowClosed
 --   DshTuiExtEvent / DshTuiSessionEvent / DshTuiExtWindowsPruned
+-- User 事件是「实时变更流」、不重放：晚加载插件（lazy.nvim VeryLazy）错过
+-- DshTuiReady/Attach/ActiveSession 时，用 register 的 on_ready /
+-- on_active_session 同步回调 + api.snapshot() 对齐初始态。
 vim.api.nvim_create_autocmd('User', { pattern = 'DshTuiActiveSession', callback = function()
   local id = api.last_event().id
 end })

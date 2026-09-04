@@ -53,6 +53,9 @@ S.extCommands = {}
 -- nvim_exec_autocmds' `data` option does not land in vim.v.event on every
 -- nvim version, so consumers read api.last_event() inside User autocmds.
 S.lastEvent = nil
+-- Payload of the most recent emit per event name (the late-load snapshot
+-- source for api.snapshot()/register callbacks).
+S.lastEvents = {}
 -- Runner's EXT_API_VERSION as reported by the boot handshake.
 S.extRunnerVersion = nil
 

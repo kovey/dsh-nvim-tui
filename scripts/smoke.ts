@@ -2205,6 +2205,20 @@ description:
   // boot handshake: major-version agreement
   assert.equal((await lua(`return require("dsh_tui.api").handshake("0.1.0")`, [])).ok, true, 'handshake ok on matching major')
   assert.equal((await lua(`return require("dsh_tui.api").handshake("9.0.0")`, [])).ok, false, 'handshake fails on major mismatch')
+  // late-load replay: on_ready/on_active_session fire synchronously when
+  // the TUI already booted; api.snapshot() carries the initial state
+  await lua(`require("dsh_tui.api").register({
+    id = "smoke-late",
+    on_ready = function(reg, p) vim.g.smokeLateReady = p.ready == true and p.runnerVersion end,
+    on_active_session = function(reg, p) vim.g.smokeLateActive = p.id end,
+  })`, [])
+  assert.equal(await lua(`return vim.g.smokeLateReady`, []), '0.1.0', 'on_ready fires synchronously for a late registration')
+  assert.ok(String(await lua(`return vim.g.smokeLateActive`, [])).startsWith('session-'), 'on_active_session fires synchronously for a late registration')
+  const snap = await lua(`return require("dsh_tui.api").snapshot()`, [])
+  assert.equal(snap.started, true, 'snapshot reports started')
+  assert.equal(snap.attached, true, 'snapshot reports attached')
+  assert.equal(snap.activeSession, await lua(`return require("dsh_tui.state").activeId`, []), 'snapshot carries the active session')
+  assert.equal(snap.runnerVersion, '0.1.0', 'snapshot carries the handshaked runner version')
 
   // 13b. managed float + boot-guard exemption (an unregistered window still
   // gets swept while the registered float survives)
