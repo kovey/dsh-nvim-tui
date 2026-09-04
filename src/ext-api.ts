@@ -44,6 +44,18 @@ export interface ExtSessionEventFilter {
   sessionId?: string
 }
 
+/** Pure filter match (exported for unit tests). */
+export function matchSessionEventFilter(
+  filter: ExtSessionEventFilter,
+  sessionId: string,
+  eventType: string,
+): boolean {
+  if (filter.sessionId !== undefined && filter.sessionId !== sessionId) return false
+  if (filter.type === undefined) return true
+  const kinds = Array.isArray(filter.type) ? filter.type : [filter.type]
+  return kinds.includes(eventType)
+}
+
 /** TUI lifecycle / user-intent events. */
 export type ExtEventName =
   | 'tui:ready'          // boot complete, first session attached
@@ -398,15 +410,9 @@ export function installExtApi(app: App): void {
    *  plus the Lua-side routing (extLuaSubs, fed by dsh-ext-register).
    *  Called by boot.ts's session/event handler AFTER the TUI's own routing. */
   app.extDispatchSessionEvent = (sessionId, event) => {
-    const matches = (f: ExtSessionEventFilter): boolean => {
-      if (f.sessionId !== undefined && f.sessionId !== sessionId) return false
-      if (f.type === undefined) return true
-      const kinds = Array.isArray(f.type) ? f.type : [f.type]
-      return kinds.includes(event.type)
-    }
     if (sessionSubs.length > 0) {
       for (const { filter, cb } of sessionSubs) {
-        if (!matches(filter)) continue
+        if (!matchSessionEventFilter(filter, sessionId, event.type)) continue
         try {
           cb(sessionId, event)
         } catch (err) {

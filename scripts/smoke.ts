@@ -21,6 +21,7 @@ import { t, setLocale, locale } from '../lib/i18n.js'
 import { matchIntent } from '../lib/nlcmd.js'
 import { ageLabel, isExpired, orderSubagentChildren } from '../lib/subagent-clean.js'
 import { runningBadge } from '../lib/statusline.js'
+import { matchSessionEventFilter } from '../lib/ext-api.js'
 import { readPatchRowIds, packageExists } from '../lib/deps.js'
 import { encodeSessionLog, encodeHeaderOnlyLog } from '../lib/subagent-clean.js'
 import { zstdDecompressSync } from 'node:zlib'
@@ -2181,6 +2182,163 @@ description:
   assert.equal(modeLabel('danger-full-access'), 'full-access', 'mode label full access')
   assert.equal(cacheHitRate(u, false), null, 'no cache fields → no rate')
 
+  // 13. extension API surface (P0-P3): registry + ownership, managed
+  // floats with guard exemption, the panel slot, the dsh-ext bus (both
+  // directions), submit hooks, Lua-side commands, the session-event mirror,
+  // ext cards.
+  assert.equal(matchSessionEventFilter({}, 's1', 'turn/end'), true, 'empty filter matches all')
+  assert.equal(matchSessionEventFilter({ sessionId: 's1' }, 's2', 'turn/end'), false, 'session filter excludes others')
+  assert.equal(matchSessionEventFilter({ type: 'turn/end' }, 's1', 'turn/start'), false, 'type filter excludes other kinds')
+  assert.equal(matchSessionEventFilter({ type: ['turn/end', 'tool/result'] }, 's1', 'tool/result'), true, 'type array matches')
+
+  // 13a. register + duplicate rejection + ownership helpers
+  assert.ok(await lua(`return require("dsh_tui.api").register({ id = "smoke-ext", name = "SmokeExt", events = { "turn/end" } }) ~= nil`, []), 'api.register succeeds')
+  assert.equal(await lua('return require("dsh_tui.api").registered("smoke-ext")', []), true, 'registered() true')
+  assert.ok(String(await lua(`local ok, err = require("dsh_tui.api").register({ id = "smoke-ext" }); return err`, [])).includes('already registered'), 'duplicate register rejected')
+
+  // 13b. managed float + boot-guard exemption (an unregistered window still
+  // gets swept while the registered float survives)
+  const extFloat = await lua(`return require("dsh_tui.api").float_open("smoke-ext", { lines = { "l1", "l2" }, title = "Ext 浮窗" })`, []) as { win: number; buf: number }
+  assert.ok(Number.isInteger(extFloat.win) && Number.isInteger(extFloat.buf), 'float_open returns win+buf')
+  await lua(`local S = require("dsh_tui.state"); S.bootGuardUntil = vim.uv.now() + 4000; S.mainTab = vim.api.nvim_get_current_tabpage()`, [])
+  await lua(`vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin); vim.cmd('vnew')`, [])
+  await new Promise((r) => setTimeout(r, 400))
+  const guardProbe = await lua(`return {
+    extAlive = vim.api.nvim_win_is_valid(${extFloat.win}),
+    wins = #vim.api.nvim_list_wins(),
+  }`, [])
+  assert.equal(guardProbe.extAlive, true, 'registered float survives the boot guard')
+  assert.equal(guardProbe.wins, 3, 'unregistered vnew window swept by the boot guard (chat+input+ext float left)')
+  await lua(`require("dsh_tui.api").float_close("smoke-ext", ${extFloat.win})`, [])
+  assert.equal(await lua(`return vim.api.nvim_win_is_valid(${extFloat.win})`, []), false, 'float_close closes the window')
+  assert.equal(await lua(`return vim.api.nvim_buf_is_valid(${extFloat.buf})`, []), false, 'float_close wipes the buffer')
+
+  // 13c. the right-edge panel slot: single occupant, geometry, release
+  const extPanel = await lua(`return require("dsh_tui.api").panel_claim("smoke-ext", { title = "Ext 面板", lines = { "a" } })`, []) as { win: number; buf: number }
+  assert.ok(Number.isInteger(extPanel.win), 'panel_claim opens the slot')
+  assert.ok(String((await lua(`return require("dsh_tui.api").panel_claim("smoke-ext", {})`, [])).err).includes('occupied'), 'second claim rejected (single slot)')
+  const extPanelCfg = await nvim.request('nvim_win_get_config', [extPanel.win])
+  assert.equal(extPanelCfg.relative, 'editor', 'ext panel is editor-relative')
+  assert.equal(extPanelCfg.anchor, 'NE', 'ext panel anchors top-right')
+  assert.equal(await lua(`return require("dsh_tui.api").panel_release("smoke-ext")`, []), true, 'panel_release frees the slot')
+  assert.equal(await lua(`return vim.api.nvim_win_is_valid(${extPanel.win})`, []), false, 'released panel window closed')
+
+  // 13d. the dsh-ext bus: Lua → Node rpcrequest + Node → Lua dispatch
+  nvim.on('request', (method: string, args: unknown[], resp: { send: (r: unknown) => void }) => {
+    void (async () => {
+      if (method !== 'dsh-ext') { resp.send({ ok: false, error: 'unsupported' }); return }
+      const p = (args?.[0] ?? {}) as { id?: string; method?: string; args?: unknown[] }
+      if (p.id !== 'smoke-ext') { resp.send({ ok: false, error: 'no handler: ' + String(p.id) }); return }
+      try {
+        if (p.method === 'add') {
+          resp.send({ ok: true, value: { sum: Number(p.args?.[0]) + Number(p.args?.[1]) } })
+          return
+        }
+        resp.send({ ok: false, error: 'boom-' + String(p.method) })
+      } catch (e) {
+        resp.send({ ok: false, error: (e as Error).message })
+      }
+    })()
+  })
+  const addRes = await lua(`return require("dsh_tui.api").rpc_call("smoke-ext", "add", { 2, 3 })`, [])
+  assert.deepEqual(addRes, { sum: 5 }, 'lua rpc_call round-trips through the node handler')
+  assert.ok(String(await lua(`local v, e = require("dsh_tui.api").rpc_call("smoke-ext", "nope", {}); return e`, [])).includes('boom-nope'), 'handler errors surface to the lua caller')
+  await lua(`require("dsh_tui.api").rpc_register("smoke-ext", "greet", function(args) return "hello " .. args.name end)`, [])
+  assert.deepEqual(await lua(`return require("dsh_tui.api").rpc_dispatch("smoke-ext", "greet", { name = "dsh" })`, []),
+    { ok: true, value: 'hello dsh' }, 'rpc_dispatch routes to the lua handler')
+  assert.equal((await lua(`return require("dsh_tui.api").rpc_dispatch("smoke-ext", "missing", {})`, [])).ok, false, 'unknown method reports ok=false')
+
+  // 13e. before_submit hooks: rewrite + veto (draft kept)
+  await lua(`require("dsh_tui.api").before_submit("smoke-ext", function(text)
+    if text == "veto-me" then return nil end
+    if text == "rewrite-me" then return "rewritten" end
+    return text
+  end)`, [])
+  const submitNotes: string[] = []
+  const onSubmitNote = (m: string, a: unknown[]): void => { if (m === 'dsh-input') submitNotes.push(String(a[0])) }
+  nvim.on('notification', onSubmitNote)
+  await lua(`require("dsh_tui").fill_input(...)`, ['rewrite-me'])
+  await lua(`require("dsh_tui").submit()`, [])
+  await new Promise((r) => setTimeout(r, 120))
+  assert.deepEqual(submitNotes, ['rewritten'], 'before_submit rewrites the submission')
+  await lua(`require("dsh_tui").fill_input(...)`, ['veto-me'])
+  await lua(`require("dsh_tui").submit()`, [])
+  await new Promise((r) => setTimeout(r, 120))
+  assert.equal(submitNotes.length, 1, 'vetoed submission never reaches the runner')
+  assert.equal(await lua(`return require("dsh_tui.api").input_get()`, []), 'veto-me', 'vetoed draft stays in the input box')
+  nvim.off('notification', onSubmitNote)
+  await lua(`require("dsh_tui").fill_input(...)`, [''])
+
+  // 13f. Lua-side commands: catalog merge survives runner refreshes, local
+  // execution (never routed to the runner)
+  await lua(`require("dsh_tui.api").register_command("smoke-ext", "extping", "扩展命令", function(arg) vim.g.smokeExtArg = arg or "" end)`, [])
+  await lua(`require("dsh_tui").set_commands(...)`, [[{ name: '/exit', desc: '退出 dsh' }]])
+  await lua(`vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "/extp" })`, [])
+  await lua(`require("dsh_tui").update_cmd_menu()`, [])
+  let extMenu = await lua(`return require("dsh_tui").cmd_menu_state()`, [])
+  assert.deepEqual(extMenu.names, ['/extping'], 'ext command merged into the catalog')
+  const cmdNotes: string[] = []
+  const onCmdNote = (m: string, a: unknown[]): void => { if (m === 'dsh-command') cmdNotes.push(String(a[0])) }
+  nvim.on('notification', onCmdNote)
+  await lua(`require("dsh_tui").fill_input(...)`, ['/extping 42'])
+  await lua(`require("dsh_tui").submit()`, [])
+  await new Promise((r) => setTimeout(r, 120))
+  assert.equal(await lua(`return vim.g.smokeExtArg`, []), '42', 'ext command executes locally with its argument')
+  assert.equal(cmdNotes.length, 0, 'ext command never routed to the runner')
+  nvim.off('notification', onCmdNote)
+  await lua(`require("dsh_tui.api").unregister_command("smoke-ext", "extping")`, [])
+  await lua(`vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "/extp" })`, [])
+  await lua(`require("dsh_tui").update_cmd_menu()`, [])
+  extMenu = await lua(`return require("dsh_tui").cmd_menu_state()`, [])
+  assert.equal(extMenu.open, false, 'unregistered ext command leaves the catalog')
+
+  // 13g. session-event mirror: lua callback + User autocmd + last_event
+  await lua(`vim.g.smokeSeenKind = nil
+    vim.g.smokeUserFired = nil
+    vim.api.nvim_create_autocmd("User", { pattern = "DshTuiSessionEvent", callback = function() vim.g.smokeUserFired = require("dsh_tui.api").last_event().ids[1] end })
+    require("dsh_tui.api").on_session_event("smoke-ext", function(ev) vim.g.smokeSeenKind = ev.type end)`, [])
+  await lua(`require("dsh_tui.api").session_event({ "smoke-ext" }, { type = "turn/end", data = {} })`, [])
+  assert.equal(await lua(`return vim.g.smokeSeenKind`, []), 'turn/end', 'session_event reaches the lua callback')
+  assert.equal(await lua(`return vim.g.smokeUserFired`, []), 'smoke-ext', 'DshTuiSessionEvent fires with the payload')
+  assert.equal((await lua(`return require("dsh_tui.api").last_event()`, [])).ids[0], 'smoke-ext', 'last_event carries the payload')
+
+  // 13h. DshTuiActiveSession fires on set_active
+  await lua(`vim.g.smokeActive = nil
+    vim.api.nvim_create_autocmd("User", { pattern = "DshTuiActiveSession", callback = function() vim.g.smokeActive = require("dsh_tui.api").last_event().id end })`, [])
+  await lua(`require("dsh_tui").set_active(...)`, ['session-aaaa'])
+  assert.equal(await lua(`return vim.g.smokeActive`, []), 'session-aaaa', 'ActiveSession user event fires on switch')
+
+  // 13i. ext cards: render / update / dismiss in place + DshTuiExt group
+  const extHl = await lua(`return vim.api.nvim_get_hl(0, { name = "DshTuiExt" })`, [])
+  assert.equal(extHl.link, 'Structure', 'ext card highlight group defined')
+  const extCard = feedA.pushExtCard({ plugin: 'smoke', title: '卡片标题', body: '第一行\n第二行', actions: [{ label: '确认', value: 'yes' }] })
+  await new Promise((r) => setTimeout(r, 200))
+  let extCardLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(extCardLines.some((l: string) => l.includes('▣ smoke · 卡片标题')), 'ext card header renders')
+  assert.ok(extCardLines.includes('  第一行') && extCardLines.includes('  第二行'), 'ext card body indented')
+  assert.ok(extCardLines.includes('  [1] 确认'), 'ext card action hints render')
+  extCard.update({ body: '更新后' })
+  await new Promise((r) => setTimeout(r, 200))
+  extCardLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(extCardLines.includes('  更新后'), 'ext card update replaces the body')
+  assert.ok(!extCardLines.includes('  第一行'), 'ext card old body gone after update')
+  extCard.dismiss()
+  await new Promise((r) => setTimeout(r, 200))
+  extCardLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(!extCardLines.some((l: string) => l.includes('▣ smoke')), 'ext card dismissed')
+  const cardMarks: any[] = await nvim.request('nvim_buf_get_extmarks', [chatA.chatBuf, -1, 0, -1, { details: true }])
+  const extHeaderRow = extCardLines.findIndex((l: string) => l.includes('▣'))
+  if (extHeaderRow >= 0) {
+    assert.equal(cardMarks.filter((m) => m[1] === extHeaderRow && m[3]?.hl_group === 'DshTuiExt').length, 0,
+      'no ext group mark left after dismiss')
+  }
+
+  // 13j. unregister closes extension windows and drops the entry
+  const f2 = await lua(`return require("dsh_tui.api").float_open("smoke-ext", { lines = { "x" } })`, []) as { win: number }
+  assert.equal(await lua(`return require("dsh_tui.api").unregister("smoke-ext")`, []), true, 'unregister succeeds')
+  assert.equal(await lua(`return vim.api.nvim_win_is_valid(${f2.win})`, []), false, 'unregister closes ext windows')
+  assert.equal(await lua(`return require("dsh_tui.api").registered("smoke-ext")`, []), false, 'entry dropped after unregister')
+
   // 12. require() must survive rtp resets (lazy.nvim rebuilds runtimepath and
   // enables vim.loader — package.preload keeps dsh_tui resolvable).
   await lua(
@@ -2189,6 +2347,16 @@ description:
   )
   log('require survives rtp reset: ok')
 
+  // 12b. the state module is a reload-safe singleton: clearing
+  // package.loaded (vim.loader.enable / rtp rebuilds) re-runs the module
+  // file, which must return the SAME pinned table — otherwise modules that
+  // captured state at load time split the registry.
+  const pinProbe = await lua(`local s1 = require("dsh_tui.state")
+    package.loaded["dsh_tui.state"] = nil
+    local s2 = require("dsh_tui.state")
+    return { same = (s1 == s2), extRegKept = (s2.extReg ~= nil) }`, [])
+  assert.equal(pinProbe.same, true, 'state module is a reload-safe singleton')
+  assert.equal(pinProbe.extRegKept, true, 'reloaded state keeps the ext registry table')
   // 7. nvim → Node notification
   const notified = new Promise((resolve) => {
     nvim.on('notification', (method, args) => {

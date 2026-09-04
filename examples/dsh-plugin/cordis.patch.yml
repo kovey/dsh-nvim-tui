@@ -1,0 +1,4 @@
+# 挂载本扩展示例（参考 cordis.patch.yml 的 insert 机制）。
+- insert:
+    - id: tui-ext-example
+      name: 'dsh-tui-ext-example'

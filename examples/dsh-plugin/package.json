@@ -1,0 +1,9 @@
+{
+  "name": "dsh-tui-ext-example",
+  "version": "0.1.0",
+  "description": "示例：通过 ctx.get('nvim-tui') 消费 dsh-nvim-tui 开放接口的 dsh 插件",
+  "type": "module",
+  "main": "index.ts",
+  "keywords": ["dsh", "nvim-tui", "ext"],
+  "license": "MIT"
+}

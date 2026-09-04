@@ -9,8 +9,23 @@
 --
 -- Window/buffer handles are NOT allowed to live in modules: anything that
 -- needs chat_win / input_buf / input_win reads them from here.
+--
+-- RELOAD SAFETY (vim.loader.enable / rtp rebuilds clear package.loaded):
+-- a re-run of this file MUST yield the SAME table — every module captures
+-- S at load time, so a second instance would split the registry across
+-- modules (registered exts invisible to the guards). The instance is
+-- pinned on a Lua global (_G — vim.g round-trips tables through Dict
+-- conversion and would lose identity) and fields initialize ONCE.
 
-local S = {}
+local S = _G.__dsh_tui_state
+if S == nil then
+  S = {}
+  _G.__dsh_tui_state = S
+  S._initialized = true
+end
+
+if S._initialized == true then
+  S._initialized = false
 
 -- TUI core handles (set by layout.lua / input.lua)
 S.chat_win = nil
@@ -93,4 +108,6 @@ S.float = { win = nil, buf = nil, kind = nil, state = nil } -- approval/question
 
 S.skillWin = nil
 S.linesWin = nil
+end -- first-run initialization
+
 return S

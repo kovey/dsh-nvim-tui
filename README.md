@@ -323,6 +323,18 @@ dsh_tui 在 `VimEnter`（用户配置加载完成后）接管窗口布局，并�
 如需纯净启动（不加载用户配置），给 runner 行加 `config: { loadUserConfig: false }`；
 沙箱/CI 的 headless 测试模式会自动隔离 XDG 目录。
 
+## 插件开放接口
+
+dsh-nvim-tui 对外开放**稳定接口**，其他 dsh 插件与 nvim 插件可以在 TUI 内渲染
+UI、使用 nvim 窗口、读写输入、订阅会话事件：
+
+- Node 面（dsh 插件）：`ctx.get('nvim-tui')` → `TuiExtApi`（nvim 执行层 /
+  card/float/picker/panel / 命令注册 / 会话事件 / dsh-ext 总线）
+- Lua 面（TUI 实例内的 nvim 插件）：`require('dsh_tui').api`（登记制窗口原语、
+  面板槽、before_submit 钩子、Lua 命令、双向 RPC）
+
+完整文档：[docs/EXT-API.md](docs/EXT-API.md)，示例见 `examples/`。
+
 ## 开发
 
 ```bash

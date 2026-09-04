@@ -42,6 +42,8 @@ export interface ExtSessionEventFilter {
     /** Restrict to one session; omitted = every session. */
     sessionId?: string;
 }
+/** Pure filter match (exported for unit tests). */
+export declare function matchSessionEventFilter(filter: ExtSessionEventFilter, sessionId: string, eventType: string): boolean;
 /** TUI lifecycle / user-intent events. */
 export type ExtEventName = 'tui:ready' | 'tui:active-session' | 'tui:input' | 'tui:teardown';
 /** ui.card options. */
