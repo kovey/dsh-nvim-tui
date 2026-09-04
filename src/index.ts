@@ -53,7 +53,7 @@ export type {
   ExtUiLayer, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult,
   ExtPickerOpts, ExtCommandSpec, ExtPanelOpts, ExtPanelHandles, ExtLuaLayer,
 } from './ext-api.js'
-export { EXT_API_VERSION, matchSessionEventFilter } from './ext-api.js'
+export { EXT_API_VERSION, EXT_HANDLER_TIMEOUT_MS, matchSessionEventFilter } from './ext-api.js'
 
 /**
  * Mount the Neovim TUI runner over dsh-base.

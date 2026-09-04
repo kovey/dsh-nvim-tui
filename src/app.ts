@@ -184,15 +184,11 @@ export interface App {
    *  ('all' = unfiltered), fed by dsh-ext-register notifications (P3 uses
    *  it to route the session-event mirror). */
   extLuaSubs: Map<string, Set<string> | 'all'>
-  /** dsh-ext bus: extId → request handler registered by a Node-side
+  /** dsh-ext bus: extId → { handler, timeoutMs } registered by a Node-side
    *  consumer via `luaExt.on` (answered over the shared RPC channel). */
-  extNodeHandlers: Map<string, (method: string, args: unknown[]) => unknown | Promise<unknown>>
+  extNodeHandlers: Map<string, { handler: (method: string, args: unknown[]) => unknown | Promise<unknown>; timeoutMs: number }>
   /** Statusline segments contributed by extensions (id → text+priority). */
   extStatusSegments: Map<string, { text: string; priority: number }>
-  /** TRUE while a dsh-ext request handler runs (nvim is blocked inside
-   *  vim.rpcrequest waiting for the answer — nested nvim calls deadlock).
-   *  ext-api's nvim/ui layers reject calls while this is set. */
-  extBusInHandler: boolean
 
   // -- pending UI state --------------------------------------------------------
   pendingInput: string[]
@@ -359,7 +355,6 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     extLuaSubs: new Map(),
     extNodeHandlers: new Map(),
     extStatusSegments: new Map(),
-    extBusInHandler: false,
 
     svc,
     luaCall,

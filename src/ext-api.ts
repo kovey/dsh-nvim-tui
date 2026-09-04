@@ -22,6 +22,13 @@ import type { App } from './app.js'
 /** Extension API version (semver, independent of the bundle version). */
 export const EXT_API_VERSION = '0.1.0'
 
+/** Default upper bound for one dsh-ext handler execution (both directions).
+ *  vim.rpcrequest blocks nvim uninterruptibly and cannot be cancelled from
+ *  Lua — the bounded answer is the ONLY freeze protection, so the runner
+ *  always answers within this window (timeout → structured error; late
+ *  results are discarded). */
+export const EXT_HANDLER_TIMEOUT_MS = 30_000
+
 /** Nvim execution layer: the whitelisted raw editor surface. */
 export interface ExtNvimLayer {
   /** nvim_* API request (msgpack-RPC). Optional timeout rejects instead of
@@ -137,14 +144,18 @@ export interface ExtCommandSpec {
 /** The ext RPC bus face: drive / answer nvim-side extensions by extId. */
 export interface ExtLuaLayer {
   /** Call a method registered by a Lua extension (api.rpc_register).
-   *  Rejects with the remote error message when the handler fails. */
-  call(extId: string, method: string, args?: unknown[]): Promise<unknown>
+   *  Rejects with the remote error message when the handler fails, and
+   *  with a timeout error when it overruns opts.timeoutMs (default
+   *  EXT_HANDLER_TIMEOUT_MS). */
+  call(extId: string, method: string, args?: unknown[], opts?: { timeoutMs?: number }): Promise<unknown>
   /** Fire an event at a Lua extension (User DshTuiExtEvent +
    *  api.on_ext_event callbacks). */
   emit(extId: string, event: string, payload?: unknown): void
   /** Answer dsh-ext requests from a nvim extension (vim.rpcrequest).
-   *  Returns a disposer. */
-  on(extId: string, handler: (method: string, args: unknown[]) => unknown | Promise<unknown>): () => void
+   *  Every request is answered within opts.timeoutMs (default 30s) — a
+   *  slow handler gets a timeout error reply and keeps running in the
+   *  background (its late result is discarded). Returns a disposer. */
+  on(extId: string, handler: (method: string, args: unknown[]) => unknown | Promise<unknown>, opts?: { timeoutMs?: number }): () => void
 }
 
 /** Managed UI primitives (headless degrades to no-ops where flagged). */
@@ -218,15 +229,6 @@ export function installExtApi(app: App): void {
    *  events (tui:ready / tui:active-session) get an immediate replay. */
   const lastFired = new Map<string, { payload: unknown }>()
 
-  /** Nested-call deadlock guard: inside a dsh-ext handler nvim is blocked
-   *  in vim.rpcrequest — any nvim round-trip from here can never be
-   *  answered. Reject loudly instead of wedging both sides. */
-  const assertNotInExtHandler = (what: string): void => {
-    if (app.extBusInHandler) {
-      throw new Error(`${what}: dsh-ext 处理器内禁止调用 nvim（nvim 正阻塞等待本应答，会死锁）`)
-    }
-  }
-
   /** Fire a tui:* event; subscriber throws are contained (feed notice). */
   const fire = (event: ExtEventName, payload: unknown): void => {
     lastFired.set(event, { payload })
@@ -243,7 +245,6 @@ export function installExtApi(app: App): void {
 
   const nvimLayer: ExtNvimLayer = {
     request: (method, args = [], opts) => {
-      assertNotInExtHandler('nvim.request')
       if (app.nvim === null) return Promise.reject(new Error('nvim not connected'))
       const p = app.nvim.request(method, args as never[]) as Promise<unknown>
       if (opts?.timeoutMs === undefined) return p
@@ -254,16 +255,13 @@ export function installExtApi(app: App): void {
       ])
     },
     call: (fn, args = []) => {
-      assertNotInExtHandler('nvim.call')
       if (app.nvim === null) return Promise.reject(new Error('nvim not connected'))
       return app.nvim.call(fn, args as never[]) as Promise<unknown>
     },
     lua: (code, args = []) => {
-      assertNotInExtHandler('nvim.lua')
       return app.luaCall(code, args)
     },
     ex: async (cmd) => {
-      assertNotInExtHandler('nvim.ex')
       if (app.nvim === null) throw new Error('nvim not connected')
       await app.nvim.command(cmd)
     },
@@ -347,7 +345,6 @@ export function installExtApi(app: App): void {
         return handle
       },
       float: async (opts) => {
-        assertNotInExtHandler('ui.float')
         if (app.nvim === null) throw new Error('nvim not connected')
         const id = `f${++floatSeq}`
         const res = await app.luaCall('return require("dsh_tui.api").float_open(...)', [
@@ -361,14 +358,12 @@ export function installExtApi(app: App): void {
         return { id, win: res.win, buf: res.buf }
       },
       floatClose: async (id) => {
-        assertNotInExtHandler('ui.floatClose')
         const win = nodeFloats.get(id)
         nodeFloats.delete(id)
         if (win === undefined) return
         await app.luaCall('require("dsh_tui.api").float_close(...)', ['__node__', win]).catch(() => {})
       },
       picker: (opts) => {
-        assertNotInExtHandler('ui.picker')
         return app.openPicker(opts.title, opts.items)
       },
       notice: (text) => app.notice(text),
@@ -379,7 +374,6 @@ export function installExtApi(app: App): void {
         app.updateStatusline()
       },
       panel: async (opts) => {
-        assertNotInExtHandler('ui.panel')
         if (app.nvim === null || app.headless) return null
         const res = await app.luaCall('return require("dsh_tui.api").panel_claim(...)', [
           '__node__', { width: opts.width, title: opts.title, footer: opts.footer, lines: opts.lines ?? [] },
@@ -392,7 +386,6 @@ export function installExtApi(app: App): void {
         return { win: res.win, buf: res.buf }
       },
       panelRelease: async () => {
-        assertNotInExtHandler('ui.panelRelease')
         if (app.nvim === null) return
         await app.luaCall('require("dsh_tui.api").panel_release(...)', ['__node__']).catch(() => {})
       },
@@ -416,9 +409,18 @@ export function installExtApi(app: App): void {
     },
 
     luaExt: {
-      call: async (extId, method, args = []) => {
-        const res = await app.luaCall('return require("dsh_tui.api").rpc_dispatch(...)', [
+      call: async (extId, method, args = [], opts) => {
+        const timeoutMs = opts?.timeoutMs ?? EXT_HANDLER_TIMEOUT_MS
+        // Bound the Node→Lua round trip: a wedged Lua handler blocks nvim's
+        // main loop, so the caller must not hang forever either. The
+        // underlying request continues — its late response is dropped.
+        const p = app.luaCall('return require("dsh_tui.api").rpc_dispatch(...)', [
           extId, method, args,
+        ])
+        const res = await Promise.race([
+          p,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`lua ext ${extId}.${method} timeout (${timeoutMs}ms)`)), timeoutMs)),
         ]) as { ok?: unknown; value?: unknown; error?: unknown } | null | undefined
         if (res !== null && res !== undefined && typeof res === 'object' && res.ok === false) {
           throw new Error(String(res.error ?? `lua ext ${extId}.${method} failed`))
@@ -431,8 +433,11 @@ export function installExtApi(app: App): void {
       emit: (extId, event, payload) => {
         void app.luaCall('require("dsh_tui.api").rpc_event(...)', [extId, event, payload ?? null]).catch(() => {})
       },
-      on: (extId, handler) => {
-        app.extNodeHandlers.set(extId, handler)
+      on: (extId, handler, opts) => {
+        app.extNodeHandlers.set(extId, {
+          handler,
+          timeoutMs: opts?.timeoutMs ?? EXT_HANDLER_TIMEOUT_MS,
+        })
         return () => {
           app.extNodeHandlers.delete(extId)
         }

@@ -20,6 +20,12 @@ import type { SessionEvent } from './types.js';
 import type { App } from './app.js';
 /** Extension API version (semver, independent of the bundle version). */
 export declare const EXT_API_VERSION = "0.1.0";
+/** Default upper bound for one dsh-ext handler execution (both directions).
+ *  vim.rpcrequest blocks nvim uninterruptibly and cannot be cancelled from
+ *  Lua — the bounded answer is the ONLY freeze protection, so the runner
+ *  always answers within this window (timeout → structured error; late
+ *  results are discarded). */
+export declare const EXT_HANDLER_TIMEOUT_MS = 30000;
 /** Nvim execution layer: the whitelisted raw editor surface. */
 export interface ExtNvimLayer {
     /** nvim_* API request (msgpack-RPC). Optional timeout rejects instead of
@@ -126,14 +132,22 @@ export interface ExtCommandSpec {
 /** The ext RPC bus face: drive / answer nvim-side extensions by extId. */
 export interface ExtLuaLayer {
     /** Call a method registered by a Lua extension (api.rpc_register).
-     *  Rejects with the remote error message when the handler fails. */
-    call(extId: string, method: string, args?: unknown[]): Promise<unknown>;
+     *  Rejects with the remote error message when the handler fails, and
+     *  with a timeout error when it overruns opts.timeoutMs (default
+     *  EXT_HANDLER_TIMEOUT_MS). */
+    call(extId: string, method: string, args?: unknown[], opts?: {
+        timeoutMs?: number;
+    }): Promise<unknown>;
     /** Fire an event at a Lua extension (User DshTuiExtEvent +
      *  api.on_ext_event callbacks). */
     emit(extId: string, event: string, payload?: unknown): void;
     /** Answer dsh-ext requests from a nvim extension (vim.rpcrequest).
-     *  Returns a disposer. */
-    on(extId: string, handler: (method: string, args: unknown[]) => unknown | Promise<unknown>): () => void;
+     *  Every request is answered within opts.timeoutMs (default 30s) — a
+     *  slow handler gets a timeout error reply and keeps running in the
+     *  background (its late result is discarded). Returns a disposer. */
+    on(extId: string, handler: (method: string, args: unknown[]) => unknown | Promise<unknown>, opts?: {
+        timeoutMs?: number;
+    }): () => void;
 }
 /** Managed UI primitives (headless degrades to no-ops where flagged). */
 export interface ExtUiLayer {

@@ -2248,6 +2248,15 @@ description:
           resp.send({ ok: true, value: { sum: Number(p.args?.[0]) + Number(p.args?.[1]) } })
           return
         }
+        if (p.method === 'nested') {
+          // Nested nvim call from INSIDE a dsh-ext handler: nvim keeps
+          // processing events while blocked in rpcrequest, so this must
+          // round-trip (regression: a former "deadlock guard" wrongly
+          // rejected exactly this shape).
+          const v = await nvim.request('nvim_eval', ['2+2'])
+          resp.send({ ok: true, value: { nested: v } })
+          return
+        }
         resp.send({ ok: false, error: 'boom-' + String(p.method) })
       } catch (e) {
         resp.send({ ok: false, error: (e as Error).message })
@@ -2256,6 +2265,8 @@ description:
   })
   const addRes = await lua(`return require("dsh_tui.api").rpc_call("smoke-ext", "add", { 2, 3 })`, [])
   assert.deepEqual(addRes, { sum: 5 }, 'lua rpc_call round-trips through the node handler')
+  assert.deepEqual(await lua(`return require("dsh_tui.api").rpc_call("smoke-ext", "nested", {})`, []),
+    { nested: 4 }, 'nested nvim call from inside a dsh-ext handler round-trips')
   assert.ok(String(await lua(`local v, e = require("dsh_tui.api").rpc_call("smoke-ext", "nope", {}); return e`, [])).includes('boom-nope'), 'handler errors surface to the lua caller')
   await lua(`require("dsh_tui.api").rpc_register("smoke-ext", "greet", function(args) return "hello " .. args.name end)`, [])
   assert.deepEqual(await lua(`return require("dsh_tui.api").rpc_dispatch("smoke-ext", "greet", { name = "dsh" })`, []),

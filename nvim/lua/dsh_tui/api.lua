@@ -452,7 +452,14 @@ end
 
 --- Lua → Node: call a method served by a Node-side extension (registered
 --- via the Node api's luaExt.on). Blocks until the runner answers (nvim
---- rpcrequest semantics); returns value, or nil + error message.
+--- rpcrequest semantics — uninterruptible, NOT cancellable from Lua);
+--- returns value, or nil + error message.
+---
+--- FREEZE GUARANTEE: the runner answers EVERY request within its handler
+--- timeout (default 30s) — slow/hung handlers get a structured timeout
+--- error, so this call never blocks the UI indefinitely. Nested nvim calls
+--- made BY the handler are safe (nvim keeps processing events while
+--- blocked here).
 function API.rpc_call(extId, method, args)
   if not S.channel then
     return nil, 'no runner channel'

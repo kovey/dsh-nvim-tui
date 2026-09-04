@@ -9,7 +9,6 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { TuiExtApi } from 'dsh-nvim-tui'
-import { execSync } from 'node:child_process'
 
 export const name = 'dsh-tui-ext-example'
 
@@ -75,17 +74,15 @@ export function apply(ctx: Context, _config: unknown = {}): void {
   })
 
   // 2) dsh-ext 总线：应答 nvim 侧插件的 api.rpc_call（examples/nvim/git-panel.lua）。
-  // ⚠ 处理器内禁止调用 tui.nvim.* / tui.ui.*（nvim 正阻塞在 rpcrequest 等本
-  // 应答，再发 RPC 会死锁——本 API 会直接抛错拒绝）。需要数据时用 Node 侧的
-  // 能力（child_process / fetch），或在处理器之外预取。
+  // 处理器内可以安全调用 tui.nvim.*（nvim 阻塞在 rpcrequest 时仍处理事件，
+  // 嵌套请求会被应答）——但处理器时长 = nvim UI 冻结时长，且 runner 有 30s
+  // 超时兜底（超时后应答错误、结果丢弃）。长任务请用后台 job + 事件回推。
   disposers.push(tui.luaExt.on('git-panel', async (method, args) => {
     switch (method) {
       case 'commits': {
-        try {
-          return execSync('git log --oneline -5', { encoding: 'utf8' }).trim().split('\n')
-        } catch (err) {
-          throw new Error(`git log 失败: ${(err as Error).message}`)
-        }
+        // 演示原生执行层 + 嵌套调用（安全）。
+        const out = await tui.nvim.call('systemlist', [['git', 'log', '--oneline', '-5']])
+        return out
       }
       case 'status': return 'ok'
       default: throw new Error(`ext-demo: 未知方法 ${method}`)

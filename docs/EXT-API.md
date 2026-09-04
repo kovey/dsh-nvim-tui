@@ -62,10 +62,13 @@ await tui.nvim.request('nvim_eval', ['slow()'], { timeoutMs: 2000 })
 ```
 
 纪律：**扩展回调内禁止长时同步 `nvim.request`**（单通道串行，会卡死整个 TUI
-渲染）。**dsh-ext 处理器内（`luaExt.on` 的回调）禁止任何 nvim 调用**——nvim
-此时正阻塞在 `vim.rpcrequest` 等待本应答，再发 RPC 必然死锁；本 API 会直接
-抛错拒绝（`dsh-ext 处理器内禁止调用 nvim…`），需要数据请用 Node 侧能力
-（child_process / fetch）或在处理器外预取。
+渲染）。**dsh-ext 处理器（`luaExt.on` 的回调）**的语义：
+- 处理器内可以安全做嵌套 nvim 调用（nvim 阻塞在 `vim.rpcrequest` 期间仍会
+  处理事件，嵌套请求会被正常应答）；
+- 但**处理器时长 = nvim UI 冻结时长**，且 runner 有 30s 超时兜底（
+  `EXT_HANDLER_TIMEOUT_MS`，`luaExt.on(extId, fn, { timeoutMs })` 可调）——
+  超时后给调用方回结构化错误，处理器在后台继续跑完、结果被丢弃。长任务请
+  用后台 job + `luaExt.emit` 事件回推。
 
 ### 2.2 UI 原语层 `tui.ui`
 
@@ -126,15 +129,17 @@ offCmd()  // 注销
 ### 2.4 扩展总线 `tui.luaExt`（与 nvim 插件互调）
 
 ```ts
-// 调 nvim 插件注册的方法（api.rpc_register）
-const v = await tui.luaExt.call('git-panel', 'currentBranch')   // 失败 reject 远端错误
+// 调 nvim 插件注册的方法（api.rpc_register）；失败 reject 远端错误，
+// 超时（默认 30s，opts.timeoutMs 可调）reject timeout 错误
+const v = await tui.luaExt.call('git-panel', 'currentBranch')
 // 发事件给 nvim 插件（User DshTuiExtEvent + api.on_ext_event 回调）
 tui.luaExt.emit('git-panel', 'branch-changed', { branch: 'main' })
-// 应答 nvim 插件发来的 vim.rpcrequest
+// 应答 nvim 插件发来的 vim.rpcrequest；每条请求保证在 timeoutMs 内得到
+// 应答（超时回结构化错误，处理器后台继续、结果丢弃）
 const offRpc = tui.luaExt.on('git-panel', async (method, args) => {
   if (method === 'commits') return [{ hash: 'abc' }]
   throw new Error('unknown method: ' + method)
-})
+}, { timeoutMs: 10_000 })
 ```
 
 ### 2.5 TuiExtApi 类型摘要
@@ -239,9 +244,12 @@ Lua → Node: vim.rpcrequest(S.channel, 'dsh-ext', { v = 1, id = extId, method, 
 Node → Lua: runner 调 api.rpc_dispatch(extId, method, args) / api.rpc_event(...)
 ```
 
-- 应答统一为 `{ ok = true, value }` / `{ ok = false, error }`；**任何请求必有应答**
-  （未注册 extId / 处理异常都回错误）—— 悬挂的 rpcrequest 会卡死 nvim UI 循环。
-- extId 路由表：Node 侧 `tui.luaExt.on` 注册，Lua 侧 `api.rpc_register` 注册。
+- 应答统一为 `{ ok = true, value }` / `{ ok = false, error }`；**任何请求必有
+  有界应答**（未注册 extId / 处理异常 / 处理器超时都回错误，默认上限
+  `EXT_HANDLER_TIMEOUT_MS` = 30s）—— `vim.rpcrequest` 阻塞 nvim 且**不可从
+  Lua 取消**，有界应答是唯一的冻结防护；超时后处理器在后台继续、结果丢弃。
+- extId 路由表：Node 侧 `tui.luaExt.on` 注册（可带 `{ timeoutMs }`），Lua 侧
+  `api.rpc_register` 注册。
 - TUI teardown / 插件 unregister 时双向拒掉在途请求，广播 `DshTuiShutdown`。
 
 ## 五、兼容性与版本策略

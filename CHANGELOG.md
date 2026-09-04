@@ -1,4 +1,8 @@
 # Changelog
+
+本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
+每个版本标签的附注与本表对应条目一致。
+
 ## [未发布]
 
 - **插件开放接口（EXT-API，P0–P4）**。本插件对外开放稳定接口，其他 dsh 插件
@@ -7,8 +11,8 @@
     白名单（request/call/lua/ex，带超时）、ui 原语（card 可原地更新/关闭、
     float/picker/notice/statuslineSegment、右缘 panel 单槽）、斜杠命令注册
     （重名拒绝）、`tui:*` 生命周期事件（晚订阅补发）与 onSessionEvent 镜像
-    订阅、dsh-ext 双向总线（luaExt.call/emit/on，处理器内 nvim 调用死锁
-    守卫）。
+    订阅、dsh-ext 双向总线（luaExt.call/emit/on，**有界应答**：每条请求
+    30s 内必回，超时回结构化错误、处理器后台继续）。
   - Lua 面（TUI 实例内的 nvim 插件）：`require('dsh_tui').api` —— 登记制
     register/unregister（所有权守卫放行已登记窗口，未登记维持严管）、
     float_open/close、panel_claim/release（单槽互斥、resize 重锚定、q/Esc
@@ -21,10 +25,6 @@
   - 文档与示例：docs/EXT-API.md；examples/nvim/git-panel.lua 与
     examples/dsh-plugin/（进入 npm files 白名单）；smoke 新增扩展接口全
     覆盖段（含 boot 守卫豁免、双向 RPC、钩子、命令目录合并、注销清理）。
-
-
-本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
-每个版本标签的附注与本表对应条目一致。
 
 ## [v0.2.16（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.16)
 
