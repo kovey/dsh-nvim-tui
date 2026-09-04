@@ -98,6 +98,21 @@ export interface ExtPickerOpts {
         active?: boolean;
     }>;
 }
+/** ui.panel options (the right-edge panel slot). */
+export interface ExtPanelOpts {
+    side?: 'right';
+    width?: number;
+    title?: string;
+    /** Hints embedded in the bottom border (nvim >= 0.10). */
+    footer?: string;
+    /** Initial content lines. */
+    lines?: string[];
+}
+/** Claimed panel: write content via api.nvim into `buf`. */
+export interface ExtPanelHandles {
+    win: number;
+    buf: number;
+}
 /** Extension slash command (name WITHOUT the leading '/'). */
 export interface ExtCommandSpec {
     name: string;
@@ -120,6 +135,10 @@ export interface ExtUiLayer {
     notice(text: unknown): void;
     /** Add/update a statusline segment ('' removes it). */
     statuslineSegment(id: string, text: string, priority?: number): void;
+    /** Claim the right-edge panel slot (null when unavailable/headless). */
+    panel(opts: ExtPanelOpts): Promise<ExtPanelHandles | null>;
+    /** Release the panel slot claimed via ui.panel. */
+    panelRelease(): Promise<void>;
 }
 /** The stable public surface. Consume via `ctx.get('nvim-tui')`. */
 export interface TuiExtApi {

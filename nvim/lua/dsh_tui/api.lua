@@ -190,15 +190,16 @@ function API.ensure_registry(id)
 end
 
 --- Open a managed float owned by a registered extension. Returns
---- { win, buf }, or nil + error. The window is registered, so the
---- boot guard / clone guard exempt it; `q`/`<Esc>` close it (the owner is
---- told via User DshTuiExtWindowClosed).
+--- { win, buf }, or { err = message } on failure (the msgpack-RPC client
+--- surfaces only the FIRST return value, so errors must be structured).
+--- The window is registered, so the boot guard / clone guard exempt it;
+--- `q`/`<Esc>` close it (the owner is told via User DshTuiExtWindowClosed).
 ---   opts = { lines, title?, relative? ('editor'|'cursor'), width?,
 ---            height?, row?, col? }
 function API.float_open(id, opts)
   local reg = S.extReg[id]
   if reg == nil then
-    return nil, 'not registered: ' .. tostring(id)
+    return { err = 'not registered: ' .. tostring(id) }
   end
   opts = type(opts) == 'table' and opts or {}
   local lines = opts.lines
@@ -231,7 +232,7 @@ function API.float_open(id, opts)
   local ok, win = pcall(vim.api.nvim_open_win, buf, false, cfg)
   if not ok then
     pcall(vim.api.nvim_buf_delete, buf, { force = true })
-    return nil, 'float_open failed: ' .. tostring(win)
+    return { err = 'float_open failed: ' .. tostring(win) }
   end
   reg.windows[win] = 'float'
   reg.buffers[buf] = true
@@ -274,6 +275,103 @@ end
 
 function API.input_get()
   return require('dsh_tui.buffer').input_text()
+end
+
+-- ===========================================================================
+-- P2: the right-edge panel slot (the reasoning panel's geometry generalized)
+-- ===========================================================================
+
+--- Right-edge panel geometry shared by the reasoning panel and extension
+--- panels. width <= 0 → the reasoning default (45% clamp, 30..52 cols);
+--- a positive width is clamped to 24..60% of the screen. title/footer embed
+--- into the border on nvim >= 0.9 / 0.10 respectively.
+function API.panel_geometry(width, title, footer)
+  local cols = vim.o.columns
+  local w = tonumber(width)
+  if w == nil or w <= 0 then
+    w = math.max(30, math.min(52, math.floor(cols * 0.45)))
+  else
+    w = math.max(24, math.min(math.floor(w), math.max(24, math.floor(cols * 0.6))))
+  end
+  local height = math.max(3, math.floor(vim.o.lines * 0.75))
+  local cfg = {
+    relative = 'editor',
+    anchor = 'NE',
+    row = 0,
+    col = cols - 1,
+    width = w,
+    height = height,
+  }
+  if vim.fn.has('nvim-0.9') == 1 and type(title) == 'string' and title ~= '' then
+    cfg.title = title
+    cfg.title_pos = 'center'
+  end
+  if vim.fn.has('nvim-0.10') == 1 and type(footer) == 'string' and footer ~= '' then
+    cfg.footer = footer
+    cfg.footer_pos = 'left'
+  end
+  return cfg
+end
+
+--- Claim the right-edge panel slot for a registered extension. ONE slot
+--- exists (shared with no one — the reasoning panel is a separate float and
+--- may overlay it, like it overlays the chat). Returns { win, buf }, or
+--- { err = message } when the slot is taken. Content stays writable through
+--- the API; the TUI re-anchors the panel on terminal resize.
+---   opts = { width?, title?, footer?, lines? }
+function API.panel_claim(id, opts)
+  local reg = S.extReg[id]
+  if reg == nil then
+    return { err = 'not registered: ' .. tostring(id) }
+  end
+  if S.extPanel ~= nil then
+    return { err = 'panel slot occupied by ' .. tostring(S.extPanel.id) }
+  end
+  opts = type(opts) == 'table' and opts or {}
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = 'nofile'
+  vim.bo[buf].bufhidden = 'wipe'
+  vim.bo[buf].swapfile = false
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, opts.lines or {})
+  require('dsh_tui.popup_core').lock_display_keys(buf)
+  local cfg = API.panel_geometry(opts.width, opts.title, opts.footer)
+  cfg.border = 'rounded'
+  cfg.style = 'minimal'
+  cfg.zindex = 30 -- above the chat, below menus/approvals (reasoning tier)
+  local win = vim.api.nvim_open_win(buf, false, cfg)
+  vim.wo[win].number = false
+  vim.wo[win].signcolumn = 'no'
+  vim.wo[win].cursorline = false
+  local panel = { id = id, win = win, buf = buf, width = cfg.width,
+    title = opts.title, footer = opts.footer }
+  reg.panel = panel
+  reg.windows[win] = 'panel'
+  reg.buffers[buf] = true
+  S.extPanel = panel
+  require('dsh_tui.input').focus()
+  return { win = win, buf = buf }
+end
+
+--- Release the panel slot (no-op when this extension holds no panel).
+function API.panel_release(id)
+  local reg = S.extReg[id]
+  if reg == nil then
+    return nil, 'not registered: ' .. tostring(id)
+  end
+  if reg.panel ~= nil then
+    local p = reg.panel
+    reg.panel = nil
+    if S.extPanel == p then S.extPanel = nil end
+    if p.win ~= nil and vim.api.nvim_win_is_valid(p.win) then
+      pcall(vim.api.nvim_win_close, p.win, true)
+    end
+    if p.buf ~= nil and vim.api.nvim_buf_is_valid(p.buf) then
+      reg.buffers[p.buf] = nil
+      pcall(vim.api.nvim_buf_delete, p.buf, { force = true })
+    end
+    require('dsh_tui.input').focus()
+  end
+  return true
 end
 
 return API

@@ -29,6 +29,8 @@ S.mainTab = nil
 -- ownership/self-heal guards (autocmds.lua) exempt registered windows and
 -- buffers; everything unregistered keeps the strict behaviour.
 S.extReg = {}
+-- The occupied right-edge panel slot (owned by exactly one extension).
+S.extPanel = nil
 
 -- per-session registry
 S.chats = {}          -- session id -> chat buffer

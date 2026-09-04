@@ -56,28 +56,9 @@ end
 --- three quarters of the screen height (a panel, not a full-height column —
 --- it may overlay the input area only when multi-line input grows tall).
 --- The chat keeps its full width (the panel overlays its right side, like
---- the other popups).
+--- the other popups). Shared formula with the ext panel slot (P2).
 function SE.reasoning_panel_geometry()
-  local width = math.max(30, math.min(52, math.floor(vim.o.columns * 0.45)))
-  local height = math.max(3, math.floor(vim.o.lines * 0.75))
-  local cfg = {
-    relative = 'editor',
-    anchor = 'NE',
-    row = 0,
-    col = vim.o.columns - 1,
-    width = width,
-    height = height,
-  }
-  if vim.fn.has('nvim-0.9') == 1 then
-    cfg.title = ' 思考与工具记录 '
-    cfg.title_pos = 'center'
-  end
-  -- Bottom operation hints embedded in the border (like the popups).
-  if vim.fn.has('nvim-0.10') == 1 then
-    cfg.footer = ' C-o 收起面板 · q 关闭 '
-    cfg.footer_pos = 'left'
-  end
-  return cfg
+  return require('dsh_tui.api').panel_geometry(0, ' 思考与工具记录 ', ' C-o 收起面板 · q 关闭 ')
 end
 
 --- Open/close the reasoning panel (a popup hugging the right edge). <C-o>.

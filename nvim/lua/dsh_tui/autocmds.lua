@@ -268,6 +268,14 @@ function A.install()
         cfg.style = 'minimal'
         pcall(vim.api.nvim_win_set_config, S.reasoningWin, cfg)
       end
+      -- Extension panel slot: same re-anchor discipline.
+      if S.extPanel ~= nil and S.extPanel.win ~= nil
+        and vim.api.nvim_win_is_valid(S.extPanel.win) then
+        local cfg = API.panel_geometry(S.extPanel.width, S.extPanel.title, S.extPanel.footer)
+        cfg.border = 'rounded'
+        cfg.style = 'minimal'
+        pcall(vim.api.nvim_win_set_config, S.extPanel.win, cfg)
+      end
     end,
   })
   -- A colorscheme (re)applied after start() — lazy setups, mid-session

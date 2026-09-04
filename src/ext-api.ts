@@ -96,6 +96,23 @@ export interface ExtPickerOpts {
   items: Array<{ label: string; value: string; active?: boolean }>
 }
 
+/** ui.panel options (the right-edge panel slot). */
+export interface ExtPanelOpts {
+  side?: 'right'
+  width?: number
+  title?: string
+  /** Hints embedded in the bottom border (nvim >= 0.10). */
+  footer?: string
+  /** Initial content lines. */
+  lines?: string[]
+}
+
+/** Claimed panel: write content via api.nvim into `buf`. */
+export interface ExtPanelHandles {
+  win: number
+  buf: number
+}
+
 /** Extension slash command (name WITHOUT the leading '/'). */
 export interface ExtCommandSpec {
   name: string
@@ -119,6 +136,10 @@ export interface ExtUiLayer {
   notice(text: unknown): void
   /** Add/update a statusline segment ('' removes it). */
   statuslineSegment(id: string, text: string, priority?: number): void
+  /** Claim the right-edge panel slot (null when unavailable/headless). */
+  panel(opts: ExtPanelOpts): Promise<ExtPanelHandles | null>
+  /** Release the panel slot claimed via ui.panel. */
+  panelRelease(): Promise<void>
 }
 
 /** The stable public surface. Consume via `ctx.get('nvim-tui')`. */
@@ -273,9 +294,9 @@ export function installExtApi(app: App): void {
         const res = await app.luaCall('return require("dsh_tui.api").float_open(...)', [
           '__node__', { lines: opts.lines, title: opts.title, relative: opts.relative,
             width: opts.width, height: opts.height, row: opts.row, col: opts.col },
-        ]) as { win?: unknown; buf?: unknown } | null | undefined
+        ]) as { win?: unknown; buf?: unknown; err?: unknown } | null | undefined
         if (res === null || res === undefined || typeof res.win !== 'number' || typeof res.buf !== 'number') {
-          throw new Error('ui.float: nvim float_open failed')
+          throw new Error(`ui.float: ${String((res as { err?: unknown } | null | undefined)?.err ?? 'nvim float_open failed')}`)
         }
         nodeFloats.set(id, res.win)
         return { id, win: res.win, buf: res.buf }
@@ -293,6 +314,22 @@ export function installExtApi(app: App): void {
         if (clean === '') app.extStatusSegments.delete(id)
         else app.extStatusSegments.set(id, { text: clean, priority })
         app.updateStatusline()
+      },
+      panel: async (opts) => {
+        if (app.nvim === null || app.headless) return null
+        const res = await app.luaCall('return require("dsh_tui.api").panel_claim(...)', [
+          '__node__', { width: opts.width, title: opts.title, footer: opts.footer, lines: opts.lines ?? [] },
+        ]) as { win?: unknown; buf?: unknown; err?: unknown } | null | undefined
+        if (res === null || res === undefined || typeof res.err === 'string') {
+          app.notice(`⚠ ui.panel: ${String(res?.err ?? '不可用')}`)
+          return null
+        }
+        if (typeof res.win !== 'number' || typeof res.buf !== 'number') return null
+        return { win: res.win, buf: res.buf }
+      },
+      panelRelease: async () => {
+        if (app.nvim === null) return
+        await app.luaCall('require("dsh_tui.api").panel_release(...)', ['__node__']).catch(() => {})
       },
     },
 
