@@ -202,6 +202,10 @@ M.session_list_jump = PP.session_list_jump
 M.session_list_select = PP.session_list_select
 M.session_list_new = PP.session_list_new
 M.close_session_list = PP.close_session_list
+M.show_input_history = PP.show_input_history
+M.input_history_select = PP.input_history_select
+M.input_history_jump = PP.input_history_jump
+M.close_input_history = PP.close_input_history
 
 -- dsh_tui.subagent_chat: the subagent chat window (transcript + input)
 M.open_subagent_chat = SAC.open

@@ -2520,6 +2520,34 @@ description:
     'unregister removes the ext slash command from the catalog')
   await lua(`vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "" })`, [])
 
+  // 13k. /history 输入历史浮窗：最新在前、多行 ↵ 折叠展示、Enter 回填原文
+  await lua(`local S = require("dsh_tui.state")
+    S.history = { "第一条", "第二条\\n多行", "第三条" }`, [])
+  await lua(`require("dsh_tui").show_input_history()`, [])
+  const histWin = await lua(`return require("dsh_tui")._histWin`, [])
+  const histBuf = await lua(`return require("dsh_tui")._histBuf`, [])
+  assert.ok(Number.isInteger(histWin), 'history float opens')
+  const histLines = await nvim.request('nvim_buf_get_lines', [histBuf, 0, -1, false])
+  assert.equal(histLines[1], ' 第三条', 'newest entry listed first')
+  assert.ok(histLines.includes(' 第二条↵多行'), 'multi-line entry collapsed with ↵ for display')
+  await lua(`require("dsh_tui").input_history_select()`, [])
+  assert.equal(await lua(`return table.concat(vim.api.nvim_buf_get_lines(require("dsh_tui").ids().inputBuf, 0, -1, false), "\\n")`, []),
+    '第三条', 'Enter refills the input with the selected entry')
+  await lua(`require("dsh_tui").show_input_history()`, [])
+  await lua(`vim.api.nvim_win_set_cursor(require("dsh_tui")._histWin, { 3, 0 })`, [])
+  await lua(`require("dsh_tui").input_history_select()`, [])
+  assert.equal(await lua(`return table.concat(vim.api.nvim_buf_get_lines(require("dsh_tui").ids().inputBuf, 0, -1, false), "\\n")`, []),
+    '第二条\n多行', 'multi-line entry refills INTACT (no ↵ loss)')
+  await lua(`require("dsh_tui").show_input_history()`, [])
+  const histMaps = await lua(`local out = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(require("dsh_tui")._histBuf, "n")) do table.insert(out, m.lhs) end
+    return out`, [])
+  assert.ok(histMaps.includes('q') && histMaps.includes('<Esc>') && histMaps.includes('<CR>'),
+    'history float binds q/Esc/Enter')
+  await lua(`require("dsh_tui").close_input_history()`, [])
+  assert.equal(await lua(`return require("dsh_tui")._histWin`, []), null, 'history float closes')
+  await lua(`require("dsh_tui").fill_input(...)`, [''])
+
   // 12. require() must survive rtp resets (lazy.nvim rebuilds runtimepath and
   // enables vim.loader — package.preload keeps dsh_tui resolvable).
   await lua(

@@ -111,6 +111,9 @@ S.float = { win = nil, buf = nil, kind = nil, state = nil } -- approval/question
 
 S.skillWin = nil
 S.linesWin = nil
+S.histWin = nil    -- /history 输入历史浮窗
+S.histBuf = nil
+S.histEntries = {} -- 选中时回填原文（展示行是 ↵ 折叠的摘要行）
 end -- first-run initialization
 
 return S

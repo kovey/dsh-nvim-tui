@@ -655,5 +655,91 @@ function P.close_session_list()
   I.focus()
 end
 
+-- ===========================================================================
+-- /history — input history browser (newest first; Enter fills the input)
+-- ===========================================================================
+
+--- Display-line form: multi-line entries collapse to ONE row (embedded
+--- newlines → ↵) so the float's row math stays simple; the ORIGINAL text is
+--- kept in S.histEntries for the select action.
+local function hist_display_line(entry)
+  return (entry:gsub('\n', '↵'))
+end
+
+function P.show_input_history(entries)
+  P.close_input_history()
+  -- Default source = the input buffer's own history (state field).
+  S.histEntries = entries ~= nil and entries or S.history or {}
+  local n = #S.histEntries
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = 'nofile'
+  vim.bo[buf].bufhidden = 'wipe'
+  vim.bo[buf].swapfile = false
+  vim.b[buf].ministatusline_disable = true
+  S.histBuf = buf
+  local rows = { ' 输入历史（Enter 回填 · q 关闭） ' }
+  for i = n, 1, -1 do -- newest first
+    rows[#rows + 1] = ' ' .. hist_display_line(S.histEntries[i])
+  end
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, rows)
+  vim.bo[buf].modifiable = false
+  local cap = math.min(16, math.max(5, vim.o.lines - 6))
+  local height = math.min(cap, #rows)
+  S.histWin = vim.api.nvim_open_win(buf, true, {
+    relative = 'editor',
+    row = centered_row(height),
+    col = centered_col(88),
+    width = 88,
+    height = height,
+    border = 'rounded',
+    style = 'minimal',
+    title = ' 输入历史（/history） ',
+    title_pos = 'center',
+  })
+  vim.wo[S.histWin].cursorline = true
+  vim.wo[S.histWin].number = false
+  vim.wo[S.histWin].signcolumn = 'no'
+  local k = function(key, cmd)
+    vim.keymap.set('n', key, '<Cmd>lua ' .. cmd .. '<CR>', { buffer = buf })
+  end
+  k('<CR>', 'require("dsh_tui").input_history_select()')
+  k('q', 'require("dsh_tui").close_input_history()')
+  k('<Esc>', 'require("dsh_tui").close_input_history()')
+  k('G', 'require("dsh_tui").input_history_jump("last")')
+  k('gg', 'require("dsh_tui").input_history_jump("first")')
+  -- Header row is display-only: park the cursor on the first entry.
+  vim.api.nvim_win_set_cursor(S.histWin, { math.min(2, #rows), 0 })
+end
+
+--- Enter: fill the INPUT box with the cursor row's ORIGINAL entry text.
+--- The buffer rows are the ↵-collapsed display lines plus the header, so
+--- row 2 = newest entry; reverse-mapped back to S.histEntries.
+function P.input_history_select()
+  if not (S.histWin and vim.api.nvim_win_is_valid(S.histWin)) then return end
+  local row = vim.api.nvim_win_get_cursor(S.histWin)[1]
+  local idx = #S.histEntries - (row - 2) -- row 2 = newest (index #entries)
+  local entry = S.histEntries[idx]
+  P.close_input_history()
+  if entry ~= nil then
+    require('dsh_tui.input').fill(entry)
+  end
+end
+
+function P.input_history_jump(where)
+  if not (S.histWin and vim.api.nvim_win_is_valid(S.histWin)) then return end
+  local rows = vim.api.nvim_buf_line_count(S.histBuf)
+  local row = where == 'last' and rows or math.min(2, rows)
+  vim.api.nvim_win_set_cursor(S.histWin, { row, 0 })
+end
+
+function P.close_input_history()
+  if S.histWin and vim.api.nvim_win_is_valid(S.histWin) then
+    pcall(vim.api.nvim_win_close, S.histWin, true)
+  end
+  S.histWin = nil
+  S.histBuf = nil
+  S.histEntries = {}
+end
+
 
 return P

@@ -5,6 +5,13 @@
 
 ## [v0.3.0（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.0)
 
+- **补全三个此前仅有占位目录、无处理器的命令**：
+  - `/dir [路径]`：目录浏览浮窗（Enter 目录进入 / 文件在新标签页打开，
+    gt/gT 切换）；
+  - `/lines [路径]`：文件行视图（只读浮窗，`i` 打开编辑；无参弹目录选择器）；
+  - `/history`：输入历史浏览（最新在前，多行条目以 ↵ 折叠展示、Enter 回填
+    原文，q/Esc 关闭）。
+
 覆盖提交：
 [`b2f51be`](https://github.com/kovey/dsh-nvim-tui/commit/b2f51be) ·
 [`8b44f34`](https://github.com/kovey/dsh-nvim-tui/commit/8b44f34) ·

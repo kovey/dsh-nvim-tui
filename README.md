@@ -56,7 +56,7 @@ dsh --profile nvim-tui
 - **i18n**：runner 侧界面字典化，`/locale zh|en` 即时切换
 - **自然语言命令**：斜杠命令、精确短语即时路由；模糊语句交给**大模型**
   判断（注册 `tui_command` 工具，agent 决定执行命令还是正常聊天）
-- **斜杠命令**：57 个内置命令，`/` 自动弹出补全菜单（命令名 + 说明实时过滤）
+- **斜杠命令**：60 个内置命令，`/` 自动弹出补全菜单（命令名 + 说明实时过滤）
 
 ## 安装 / 运行
 
@@ -224,11 +224,14 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 会话 | `/fb up\|down [备注]` | 对最后一条助手消息点赞/点踩（message-feedback） |
 | 会话 | `/subagents` | 子代理目录（思考链只读回放 + **对话窗口** + continuable 续聊） |
 | 会话 | `/workflow` | 工作流运行视图（阶段树 + agent 序列 + 日志；转录内嵌套回放） |
+| 会话 | `/history` | 输入历史浏览（最新在前，Enter 回填输入框，多行条目原样恢复） |
 | 会话 | `/queue` | 消息队列：查看/编辑/删除排队消息、清空（agent inbox 投影，状态栏 ⏳ 计数） |
 | 会话 | `/workspace [add <目录> [标题] \| delete <id>]` | 工作区管理（dsh-workspace：分组/排序/归档） |
 | 会话 | `/archive [会话id]` | 归档会话（从所有列表隐藏，非破坏性） |
 | 会话 | `/locale [zh\|en]` | 界面语言切换（runner 侧字典化；Lua 按键提示保持中文） |
 | 信息 | `/context` | 上下文组成分解（≈used/capacity · system/tools/messages · claim 窗口，读 sessionProjections） |
+| 信息 | `/dir [路径]` | 目录浏览浮窗（Enter 目录进入 / 文件在新标签页打开，gt/gT 切换） |
+| 信息 | `/lines [路径]` | 文件行视图（只读浮窗，`i` 打开编辑；无参时弹目录选择器） |
 | 信息 | `/plugins` | 宿主插件清单（loader 条目只读投影） |
 | 信息 | `/market [关键词 \| refresh \| update-all]` | **插件市场**：awesome-dsh-plugin 精选目录（2140+ 插件）按 GitHub ★ 倒序，安装/更新/卸载（`dsh plugin` CLI，重启生效）+ **热启停**（cordis.patch.yml + HMR 免重启）+ `↑` 更新标记 + update-all，磁盘缓存 + 离线可用 |
 | 模型 | `/models` | 模型/供应商目录（活路由 + 可配置 provider 清单 + 当前选择） |

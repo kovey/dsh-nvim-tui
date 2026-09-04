@@ -657,6 +657,42 @@ const attachCommand = async (app: App, a: string | undefined) => {
   app.notice(`已引用: ${rel}（@ 路径会随消息发送，模型按需读取）`)
 }
 
+/** /dir [路径] — navigable directory browser: Enter on a file opens it in a
+ *  fresh nvim tab (directories descend inside the float). */
+const dirCommand = async (app: App, a: string | undefined) => {
+  const start = (a ?? '').trim()
+  const base = start === '' ? process.cwd() : (isAbsolute(start) ? start : join(process.cwd(), start))
+  const picked = await openDirPicker(app, base)
+  if (picked === null) return
+  const ok = await app.luaCall('return require("dsh_tui").open_file_tab(...)', [picked]).catch(() => false)
+  if (ok === true) app.notice(`已打开 ${picked}（新标签页，gt/gT 切换）`)
+}
+
+/** /lines [路径] — lightweight file viewer: read-only float with the file's
+ *  lines, `i` opens it for editing in a fresh tab. No argument → the
+ *  directory picker selects the target. */
+const linesCommand = async (app: App, a: string | undefined) => {
+  const arg = (a ?? '').trim()
+  let path: string | null = arg
+  if (path === '') {
+    path = await openDirPicker(app, process.cwd())
+    if (path === null) return
+  }
+  const abs = isAbsolute(path) ? path : join(process.cwd(), path)
+  const content = await app.readFileSnapshot(abs)
+  if (content === null) {
+    app.notice(`无法读取 ${abs}（不存在 / 目录 / 二进制 / 超过 256KB）`)
+    return
+  }
+  await app.luaCall('require("dsh_tui").show_lines_float(...)', [abs, content.split('\n'), abs]).catch(() => {})
+}
+
+/** /history — input history browser: newest first, Enter fills the input
+ *  box with the selected entry (multi-line entries round-trip intact). */
+const historyCommand = (app: App) => {
+  void app.luaCall('require("dsh_tui").show_input_history()', []).catch(() => {})
+}
+
 /** /deliverables — files this session's current turn produced (mutation
  *  tools' follow-along paths, derived from tool/call arguments). */
 const deliverablesCommand = async (app: App) => {
@@ -1396,6 +1432,9 @@ export function installCommands(app: App): void {
     { name: '/workflow', desc: t('工作流运行视图（阶段树）'), usage: t(''), group: t('会话'), fn: () => workflowCommand(app) },
     { name: '/permission', desc: t('权限预设（沙箱+审批组合）'), usage: t('[name]'), group: t('审批'), fn: (a) => permissionCommand(app, a) },
     { name: '/attach', desc: t('附加文件/目录（图片为附件，其余为 @ 引用）'), usage: t('[路径]'), group: t('会话'), fn: (a) => attachCommand(app, a) },
+    { name: '/dir', desc: t('目录浏览（文件回车在新标签页打开）'), usage: t('[路径]'), group: t('信息'), fn: (a) => dirCommand(app, a) },
+    { name: '/lines', desc: t('文件行视图（i 打开编辑）'), usage: t('[路径]'), group: t('信息'), fn: (a) => linesCommand(app, a) },
+    { name: '/history', desc: t('输入历史浏览（回车回填）'), usage: t(''), group: t('会话'), fn: () => historyCommand(app) },
     { name: '/deliverables', desc: t('本回合交付物（打开产物文件）'), usage: t(''), group: t('信息'), fn: () => deliverablesCommand(app) },
     { name: '/settings', desc: t('设置总览/编辑'), usage: t('[edit]'), group: t('系统'), fn: (a) => settingsCommand(app, a) },
     { name: '/bell', desc: t('回合结束响铃开关'), usage: t('[on|off]'), group: t('系统'), fn: (a) => bellCommand(app, a) },
