@@ -7,9 +7,11 @@
 --- S.extReg, and the ownership/self-heal layers (autocmds.lua) exempt
 --- registered windows/buffers from their guards.
 ---
---- P0 scope: register/unregister, handles(), event emission (User
---- autocmds), and the ownership helpers the guards consult. Float/panel
---- primitives, the dsh-ext RPC bus and input/command hooks land in P1-P3.
+--- Surface: register/unregister, handles(), event emission (User autocmds +
+--- api.last_event), managed floats (float_open/close), the right-edge panel
+--- slot (panel_claim/release), input primitives, the dsh-ext RPC bus
+--- (rpc_call/rpc_register/rpc_dispatch/rpc_event), before_submit hooks,
+--- Lua-side slash commands, and the session-event mirror.
 local S = require('dsh_tui.state')
 local API = {}
 
