@@ -63,6 +63,23 @@ export interface WelcomeLine {
     text: string;
     group?: string;
 }
+/** Ext-card render options (the P1 extension API's ui.card). */
+export interface ExtCardOpts {
+    /** Extension name shown in the card header. */
+    plugin: string;
+    title: string;
+    body: string;
+    actions?: Array<{
+        label: string;
+        value: string;
+    }>;
+}
+/** Handle returned by pushExtCard: update/dismiss the block in place. */
+export interface ExtCardHandle {
+    id: string;
+    update(next: Partial<ExtCardOpts>): void;
+    dismiss(): void;
+}
 interface ToolCallRecord {
     name: string;
     startedAt: number;
@@ -107,6 +124,14 @@ export declare class FeedRenderer {
     ns: number | null;
     lastView: string[];
     dense: boolean;
+    /** Ext cards (P1 extension API): card id → tracked base range, so
+     *  update()/dismiss() splice the block in place (flush rebuilds the full
+     *  view from base, so deletions propagate). */
+    extCards: Map<string, {
+        start: number;
+        length: number;
+    }>;
+    extCardSeq: number;
     whale: boolean;
     welcome: (() => {
         above?: WelcomeLine[];
@@ -137,6 +162,14 @@ export declare class FeedRenderer {
     pushDiff(header: string, lines: string[]): void;
     pushSubagent(line: string): void;
     pushWorkflow(line: string): void;
+    /** Ext card (P1 extension API): a `▣ plugin · title` header block with an
+     *  indented body and optional action hints. Returns a handle that updates
+     *  or dismisses the block IN PLACE (tracked base range). */
+    pushExtCard(opts: ExtCardOpts, cardId?: string): ExtCardHandle;
+    /** Card block lines: blank separator + header + indented body + hints. */
+    private extCardLines;
+    /** After a splice at `afterStart`, adjust every later card's base offset. */
+    private shiftExtCards;
     pushError(text: unknown): void;
     /** Extract plain text from a message (content blocks or raw text). */
     static messageText(message: ChatMessage | undefined): string;

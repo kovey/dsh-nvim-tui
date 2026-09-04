@@ -48,7 +48,11 @@ export { BUILD_VERSION, BUILD_STAMP } from './app.js'
 export const name = 'dsh-nvim-tui'
 
 export type { RunnerConfig } from './types.js'
-export type { TuiExtApi, ExtNvimLayer, ExtSessionEventFilter, ExtEventName } from './ext-api.js'
+export type {
+  TuiExtApi, ExtNvimLayer, ExtSessionEventFilter, ExtEventName,
+  ExtUiLayer, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult,
+  ExtPickerOpts, ExtCommandSpec,
+} from './ext-api.js'
 export { EXT_API_VERSION } from './ext-api.js'
 
 /**

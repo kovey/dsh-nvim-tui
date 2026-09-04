@@ -72,6 +72,7 @@ const ROLE_BY_PREFIX: Array<[RegExp, string]> = [
   [/^✗ /, 'DshTuiTool'],
   [/^◇ /, 'DshTuiSubagent'],
   [/^◈ /, 'DshTuiWorkflow'],
+  [/^▣ /, 'DshTuiExt'],
 ]
 
 export interface FeedOptions {
@@ -91,6 +92,22 @@ export interface FeedOptions {
 export interface WelcomeLine {
   text: string
   group?: string
+}
+
+/** Ext-card render options (the P1 extension API's ui.card). */
+export interface ExtCardOpts {
+  /** Extension name shown in the card header. */
+  plugin: string
+  title: string
+  body: string
+  actions?: Array<{ label: string; value: string }>
+}
+
+/** Handle returned by pushExtCard: update/dismiss the block in place. */
+export interface ExtCardHandle {
+  id: string
+  update(next: Partial<ExtCardOpts>): void
+  dismiss(): void
 }
 
 interface ToolCallRecord {
@@ -137,6 +154,11 @@ export class FeedRenderer {
   ns: number | null // extmark namespace, created on first flush
   lastView: string[] // last flushed buffer text, diffed per flush
   dense: boolean // /density: compact tool cards (title line only)
+  /** Ext cards (P1 extension API): card id → tracked base range, so
+   *  update()/dismiss() splice the block in place (flush rebuilds the full
+   *  view from base, so deletions propagate). */
+  extCards: Map<string, { start: number; length: number }>
+  extCardSeq: number
   whale: boolean // blue whale wallpaper (empty) + watermark (content)
   welcome: (() => { above?: WelcomeLine[]; below?: WelcomeLine[] }) | null // empty-state hero block
   whaleFrame: number // animation frame index (wallpaper only)
@@ -188,6 +210,8 @@ export class FeedRenderer {
     this.ns = null
     this.lastView = []
     this.dense = false
+    this.extCards = new Map()
+    this.extCardSeq = 0
     this.ticker = null
     this.eventTime = 0
   }
@@ -202,6 +226,7 @@ export class FeedRenderer {
     this.turnMarkerBase = null
     this.calls.clear()
     this.toolActivity = null
+    this.extCards.clear()
     if (this.ticker !== null) clearTimeout(this.ticker)
     if (this.reasoningBuf !== null) {
       this.panelLines = []
@@ -273,6 +298,58 @@ export class FeedRenderer {
   pushWorkflow(line: string): void {
     this.base.push('', line)
     this.schedule()
+  }
+
+  /** Ext card (P1 extension API): a `▣ plugin · title` header block with an
+   *  indented body and optional action hints. Returns a handle that updates
+   *  or dismisses the block IN PLACE (tracked base range). */
+  pushExtCard(opts: ExtCardOpts, cardId?: string): ExtCardHandle {
+    const id = cardId ?? `ext-${opts.plugin}-${++this.extCardSeq}`
+    const lines = this.extCardLines(opts)
+    const start = this.base.length
+    this.base.push(...lines)
+    this.extCards.set(id, { start, length: lines.length })
+    this.schedule()
+    return {
+      id,
+      update: (next: Partial<ExtCardOpts>) => {
+        const rec = this.extCards.get(id)
+        if (rec === undefined) return
+        const merged: ExtCardOpts = { ...opts, ...next }
+        const nextLines = this.extCardLines(merged)
+        this.base.splice(rec.start, rec.length, ...nextLines)
+        this.shiftExtCards(rec.start, nextLines.length - rec.length)
+        rec.length = nextLines.length
+        this.schedule()
+      },
+      dismiss: () => {
+        const rec = this.extCards.get(id)
+        if (rec === undefined) return
+        this.base.splice(rec.start, rec.length)
+        this.extCards.delete(id)
+        this.shiftExtCards(rec.start, -rec.length)
+        this.schedule()
+      },
+    }
+  }
+
+  /** Card block lines: blank separator + header + indented body + hints. */
+  private extCardLines(opts: ExtCardOpts): string[] {
+    const lines: string[] = ['', `▣ ${FeedRenderer.truncate(`${opts.plugin} · ${opts.title}`, 96)}`]
+    for (const l of String(opts.body ?? '').split('\n')) lines.push(`  ${l}`)
+    const actions = opts.actions ?? []
+    if (actions.length > 0) {
+      lines.push(`  ${actions.slice(0, 4).map((a, i) => `[${i + 1}] ${a.label}`).join('  ')}`)
+    }
+    return lines
+  }
+
+  /** After a splice at `afterStart`, adjust every later card's base offset. */
+  private shiftExtCards(afterStart: number, delta: number): void {
+    if (delta === 0) return
+    for (const rec of this.extCards.values()) {
+      if (rec.start > afterStart) rec.start += delta
+    }
   }
 
   pushError(text: unknown): void {

@@ -184,6 +184,8 @@ export interface App {
    *  ('all' = unfiltered), fed by dsh-ext-register notifications (P3 uses
    *  it to route the session-event mirror). */
   extLuaSubs: Map<string, Set<string> | 'all'>
+  /** Statusline segments contributed by extensions (id → text+priority). */
+  extStatusSegments: Map<string, { text: string; priority: number }>
 
   // -- pending UI state --------------------------------------------------------
   pendingInput: string[]
@@ -348,6 +350,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     extSessionSubs: [],
     extDispatchSessionEvent: () => {},
     extLuaSubs: new Map(),
+    extStatusSegments: new Map(),
 
     svc,
     luaCall,
@@ -384,7 +387,16 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     feedForSubagent: () => undefined,
     refreshList: () => {},
     registerCommands: (specs: CommandSpec[]) => {
-      app.commandSpecs.push(...specs)
+      // Duplicate-name protection (internal modules register first, ext
+      // commands land later at runtime): the second registrant is skipped
+      // with a notice instead of shadowing the first handler.
+      for (const s of specs) {
+        if (app.commandSpecs.some((e) => e.name === s.name)) {
+          app.notice(`⚠ 命令 ${s.name} 已注册，忽略重复`)
+          continue
+        }
+        app.commandSpecs.push(s)
+      }
     },
     commandCatalog: () => app.commandSpecs.map(({ name, desc }) => ({ name, desc })),
     refreshCommandCatalog: async () => {},

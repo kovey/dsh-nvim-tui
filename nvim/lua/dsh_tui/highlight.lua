@@ -92,6 +92,7 @@ function H.applyHighlights()
   vim.cmd('highlight default link DshTuiTool Special')
   vim.cmd('highlight default link DshTuiSubagent Type')
   vim.cmd('highlight default link DshTuiWorkflow Identifier')
+  vim.cmd('highlight default link DshTuiExt Structure')
   vim.cmd('highlight default link DshTuiCode Special')
   -- The popup bottom hint rows borrow the statusline look: floating windows
   -- get no real statusline, so the hint row is styled like one.

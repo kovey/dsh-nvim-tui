@@ -191,6 +191,11 @@ export interface App {
      *  ('all' = unfiltered), fed by dsh-ext-register notifications (P3 uses
      *  it to route the session-event mirror). */
     extLuaSubs: Map<string, Set<string> | 'all'>;
+    /** Statusline segments contributed by extensions (id → text+priority). */
+    extStatusSegments: Map<string, {
+        text: string;
+        priority: number;
+    }>;
     pendingInput: string[];
     pendingImages: Array<SaveImageAttachment | Extract<MessageContent, {
         type: 'image';

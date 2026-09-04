@@ -164,4 +164,116 @@ function API.prune_dead_handles()
   return changed
 end
 
+-- ===========================================================================
+-- P1: managed float windows (registered → guards exempt) + input primitives
+-- ===========================================================================
+
+--- Minimal registry entry for callers that need ownership without a full
+--- register() (the Node runner itself, owner id '__node__'). Internal: does
+--- NOT emit events.
+function API.ensure_registry(id)
+  if S.extReg[id] == nil then
+    S.extReg[id] = {
+      id = id,
+      name = id,
+      version = '0',
+      windows = {},
+      buffers = {},
+      panel = nil,
+      rpc = {},
+      submitHooks = {},
+      eventKinds = nil,
+      sessionCbs = {},
+    }
+  end
+  return S.extReg[id]
+end
+
+--- Open a managed float owned by a registered extension. Returns
+--- { win, buf }, or nil + error. The window is registered, so the
+--- boot guard / clone guard exempt it; `q`/`<Esc>` close it (the owner is
+--- told via User DshTuiExtWindowClosed).
+---   opts = { lines, title?, relative? ('editor'|'cursor'), width?,
+---            height?, row?, col? }
+function API.float_open(id, opts)
+  local reg = S.extReg[id]
+  if reg == nil then
+    return nil, 'not registered: ' .. tostring(id)
+  end
+  opts = type(opts) == 'table' and opts or {}
+  local lines = opts.lines
+  if type(lines) ~= 'table' then lines = {} end
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = 'nofile'
+  vim.bo[buf].bufhidden = 'wipe'
+  vim.bo[buf].swapfile = false
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  local width = math.max(10, math.min(tonumber(opts.width) or 60, math.max(10, vim.o.columns - 2)))
+  local height = math.max(1, math.min(tonumber(opts.height) or math.min(#lines, 12), math.max(1, vim.o.lines - 4)))
+  local relative = opts.relative == 'cursor' and 'cursor' or 'editor'
+  local row = tonumber(opts.row)
+  local col = tonumber(opts.col)
+  local cfg = {
+    relative = relative,
+    anchor = 'NW',
+    row = row ~= nil and row or math.max(0, math.floor((vim.o.lines - height) / 2) - 2),
+    col = col ~= nil and col or math.max(0, math.floor((vim.o.columns - width) / 2)),
+    width = width,
+    height = height,
+    border = 'rounded',
+    style = 'minimal',
+    zindex = 45,
+  }
+  if type(opts.title) == 'string' and opts.title ~= '' and vim.fn.has('nvim-0.9') == 1 then
+    cfg.title = ' ' .. opts.title .. ' '
+    cfg.title_pos = 'center'
+  end
+  local ok, win = pcall(vim.api.nvim_open_win, buf, false, cfg)
+  if not ok then
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    return nil, 'float_open failed: ' .. tostring(win)
+  end
+  reg.windows[win] = 'float'
+  reg.buffers[buf] = true
+  -- Content stays writable through the API, edit keys are silenced, q/Esc
+  -- close (display surfaces — the same discipline as the chat buffers).
+  require('dsh_tui.popup_core').lock_display_keys(buf)
+  vim.api.nvim_buf_set_keymap(buf, 'n', 'q', '<Cmd>close<CR>', { noremap = true })
+  vim.api.nvim_buf_set_keymap(buf, 'n', '<Esc>', '<Cmd>close<CR>', { noremap = true })
+  return { win = win, buf = buf }
+end
+
+--- Close a managed float: close the window, delete its buffer, drop the
+--- ownership records.
+function API.float_close(id, win)
+  local reg = S.extReg[id]
+  if reg == nil then
+    return nil, 'not registered: ' .. tostring(id)
+  end
+  local buf = nil
+  if type(win) == 'number' and vim.api.nvim_win_is_valid(win) then
+    buf = vim.api.nvim_win_get_buf(win)
+    pcall(vim.api.nvim_win_close, win, true)
+  end
+  reg.windows[win] = nil
+  if buf ~= nil and vim.api.nvim_buf_is_valid(buf) then
+    reg.buffers[buf] = nil
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+  end
+  return true
+end
+
+--- Input primitives (whitelisted internal surface).
+function API.input_fill(text)
+  require('dsh_tui.input').fill(text)
+end
+
+function API.input_append(text)
+  require('dsh_tui.input').append(text)
+end
+
+function API.input_get()
+  return require('dsh_tui.buffer').input_text()
+end
+
 return API

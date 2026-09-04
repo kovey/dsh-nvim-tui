@@ -44,6 +44,83 @@ export interface ExtSessionEventFilter {
 }
 /** TUI lifecycle / user-intent events. */
 export type ExtEventName = 'tui:ready' | 'tui:active-session' | 'tui:input' | 'tui:teardown';
+/** ui.card options. */
+export interface ExtCardOpts {
+    /** Render into this session's feed; omitted = the active session. */
+    sessionId?: string;
+    /** Extension name shown in the card header. */
+    plugin: string;
+    title: string;
+    body: string;
+    /** Action hints rendered as a footer row (informational in v1). */
+    actions?: Array<{
+        label: string;
+        value: string;
+    }>;
+    /** Auto-dismiss after this many milliseconds. */
+    ttlMs?: number;
+}
+/** Handle for a rendered card (update/dismiss in place). */
+export interface ExtCardHandle {
+    id: string;
+    update(next: {
+        title?: string;
+        body?: string;
+        actions?: Array<{
+            label: string;
+            value: string;
+        }>;
+    }): void;
+    dismiss(): void;
+}
+/** ui.float options. */
+export interface ExtFloatOpts {
+    lines: string[];
+    title?: string;
+    relative?: 'editor' | 'cursor';
+    width?: number;
+    height?: number;
+    row?: number;
+    col?: number;
+}
+/** Opened float: window/buffer handles (write content via api.nvim). */
+export interface ExtFloatResult {
+    id: string;
+    win: number;
+    buf: number;
+}
+/** ui.picker options. */
+export interface ExtPickerOpts {
+    title: string;
+    items: Array<{
+        label: string;
+        value: string;
+        active?: boolean;
+    }>;
+}
+/** Extension slash command (name WITHOUT the leading '/'). */
+export interface ExtCommandSpec {
+    name: string;
+    desc: string;
+    usage?: string;
+    group?: string;
+    fn: (arg: string) => unknown;
+}
+/** Managed UI primitives (headless degrades to no-ops where flagged). */
+export interface ExtUiLayer {
+    /** Render a plugin card into a session feed. */
+    card(opts: ExtCardOpts): ExtCardHandle;
+    /** Open a managed floating window (ownership-registered). */
+    float(opts: ExtFloatOpts): Promise<ExtFloatResult>;
+    /** Close a float opened via ui.float. */
+    floatClose(id: string): Promise<void>;
+    /** Reuse the TUI picker float; resolves null on cancel. */
+    picker(opts: ExtPickerOpts): Promise<string | null>;
+    /** Transient notice in the feed (one line). */
+    notice(text: unknown): void;
+    /** Add/update a statusline segment ('' removes it). */
+    statuslineSegment(id: string, text: string, priority?: number): void;
+}
 /** The stable public surface. Consume via `ctx.get('nvim-tui')`. */
 export interface TuiExtApi {
     /** Extension API version (semver). */
@@ -67,6 +144,11 @@ export interface TuiExtApi {
     submit(text: string): void;
     /** Fill the input box without submitting. */
     insertInput(text: string): void;
+    /** Managed UI primitives. */
+    ui: ExtUiLayer;
+    /** Register slash commands (name WITHOUT '/') into the completion
+     *  catalog + /help. Duplicate names are rejected. Returns a disposer. */
+    registerCommands(cmds: ExtCommandSpec[]): () => void;
 }
 /** Install the extension API onto the App (runs before boot; index.ts then
  *  publishes the built surface through the cordis registry). */

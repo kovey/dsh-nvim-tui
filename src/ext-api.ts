@@ -51,6 +51,76 @@ export type ExtEventName =
   | 'tui:input'          // user submitted chat input (payload: { text })
   | 'tui:teardown'       // the TUI is shutting down (payload: {})
 
+/** ui.card options. */
+export interface ExtCardOpts {
+  /** Render into this session's feed; omitted = the active session. */
+  sessionId?: string
+  /** Extension name shown in the card header. */
+  plugin: string
+  title: string
+  body: string
+  /** Action hints rendered as a footer row (informational in v1). */
+  actions?: Array<{ label: string; value: string }>
+  /** Auto-dismiss after this many milliseconds. */
+  ttlMs?: number
+}
+
+/** Handle for a rendered card (update/dismiss in place). */
+export interface ExtCardHandle {
+  id: string
+  update(next: { title?: string; body?: string; actions?: Array<{ label: string; value: string }> }): void
+  dismiss(): void
+}
+
+/** ui.float options. */
+export interface ExtFloatOpts {
+  lines: string[]
+  title?: string
+  relative?: 'editor' | 'cursor'
+  width?: number
+  height?: number
+  row?: number
+  col?: number
+}
+
+/** Opened float: window/buffer handles (write content via api.nvim). */
+export interface ExtFloatResult {
+  id: string
+  win: number
+  buf: number
+}
+
+/** ui.picker options. */
+export interface ExtPickerOpts {
+  title: string
+  items: Array<{ label: string; value: string; active?: boolean }>
+}
+
+/** Extension slash command (name WITHOUT the leading '/'). */
+export interface ExtCommandSpec {
+  name: string
+  desc: string
+  usage?: string
+  group?: string
+  fn: (arg: string) => unknown
+}
+
+/** Managed UI primitives (headless degrades to no-ops where flagged). */
+export interface ExtUiLayer {
+  /** Render a plugin card into a session feed. */
+  card(opts: ExtCardOpts): ExtCardHandle
+  /** Open a managed floating window (ownership-registered). */
+  float(opts: ExtFloatOpts): Promise<ExtFloatResult>
+  /** Close a float opened via ui.float. */
+  floatClose(id: string): Promise<void>
+  /** Reuse the TUI picker float; resolves null on cancel. */
+  picker(opts: ExtPickerOpts): Promise<string | null>
+  /** Transient notice in the feed (one line). */
+  notice(text: unknown): void
+  /** Add/update a statusline segment ('' removes it). */
+  statuslineSegment(id: string, text: string, priority?: number): void
+}
+
 /** The stable public surface. Consume via `ctx.get('nvim-tui')`. */
 export interface TuiExtApi {
   /** Extension API version (semver). */
@@ -77,6 +147,12 @@ export interface TuiExtApi {
   submit(text: string): void
   /** Fill the input box without submitting. */
   insertInput(text: string): void
+
+  /** Managed UI primitives. */
+  ui: ExtUiLayer
+  /** Register slash commands (name WITHOUT '/') into the completion
+   *  catalog + /help. Duplicate names are rejected. Returns a disposer. */
+  registerCommands(cmds: ExtCommandSpec[]): () => void
 }
 
 /** Install the extension API onto the App (runs before boot; index.ts then
@@ -87,6 +163,9 @@ export function installExtApi(app: App): void {
     filter: ExtSessionEventFilter
     cb: (sid: string, ev: SessionEvent) => void
   }> = []
+  /** Node-side floats opened via ui.float: key → win id. */
+  const nodeFloats = new Map<string, number>()
+  let floatSeq = 0
 
   /** Fire a tui:* event; subscriber throws are contained (feed notice). */
   const fire = (event: ExtEventName, payload: unknown): void => {
@@ -160,6 +239,78 @@ export function installExtApi(app: App): void {
     submit: (text) => app.send(text),
     insertInput: (text) => {
       void app.luaCall('require("dsh_tui").fill_input(...)', [text]).catch(() => {})
+    },
+
+    ui: {
+      card: (opts) => {
+        const feed = (opts.sessionId !== undefined
+          ? app.sessions.get(opts.sessionId)?.feed
+          : undefined) ?? app.activeFeed()
+        if (feed === undefined) {
+          // No feed yet (pre-boot) / headless without a session: an inert
+          // handle so callers never null-check.
+          const inert: ExtCardHandle = {
+            id: `ext-${opts.plugin}-dropped`,
+            update: () => {},
+            dismiss: () => {},
+          }
+          return inert
+        }
+        const handle = feed.pushExtCard({
+          plugin: opts.plugin,
+          title: opts.title,
+          body: opts.body,
+          actions: opts.actions,
+        })
+        if (opts.ttlMs !== undefined && opts.ttlMs > 0) {
+          setTimeout(() => handle.dismiss(), opts.ttlMs)
+        }
+        return handle
+      },
+      float: async (opts) => {
+        if (app.nvim === null) throw new Error('nvim not connected')
+        const id = `f${++floatSeq}`
+        const res = await app.luaCall('return require("dsh_tui.api").float_open(...)', [
+          '__node__', { lines: opts.lines, title: opts.title, relative: opts.relative,
+            width: opts.width, height: opts.height, row: opts.row, col: opts.col },
+        ]) as { win?: unknown; buf?: unknown } | null | undefined
+        if (res === null || res === undefined || typeof res.win !== 'number' || typeof res.buf !== 'number') {
+          throw new Error('ui.float: nvim float_open failed')
+        }
+        nodeFloats.set(id, res.win)
+        return { id, win: res.win, buf: res.buf }
+      },
+      floatClose: async (id) => {
+        const win = nodeFloats.get(id)
+        nodeFloats.delete(id)
+        if (win === undefined) return
+        await app.luaCall('require("dsh_tui.api").float_close(...)', ['__node__', win]).catch(() => {})
+      },
+      picker: (opts) => app.openPicker(opts.title, opts.items),
+      notice: (text) => app.notice(text),
+      statuslineSegment: (id, text, priority = 100) => {
+        const clean = String(text)
+        if (clean === '') app.extStatusSegments.delete(id)
+        else app.extStatusSegments.set(id, { text: clean, priority })
+        app.updateStatusline()
+      },
+    },
+
+    registerCommands: (cmds) => {
+      const specs = cmds.map((c) => ({
+        name: `/${c.name.replace(/^\//, '')}`,
+        desc: c.desc,
+        usage: c.usage ?? '',
+        group: c.group ?? '扩展',
+        fn: c.fn,
+      }))
+      app.registerCommands(specs)
+      void app.refreshCommandCatalog().catch(() => {})
+      return () => {
+        const names = new Set(specs.map((s) => s.name))
+        app.commandSpecs = app.commandSpecs.filter((s) => !names.has(s.name))
+        void app.refreshCommandCatalog().catch(() => {})
+      }
     },
   }
 
