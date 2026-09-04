@@ -10,7 +10,6 @@ local I = require('dsh_tui.input')
 local CM = require('dsh_tui.cmd_menu')
 local AM = require('dsh_tui.at_menu')
 local L = require('dsh_tui.layout')
-local SE = require('dsh_tui.session')
 local SL = require('dsh_tui.statusline')
 local K = require('dsh_tui.keymaps')
 local H = require('dsh_tui.highlight')
@@ -262,20 +261,10 @@ function A.install()
   -- the new right edge / height.
   vim.api.nvim_create_autocmd('VimResized', {
     callback = function()
-      if S.reasoningWin and vim.api.nvim_win_is_valid(S.reasoningWin) then
-        local cfg = SE.reasoning_panel_geometry()
-        cfg.border = 'rounded'
-        cfg.style = 'minimal'
-        pcall(vim.api.nvim_win_set_config, S.reasoningWin, cfg)
-      end
-      -- Extension panel slot: same re-anchor discipline.
-      if S.extPanel ~= nil and S.extPanel.win ~= nil
-        and vim.api.nvim_win_is_valid(S.extPanel.win) then
-        local cfg = API.panel_geometry(S.extPanel.width, S.extPanel.title, S.extPanel.footer)
-        cfg.border = 'rounded'
-        cfg.style = 'minimal'
-        pcall(vim.api.nvim_win_set_config, S.extPanel.win, cfg)
-      end
+      -- The panel column (ext panels + the reasoning panel when open) is
+      -- editor-relative — one reflow re-anchors the whole stack to the new
+      -- screen edges / height budget.
+      API.panel_reflow()
     end,
   })
   -- A colorscheme (re)applied after start() — lazy setups, mid-session

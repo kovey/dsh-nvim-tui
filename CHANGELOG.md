@@ -39,6 +39,11 @@
     chat 缓冲获得渲染行块 extmark（flush 期跟踪 markdown 变换后的行范围），
     光标停在卡片上按 `1-9` 直接触发动作、`Enter` 弹出动作选择浮窗
     （复用 TUI picker）；`dsh-ext-card-activate` 路由到回调。
+  - **多面板并发**：面板从单槽改为**列栈**——每个 extId 一块，按 claim 顺序
+    自上而下堆叠（右缘，`side='left'` 支持左缘），`height` 显式行数或权重
+    分摊剩余预算，超预算等比挤压；reasoning 面板入栈排在列底、toggle 与
+    VimResized 统一走 `api.panel_reflow()`；注销/面板被外力关闭时出栈并
+    重排。
 
 ## [v0.2.16（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.16)
 

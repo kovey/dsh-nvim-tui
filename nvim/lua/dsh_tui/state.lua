@@ -44,8 +44,9 @@ S.mainTab = nil
 -- ownership/self-heal guards (autocmds.lua) exempt registered windows and
 -- buffers; everything unregistered keeps the strict behaviour.
 S.extReg = {}
--- The occupied right-edge panel slot (owned by exactly one extension).
-S.extPanel = nil
+-- Right/left-edge panel stack (multi-panel): claim-ordered extIds whose
+-- panels occupy the column; api.panel_reflow lays them out top-down.
+S.panelStack = {}
 -- Lua-side extension commands: '/name' -> { name, desc, owner, fn }.
 -- Merged into the completion catalog by cmd_menu.entries().
 S.extCommands = {}

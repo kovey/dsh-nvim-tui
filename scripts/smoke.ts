@@ -2237,10 +2237,10 @@ description:
   assert.equal(await lua(`return vim.api.nvim_win_is_valid(${extFloat.win})`, []), false, 'float_close closes the window')
   assert.equal(await lua(`return vim.api.nvim_buf_is_valid(${extFloat.buf})`, []), false, 'float_close wipes the buffer')
 
-  // 13c. the right-edge panel slot: single occupant, geometry, release
+  // 13c. the panel column: per-ext panels stack, geometry, release
   const extPanel = await lua(`return require("dsh_tui.api").panel_claim("smoke-ext", { title = "Ext 面板", lines = { "a" } })`, []) as { win: number; buf: number }
-  assert.ok(Number.isInteger(extPanel.win), 'panel_claim opens the slot')
-  assert.ok(String((await lua(`return require("dsh_tui.api").panel_claim("smoke-ext", {})`, [])).err).includes('occupied'), 'second claim rejected (single slot)')
+  assert.ok(Number.isInteger(extPanel.win), 'panel_claim opens a panel')
+  assert.ok(String((await lua(`return require("dsh_tui.api").panel_claim("smoke-ext", {})`, [])).err).includes('already holds'), 'same ext cannot claim twice')
   const extPanelCfg = await nvim.request('nvim_win_get_config', [extPanel.win])
   assert.equal(extPanelCfg.relative, 'editor', 'ext panel is editor-relative')
   assert.equal(extPanelCfg.anchor, 'NE', 'ext panel anchors top-right')
@@ -2248,8 +2248,22 @@ description:
     for _, m in ipairs(vim.api.nvim_buf_get_keymap(${extPanel.buf}, "n")) do table.insert(out, m.lhs) end
     return out`, [])
   assert.ok(panelMaps.includes('q') && panelMaps.includes('<Esc>'), 'ext panel binds q/Esc to release the slot')
-  assert.equal(await lua(`return require("dsh_tui.api").panel_release("smoke-ext")`, []), true, 'panel_release frees the slot')
+  // multi-panel: a DIFFERENT ext claims a second panel; the column stacks
+  // it right below the first (claim order), left side supported too
+  const panel2 = await lua(`return require("dsh_tui.api").panel_claim("smoke-all", { title = "第二块", height = 5, side = "right" })`, []) as { win: number; buf: number }
+  assert.ok(Number.isInteger(panel2.win), 'second extension claims a panel concurrently')
+  const cfg1 = await nvim.request('nvim_win_get_config', [extPanel.win])
+  const cfg2 = await nvim.request('nvim_win_get_config', [panel2.win])
+  assert.equal(cfg2.row, cfg1.height, 'second panel stacks below the first (claim order)')
+  assert.equal(cfg2.height, 5, 'explicit height honored')
+  const handlesPanels = await lua(`return require("dsh_tui.api").handles().panels`, [])
+  assert.ok(handlesPanels['smoke-ext'] != null && handlesPanels['smoke-all'] != null, 'handles().panels lists both panels')
+  assert.equal(await lua(`return require("dsh_tui.api").panel_release("smoke-all")`, []), true, 'second panel releases')
+  assert.equal((await nvim.request('nvim_win_get_config', [extPanel.win])).height, cfg1.height + 5,
+    'weighted panel absorbs the freed rows after the second releases (reflow)')
+  assert.equal(await lua(`return require("dsh_tui.api").panel_release("smoke-ext")`, []), true, 'panel_release frees the panel')
   assert.equal(await lua(`return vim.api.nvim_win_is_valid(${extPanel.win})`, []), false, 'released panel window closed')
+  assert.equal(await lua(`return vim.api.nvim_win_is_valid(${panel2.win})`, []), false, 'second panel window closed too')
 
   // 13d. the dsh-ext bus: Lua → Node rpcrequest + Node → Lua dispatch
   nvim.on('request', (method: string, args: unknown[], resp: { send: (r: unknown) => void }) => {

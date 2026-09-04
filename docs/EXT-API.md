@@ -98,7 +98,10 @@ const pick = await tui.ui.picker({ title: '选择会话', items: [{ label: 'A', 
 tui.ui.notice('操作完成')
 tui.ui.statuslineSegment('git-badge', '⎇ main', 50)   // 优先级排序，'' 移除
 
-// 右侧面板槽（单槽互斥，占用时返回 null + notice）
+// 面板列（多面板并发）：每个 extId 一块，按 claim 顺序自上而下堆叠在
+// 右缘（side:'left' 可选）；height 显式行数，否则按权重分摊剩余预算；
+// reasoning 面板打开时排到列底。Node 侧 '__node__' 同一时刻持有一块
+// （重复 claim 返回 null + notice）。
 const p = await tui.ui.panel({ title: 'Git 面板', width: 52, lines: ['…'] })
 // 写内容: nvim_buf_set_lines(p.buf, …)（buffer 保持可写、编辑键已 Nop）
 await tui.ui.panelRelease()
@@ -194,8 +197,10 @@ local f, err = api.float_open('git-panel', {
 })
 api.float_close('git-panel', f.win)
 
--- 右侧面板槽（单槽互斥；q/Esc 释放；TUI 负责 resize 重锚定与聚焦归还）
-local p, err = api.panel_claim('git-panel', { width = 52, title = 'Git', footer = ' q 关闭 ', lines = {} })
+-- 面板列（多面板并发）：每个 extId 一块，按 claim 顺序堆叠；height =
+-- 显式行数（默认按权重分摊）；q/Esc 释放；TUI 负责 resize 重锚定与聚焦
+-- 归还；reasoning 面板打开时排到列底。
+local p, err = api.panel_claim('git-panel', { side = 'right', width = 52, height = 12, title = 'Git', footer = ' q 关闭 ', lines = {} })
 api.panel_release('git-panel')
 ```
 
@@ -289,6 +294,7 @@ Node → Lua: runner 调 api.rpc_dispatch(extId, method, args) / api.rpc_event(.
 
 ## 八、路线图（未实现项）
 
-- region 布局（chat 让出顶部/底部区域的真实分屏槽）—— 当前面板为右缘浮动槽。
-- 面板多槽并发（当前为单槽互斥）。
+- region 布局（chat 让出顶部/底部区域的真实分屏槽）—— 当前面板列为右缘浮动栈。
+- Node 侧 `ui.panel` 多块并发（Lua 侧已支持每 ext 一块；Node 的 `__node__`
+  目前同一时刻一块）。
 - 卡片动作的确认/输入型交互（当前为单选动作）。

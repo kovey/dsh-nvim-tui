@@ -158,6 +158,13 @@ function API.unregister(id)
     and vim.api.nvim_win_is_valid(reg.panel.win) then
     pcall(vim.api.nvim_win_close, reg.panel.win, true)
   end
+  reg.panel = nil
+  for i, sid in ipairs(S.panelStack) do
+    if sid == id then
+      table.remove(S.panelStack, i)
+      break
+    end
+  end
   -- Remove this extension's slash commands (a dead owner must not leave
   -- catalog entries behind).
   for name, c in pairs(S.extCommands) do
@@ -166,6 +173,7 @@ function API.unregister(id)
     end
   end
   S.extReg[id] = nil
+  API.panel_reflow()
   if S.channel then
     vim.rpcnotify(S.channel, 'dsh-ext-unregister', id)
   end
@@ -178,12 +186,24 @@ function API.registered(id)
 end
 
 --- Current TUI handles — ALWAYS re-resolve through here (the self-heal
---- layer rebuilds windows, so cached raw ids go stale). Includes the
---- occupied ext panel slot when one exists.
+--- layer rebuilds windows, so cached raw ids go stale). Includes the panel
+--- column: `panelWin/panelBuf` = the FIRST stacked panel (compat), `panels`
+--- = { [extId] = { win, buf } } for the full set.
 function API.handles()
   local ids = require('dsh_tui').ids()
-  ids.panelWin = S.extPanel ~= nil and S.extPanel.win or nil
-  ids.panelBuf = S.extPanel ~= nil and S.extPanel.buf or nil
+  local panels = {}
+  local first = nil
+  for _, id in ipairs(S.panelStack) do
+    local reg = S.extReg[id]
+    if reg ~= nil and reg.panel ~= nil and reg.panel.win ~= nil
+      and vim.api.nvim_win_is_valid(reg.panel.win) then
+      panels[id] = { win = reg.panel.win, buf = reg.panel.buf }
+      if first == nil then first = panels[id] end
+    end
+  end
+  ids.panels = panels
+  ids.panelWin = first ~= nil and first.win or nil
+  ids.panelBuf = first ~= nil and first.buf or nil
   return ids
 end
 
@@ -248,7 +268,8 @@ end
 
 --- Forget stale handles: every window/buffer handle that no longer exists
 --- is pruned from the registries (an ext that closed its own window must
---- not leave a permanent exemption behind).
+--- not leave a permanent exemption behind). Dead panels leave the column
+--- and the remaining ones re-lay.
 function API.prune_dead_handles()
   local changed = false
   for _, reg in pairs(S.extReg) do
@@ -267,8 +288,17 @@ function API.prune_dead_handles()
     if reg.panel ~= nil and reg.panel.win ~= nil
       and not vim.api.nvim_win_is_valid(reg.panel.win) then
       reg.panel = nil
+      for i, id in ipairs(S.panelStack) do
+        if id == reg.id then
+          table.remove(S.panelStack, i)
+          break
+        end
+      end
       changed = true
     end
+  end
+  if changed then
+    API.panel_reflow()
   end
   return changed
 end
@@ -460,19 +490,114 @@ function API.panel_geometry(width, title, footer)
   return cfg
 end
 
---- Claim the right-edge panel slot for a registered extension. ONE slot
---- exists (shared with no one — the reasoning panel is a separate float and
---- may overlay it, like it overlays the chat). Returns { win, buf }, or
---- { err = message } when the slot is taken. Content stays writable through
---- the API; the TUI re-anchors the panel on terminal resize.
----   opts = { width?, title?, footer?, lines? }
+--- Width per the clamp rules: stored spec 0/absent → reasoning default
+--- (45%), else the explicit width clamped to 24..60% of the screen.
+local function panel_clamped_width(spec)
+  local w = tonumber(spec)
+  if w == nil or w <= 0 then
+    return math.max(30, math.min(52, math.floor(vim.o.columns * 0.45)))
+  end
+  return math.max(24, math.min(math.floor(w), math.max(24, math.floor(vim.o.columns * 0.6))))
+end
+
+--- Lay out the panel column(s): every claimed ext panel (claim order) plus
+--- the reasoning panel (when open, LAST — it is the transient overlay, the
+--- deliberately claimed panels keep the top of the column). Heights:
+--- explicit `height` rows win, the rest share the remaining budget; the
+--- reasoning panel keeps its fixed 75% (squeezed proportionally when the
+--- column overflows). Called on claim / release / reasoning toggle /
+--- VimResized.
+function API.panel_reflow()
+  local entries = {}
+  for _, id in ipairs(S.panelStack) do
+    local reg = S.extReg[id]
+    if reg ~= nil and reg.panel ~= nil and reg.panel.win ~= nil
+      and vim.api.nvim_win_is_valid(reg.panel.win) then
+      entries[#entries + 1] = reg.panel
+    end
+  end
+  if S.reasoningOpen and S.reasoningWin ~= nil
+    and vim.api.nvim_win_is_valid(S.reasoningWin) then
+    entries[#entries + 1] = { win = S.reasoningWin, widthSpec = 0,
+      height = math.max(3, math.floor(vim.o.lines * 0.75)),
+      explicitHeight = true, reasoning = true }
+  end
+  if #entries == 0 then return end
+  local budget = math.max(3, math.floor(vim.o.lines * 0.9))
+  -- Explicit heights first; proportional squeeze on overflow.
+  local explicitTotal = 0
+  local weighted = {}
+  for _, p in ipairs(entries) do
+    if p.explicitHeight then
+      p._h = math.max(1, math.min(tonumber(p.height) or 6, budget))
+      explicitTotal = explicitTotal + p._h
+    else
+      weighted[#weighted + 1] = p
+    end
+  end
+  if explicitTotal > budget then
+    local scale = budget / explicitTotal
+    local used = 0
+    for _, p in ipairs(entries) do
+      if p.explicitHeight then
+        p._h = math.max(1, math.floor(p._h * scale))
+        used = used + p._h
+      end
+    end
+    -- The last explicit entry absorbs rounding residue.
+    for i = #entries, 1, -1 do
+      if entries[i].explicitHeight and used < budget then
+        entries[i]._h = entries[i]._h + (budget - used)
+        break
+      end
+    end
+  end
+  local remaining = math.max(0, budget - explicitTotal)
+  local share = #weighted > 0 and math.max(1, math.floor(remaining / #weighted)) or 0
+  local row = 0
+  for _, p in ipairs(entries) do
+    local h = p.explicitHeight and p._h or share
+    local side = p.side or 'right'
+    local cfg = {
+      relative = 'editor',
+      anchor = side == 'left' and 'NW' or 'NE',
+      row = row,
+      col = side == 'left' and 0 or vim.o.columns - 1,
+      width = panel_clamped_width(p.widthSpec),
+      height = h,
+      border = 'rounded',
+      style = 'minimal',
+      zindex = 30, -- above the chat, below menus/approvals (reasoning tier)
+    }
+    if vim.fn.has('nvim-0.9') == 1 and type(p.title) == 'string' and p.title ~= '' then
+      cfg.title = p.title
+      cfg.title_pos = 'center'
+    end
+    if vim.fn.has('nvim-0.10') == 1 and type(p.footer) == 'string' and p.footer ~= '' then
+      cfg.footer = p.footer
+      cfg.footer_pos = 'left'
+    end
+    pcall(vim.api.nvim_win_set_config, p.win, cfg)
+    row = row + h
+  end
+end
+
+--- Claim a right/left-edge panel for a registered extension (ONE panel per
+--- extension; multiple extensions stack in the claim-ordered column).
+--- Returns { win, buf }, or { err = message } when this extension already
+--- holds a panel. Content stays writable through the API; the TUI re-lays
+--- the column on claim / release / reasoning toggle / terminal resize.
+---   opts = { side? ('right'|'left'), width?, height? (explicit rows) or
+---            weight? (unused — heights share the budget), title?, footer?,
+---            lines? }
 function API.panel_claim(id, opts)
   local reg = S.extReg[id]
   if reg == nil then
     return { err = 'not registered: ' .. tostring(id) }
   end
-  if S.extPanel ~= nil then
-    return { err = 'panel slot occupied by ' .. tostring(S.extPanel.id) }
+  if reg.panel ~= nil and reg.panel.win ~= nil
+    and vim.api.nvim_win_is_valid(reg.panel.win) then
+    return { err = id .. ' already holds a panel' }
   end
   opts = type(opts) == 'table' and opts or {}
   local lines = opts.lines
@@ -483,14 +608,15 @@ function API.panel_claim(id, opts)
   vim.bo[buf].swapfile = false
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   require('dsh_tui.popup_core').lock_display_keys(buf)
-  -- q/Esc release the slot (the panel is a display surface; closing is the
-  -- one edit the owner does not need to Nop).
+  -- q/Esc release the panel (a display surface; closing is the one edit
+  -- the owner does not need to Nop).
   vim.api.nvim_buf_set_keymap(buf, 'n', 'q',
     string.format('<Cmd>lua require("dsh_tui.api").panel_release(%q)<CR>', id),
     { noremap = true })
   vim.api.nvim_buf_set_keymap(buf, 'n', '<Esc>',
     string.format('<Cmd>lua require("dsh_tui.api").panel_release(%q)<CR>', id),
     { noremap = true })
+  local side = opts.side == 'left' and 'left' or 'right'
   local cfg = API.panel_geometry(opts.width, opts.title, opts.footer)
   cfg.border = 'rounded'
   cfg.style = 'minimal'
@@ -499,17 +625,20 @@ function API.panel_claim(id, opts)
   vim.wo[win].number = false
   vim.wo[win].signcolumn = 'no'
   vim.wo[win].cursorline = false
-  local panel = { id = id, win = win, buf = buf, width = cfg.width,
-    title = opts.title, footer = opts.footer }
+  local panel = { id = id, win = win, buf = buf, widthSpec = opts.width,
+    height = tonumber(opts.height), explicitHeight = tonumber(opts.height) ~= nil,
+    side = side, title = opts.title, footer = opts.footer }
   reg.panel = panel
   reg.windows[win] = 'panel'
   reg.buffers[buf] = true
-  S.extPanel = panel
+  table.insert(S.panelStack, id)
+  API.panel_reflow()
   require('dsh_tui.input').focus()
   return { win = win, buf = buf }
 end
 
---- Release the panel slot (no-op when this extension holds no panel).
+--- Release this extension's panel (no-op when it holds none); the column
+--- re-lays for the remaining panels.
 function API.panel_release(id)
   local reg = S.extReg[id]
   if reg == nil then
@@ -518,7 +647,12 @@ function API.panel_release(id)
   if reg.panel ~= nil then
     local p = reg.panel
     reg.panel = nil
-    if S.extPanel == p then S.extPanel = nil end
+    for i, sid in ipairs(S.panelStack) do
+      if sid == id then
+        table.remove(S.panelStack, i)
+        break
+      end
+    end
     if p.win ~= nil and vim.api.nvim_win_is_valid(p.win) then
       pcall(vim.api.nvim_win_close, p.win, true)
     end
@@ -526,6 +660,7 @@ function API.panel_release(id)
       reg.buffers[p.buf] = nil
       pcall(vim.api.nvim_buf_delete, p.buf, { force = true })
     end
+    API.panel_reflow()
     require('dsh_tui.input').focus()
   end
   return true
