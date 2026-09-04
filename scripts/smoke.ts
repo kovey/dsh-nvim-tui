@@ -2264,6 +2264,27 @@ description:
   assert.equal(await lua(`return require("dsh_tui.api").panel_release("smoke-ext")`, []), true, 'panel_release frees the panel')
   assert.equal(await lua(`return vim.api.nvim_win_is_valid(${extPanel.win})`, []), false, 'released panel window closed')
   assert.equal(await lua(`return vim.api.nvim_win_is_valid(${panel2.win})`, []), false, 'second panel window closed too')
+  // re-claim race: a panel closed EXTERNALLY leaves its stack entry until
+  // the scheduled prune — an immediate re-claim must not stack the id twice
+  const p3 = await lua(`return require("dsh_tui.api").panel_claim("smoke-ext", { height = 4 })`, []) as { win: number }
+  await lua(`vim.api.nvim_win_close(${p3.win}, true)`, []) // external close (no panel_release)
+  const p3b = await lua(`return require("dsh_tui.api").panel_claim("smoke-ext", { height = 4 })`, []) as { win: number }
+  assert.equal(await lua(`local n = 0 for _, id in ipairs(require("dsh_tui.state").panelStack) do if id == "smoke-ext" then n = n + 1 end end return n`, []), 1,
+    're-claim after an external close leaves ONE stack entry (de-dupe)')
+  const p3bCfg = await nvim.request('nvim_win_get_config', [p3b.win])
+  assert.equal(p3bCfg.row, 0, 're-claimed panel laid out once from the top')
+  await lua(`require("dsh_tui.api").panel_release("smoke-ext")`, [])
+  // mixed sides: left and right columns stack INDEPENDENTLY
+  const pl = await lua(`return require("dsh_tui.api").panel_claim("smoke-ext", { side = "left", height = 3 })`, []) as { win: number }
+  const pr = await lua(`return require("dsh_tui.api").panel_claim("smoke-all", { side = "right", height = 5 })`, []) as { win: number }
+  const cfgL = await nvim.request('nvim_win_get_config', [pl.win])
+  const cfgR = await nvim.request('nvim_win_get_config', [pr.win])
+  assert.equal(cfgL.row, 0, 'left panel starts its own column at the top')
+  assert.equal(cfgR.row, 0, 'right panel starts its own column at the top')
+  assert.equal(cfgL.anchor, 'NW', 'left panel anchors NW')
+  assert.equal(cfgL.col, 0, 'left panel hugs the left edge')
+  await lua(`require("dsh_tui.api").panel_release("smoke-ext")`, [])
+  await lua(`require("dsh_tui.api").panel_release("smoke-all")`, [])
 
   // 13d. the dsh-ext bus: Lua → Node rpcrequest + Node → Lua dispatch
   nvim.on('request', (method: string, args: unknown[], resp: { send: (r: unknown) => void }) => {

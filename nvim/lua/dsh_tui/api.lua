@@ -554,14 +554,16 @@ function API.panel_reflow()
   end
   local remaining = math.max(0, budget - explicitTotal)
   local share = #weighted > 0 and math.max(1, math.floor(remaining / #weighted)) or 0
-  local row = 0
+  -- Per-side row counters: left and right columns stack INDEPENDENTLY
+  -- (a shared counter would park left panels below the right column).
+  local sideRows = { left = 0, right = 0 }
   for _, p in ipairs(entries) do
     local h = p.explicitHeight and p._h or share
     local side = p.side or 'right'
     local cfg = {
       relative = 'editor',
       anchor = side == 'left' and 'NW' or 'NE',
-      row = row,
+      row = sideRows[side],
       col = side == 'left' and 0 or vim.o.columns - 1,
       width = panel_clamped_width(p.widthSpec),
       height = h,
@@ -578,7 +580,7 @@ function API.panel_reflow()
       cfg.footer_pos = 'left'
     end
     pcall(vim.api.nvim_win_set_config, p.win, cfg)
-    row = row + h
+    sideRows[side] = sideRows[side] + h
   end
 end
 
@@ -587,9 +589,9 @@ end
 --- Returns { win, buf }, or { err = message } when this extension already
 --- holds a panel. Content stays writable through the API; the TUI re-lays
 --- the column on claim / release / reasoning toggle / terminal resize.
----   opts = { side? ('right'|'left'), width?, height? (explicit rows) or
----            weight? (unused — heights share the budget), title?, footer?,
----            lines? }
+---   opts = { side? ('right'|'left'), width?, height? (explicit rows —
+---           omitted = weighted share of the budget), title?, footer?,
+---           lines? }
 function API.panel_claim(id, opts)
   local reg = S.extReg[id]
   if reg == nil then
@@ -631,6 +633,15 @@ function API.panel_claim(id, opts)
   reg.panel = panel
   reg.windows[win] = 'panel'
   reg.buffers[buf] = true
+  -- De-dupe first: a panel closed EXTERNALLY (:q / another plugin) leaves
+  -- its stack entry until the scheduled prune runs — re-claiming before
+  -- that would stack the id twice and reflow would lay this panel out
+  -- twice (double-height rows).
+  for i = #S.panelStack, 1, -1 do
+    if S.panelStack[i] == id then
+      table.remove(S.panelStack, i)
+    end
+  end
   table.insert(S.panelStack, id)
   API.panel_reflow()
   require('dsh_tui.input').focus()

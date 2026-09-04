@@ -110,10 +110,14 @@ export interface ExtPickerOpts {
         active?: boolean;
     }>;
 }
-/** ui.panel options (the right-edge panel slot). */
+/** ui.panel options (the panel column — one per extension). */
 export interface ExtPanelOpts {
-    side?: 'right';
+    /** Column side (default 'right'). */
+    side?: 'right' | 'left';
     width?: number;
+    /** Explicit height in rows; omitted = weighted share of the column
+     *  budget (other panels' explicit heights win first). */
+    height?: number;
     title?: string;
     /** Hints embedded in the bottom border (nvim >= 0.10). */
     footer?: string;

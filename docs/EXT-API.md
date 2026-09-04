@@ -75,7 +75,8 @@ await tui.nvim.request('nvim_eval', ['slow()'], { timeoutMs: 2000 })
 ```ts
 // 卡片：渲染进指定会话 feed，可原地更新/关闭（headless 落入 e2e dump）。
 // 带 onAction 时动作可交互：光标停在卡片上按 1-9 直接触发，Enter 弹动作
-// 选择浮窗（仅主会话 chat 窗口）。
+// 选择浮窗（仅主会话 chat 窗口）。注意：数字键是 chat 缓冲的显式映射，
+// 会吃掉普通移动的 count 前缀（如 5j 会先触发 5 → 卡片处无效则 j 只移 1 行）。
 const card = tui.ui.card({
   sessionId: tui.getActiveSessionId()!,  // 省略 = 当前活跃会话
   plugin: 'dsh-git', title: '分支清理', body: '已删除 3 个合并分支',
@@ -209,7 +210,9 @@ unregister 会顺带清理该扩展注册的斜杠命令（不留死目录项）
 ### 3.2 句柄 / 输入 / 事件
 
 ```lua
-api.handles()            -- { chatWin, inputWin, inputBuf, reasoningWin, panelWin, panelBuf, … }（永远现取）
+api.handles()            -- { chatWin, inputWin, inputBuf, reasoningWin,
+                         --   panels = { [extId] = { win, buf } },
+                         --   panelWin/panelBuf = 栈首面板（兼容），… }（永远现取）
 api.input_get()
 api.input_fill('text') / api.input_append('tail')
 
@@ -265,6 +268,9 @@ Node → Lua: runner 调 api.rpc_dispatch(extId, method, args) / api.rpc_event(.
   Lua 取消**，有界应答是唯一的冻结防护；超时后处理器在后台继续、结果丢弃。
 - extId 路由表：Node 侧 `tui.luaExt.on` 注册（可带 `{ timeoutMs }`），Lua 侧
   `api.rpc_register` 注册。
+- 卡片激活（通知，非请求）：chat 光标停在交互卡片上时，Lua 侧
+  `rpcnotify('dsh-ext-card-activate', { mark, action })` —— `action` 为数字
+  时直接触发第 N 个动作，缺省时 runner 弹动作选择浮窗后回填索引。
 - TUI teardown / 插件 unregister 时双向拒掉在途请求，广播 `DshTuiShutdown`。
 
 ## 五、兼容性与版本策略

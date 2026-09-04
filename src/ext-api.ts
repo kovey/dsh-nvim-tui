@@ -119,10 +119,14 @@ export interface ExtPickerOpts {
   items: Array<{ label: string; value: string; active?: boolean }>
 }
 
-/** ui.panel options (the right-edge panel slot). */
+/** ui.panel options (the panel column — one per extension). */
 export interface ExtPanelOpts {
-  side?: 'right'
+  /** Column side (default 'right'). */
+  side?: 'right' | 'left'
   width?: number
+  /** Explicit height in rows; omitted = weighted share of the column
+   *  budget (other panels' explicit heights win first). */
+  height?: number
   title?: string
   /** Hints embedded in the bottom border (nvim >= 0.10). */
   footer?: string
@@ -229,9 +233,13 @@ export function installExtApi(app: App): void {
   /** Node-side floats opened via ui.float: key → win id. */
   const nodeFloats = new Map<string, number>()
   let floatSeq = 0
-  /** Last payload per fired event — late subscribers of one-shot lifecycle
-   *  events (tui:ready / tui:active-session) get an immediate replay. */
+  /** Last payload per fired event — late subscribers of the ONE-SHOT
+   *  lifecycle events (tui:ready / tui:active-session) get an immediate
+   *  replay. Stream events (tui:input) and terminal events (tui:teardown)
+   *  must NEVER replay — a late subscriber getting the last user input
+   *  would be wrong. */
   const lastFired = new Map<string, { payload: unknown }>()
+  const REPLAYABLE_EVENTS = new Set<ExtEventName>(['tui:ready', 'tui:active-session'])
 
   /** Fire a tui:* event; subscriber throws are contained (feed notice). */
   const fire = (event: ExtEventName, payload: unknown): void => {
@@ -294,14 +302,17 @@ export function installExtApi(app: App): void {
         listeners.set(event, set)
       }
       set.add(cb)
-      // Late-subscribe replay: one-shot lifecycle events already fired are
-      // re-delivered immediately so consumers never miss boot.
-      const last = lastFired.get(event)
-      if (last !== undefined) {
-        try {
-          cb(last.payload)
-        } catch (err) {
-          app.notice(`⚠ 扩展事件 ${event} 处理失败: ${(err as Error).message}`)
+      // Late-subscribe replay: ONE-SHOT lifecycle events already fired are
+      // re-delivered immediately so consumers never miss boot; stream
+      // events stay live-only.
+      if (REPLAYABLE_EVENTS.has(event)) {
+        const last = lastFired.get(event)
+        if (last !== undefined) {
+          try {
+            cb(last.payload)
+          } catch (err) {
+            app.notice(`⚠ 扩展事件 ${event} 处理失败: ${(err as Error).message}`)
+          }
         }
       }
       return () => {
@@ -381,7 +392,8 @@ export function installExtApi(app: App): void {
       panel: async (opts) => {
         if (app.nvim === null || app.headless) return null
         const res = await app.luaCall('return require("dsh_tui.api").panel_claim(...)', [
-          '__node__', { width: opts.width, title: opts.title, footer: opts.footer, lines: opts.lines ?? [] },
+          '__node__', { side: opts.side, width: opts.width, height: opts.height,
+            title: opts.title, footer: opts.footer, lines: opts.lines ?? [] },
         ]) as { win?: unknown; buf?: unknown; err?: unknown } | null | undefined
         if (res === null || res === undefined || typeof res.err === 'string') {
           app.notice(`⚠ ui.panel: ${String(res?.err ?? '不可用')}`)
