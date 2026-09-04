@@ -4,7 +4,7 @@ import type { FeedRenderer } from './feed.js';
 import type { RunnerConfig } from './types.js';
 import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspacesService } from './types.js';
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
-export declare const BUILD_VERSION = "0.2.15";
+export declare const BUILD_VERSION = "0.2.16";
 export declare const BUILD_STAMP: string;
 export interface ServiceMap {
     appExit: (code?: number) => void;

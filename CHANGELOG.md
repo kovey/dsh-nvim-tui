@@ -3,6 +3,32 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.2.16（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.16)
+
+覆盖提交：
+[`482ad5c`](https://github.com/kovey/dsh-nvim-tui/commit/482ad5c) ·
+[`bb19bd8`](https://github.com/kovey/dsh-nvim-tui/commit/bb19bd8)
+
+- **会话管理：/sessions 行操作菜单 + 重命名持久化**。会话行新增操作菜单
+  （打开 / 重命名 / 归档，官方 workspace browser 行菜单对齐；宿主无公开
+  会话删除 API，归档即官方「从列表移除」方式）；重命名走「下一条输入作为
+  新标题」流程，历史会话重命名**不切换视图**（拆出 ensureLiveSession：
+  后台恢复 + 挂载 + 回放，不 switchTo）；修复重命名标题重启丢失——持久化
+  SessionHeader 不含 title，历史行标题改读宿主 projection cache
+  （`sessionProjectionCache.cachedSnapshot(header, inheritedEventCount,
+  ['title'])`，零 IO，与官方 api-session-controller 同路径），refreshList
+  历史条目不再硬编码空标题。
+
+- **修复：diff 卡片内围栏标记导致其后 markdown 表格不再美化**。根因是
+  表格转换曾是独立预扫描（transformTables 遍历整个视图），不认 diff
+  区域——diff 卡片内逐字渲染的奇数个代码围栏行把预扫描的 fenceOpen 卡死
+  为「围栏内」，此后所有 markdown 表格永远按原文渲染（症状：粗体/反引号
+  被剥但表格未转框线，真实会话回放复现）。修复：表格检测并入渲染主循环，
+  与 diff 区域/代码围栏共用同一状态机；思考面板与用户回显也补上表格美化
+  （面板含表格时切全量重写、保持增量快路径；用户回显表格框线化并保留
+  `> ` 引用前缀）。smoke 新增四个表格回归用例（助手消息 / 用户回显 /
+  思考面板 / diff 围栏后表格）。
+
 ## [v0.2.15（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.2.15)
 
 覆盖提交：
