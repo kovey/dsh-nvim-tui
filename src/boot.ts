@@ -54,6 +54,37 @@ export async function boot(app: App): Promise<void> {
     }
 
     app.nvim!.on('disconnect', () => void app.quit(0))
+    // dsh-ext bus: nvim plugins issue vim.rpcrequest(channel, 'dsh-ext', …)
+    // and the runner answers from the extId dispatch table (luaExt.on).
+    // EVERY request gets a response — a hanging rpcrequest would block the
+    // nvim UI loop. Handler errors surface as { ok = false, error }.
+    app.nvim!.on('request', (method: string, args: unknown[], resp: { send: (r: unknown) => void }) => {
+      void (async () => {
+        const reply = (r: unknown): void => {
+          try {
+            resp.send(r)
+          } catch { /* peer went away mid-handler: nothing to answer */ }
+        }
+        if (method !== 'dsh-ext') {
+          reply({ ok: false, error: `unsupported request: ${method}` })
+          return
+        }
+        const payload = (args?.[0] ?? {}) as { id?: unknown; method?: unknown; args?: unknown }
+        const extId = typeof payload.id === 'string' ? payload.id : ''
+        const m = typeof payload.method === 'string' ? payload.method : ''
+        const handler = extId === '' ? undefined : app.extNodeHandlers.get(extId)
+        if (handler === undefined) {
+          reply({ ok: false, error: `no ext handler: ${extId}.${m || '?'}` })
+          return
+        }
+        try {
+          const value = await handler(m, Array.isArray(payload.args) ? payload.args : [])
+          reply({ ok: true, value })
+        } catch (err) {
+          reply({ ok: false, error: err instanceof Error ? err.message : String(err) })
+        }
+      })()
+    })
     app.nvim!.on('notification', async (method, args) => {
       if (app.disposed) return
       if (method === 'dsh-input') {
@@ -155,6 +186,10 @@ export async function boot(app: App): Promise<void> {
       } else if (method === 'dsh-ext-unregister') {
         const id = typeof args?.[0] === 'string' ? args[0] : ''
         if (id !== '') app.extLuaSubs.delete(id)
+      } else if (method === 'dsh-ext-notice') {
+        // Lua-side extensions surface transient notices through the runner.
+        const text = String((args?.[0] as { text?: unknown } | undefined)?.text ?? args?.[0] ?? '')
+        if (text !== '') app.notice(text)
       }
     })
 

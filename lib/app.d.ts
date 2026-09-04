@@ -191,6 +191,9 @@ export interface App {
      *  ('all' = unfiltered), fed by dsh-ext-register notifications (P3 uses
      *  it to route the session-event mirror). */
     extLuaSubs: Map<string, Set<string> | 'all'>;
+    /** dsh-ext bus: extId → request handler registered by a Node-side
+     *  consumer via `luaExt.on` (answered over the shared RPC channel). */
+    extNodeHandlers: Map<string, (method: string, args: unknown[]) => unknown | Promise<unknown>>;
     /** Statusline segments contributed by extensions (id → text+priority). */
     extStatusSegments: Map<string, {
         text: string;

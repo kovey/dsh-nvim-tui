@@ -121,6 +121,18 @@ export interface ExtCommandSpec {
     group?: string;
     fn: (arg: string) => unknown;
 }
+/** The ext RPC bus face: drive / answer nvim-side extensions by extId. */
+export interface ExtLuaLayer {
+    /** Call a method registered by a Lua extension (api.rpc_register).
+     *  Rejects with the remote error message when the handler fails. */
+    call(extId: string, method: string, args?: unknown[]): Promise<unknown>;
+    /** Fire an event at a Lua extension (User DshTuiExtEvent +
+     *  api.on_ext_event callbacks). */
+    emit(extId: string, event: string, payload?: unknown): void;
+    /** Answer dsh-ext requests from a nvim extension (vim.rpcrequest).
+     *  Returns a disposer. */
+    on(extId: string, handler: (method: string, args: unknown[]) => unknown | Promise<unknown>): () => void;
+}
 /** Managed UI primitives (headless degrades to no-ops where flagged). */
 export interface ExtUiLayer {
     /** Render a plugin card into a session feed. */
@@ -168,6 +180,8 @@ export interface TuiExtApi {
     /** Register slash commands (name WITHOUT '/') into the completion
      *  catalog + /help. Duplicate names are rejected. Returns a disposer. */
     registerCommands(cmds: ExtCommandSpec[]): () => void;
+    /** The ext RPC bus: talk to nvim-side extensions by extId. */
+    luaExt: ExtLuaLayer;
 }
 /** Install the extension API onto the App (runs before boot; index.ts then
  *  publishes the built surface through the cordis registry). */

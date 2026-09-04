@@ -51,7 +51,7 @@ export type { RunnerConfig } from './types.js'
 export type {
   TuiExtApi, ExtNvimLayer, ExtSessionEventFilter, ExtEventName,
   ExtUiLayer, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult,
-  ExtPickerOpts, ExtCommandSpec, ExtPanelOpts, ExtPanelHandles,
+  ExtPickerOpts, ExtCommandSpec, ExtPanelOpts, ExtPanelHandles, ExtLuaLayer,
 } from './ext-api.js'
 export { EXT_API_VERSION } from './ext-api.js'
 

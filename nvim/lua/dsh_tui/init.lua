@@ -254,6 +254,22 @@ function M.submit()
     end)
     return
   end
+  -- Extension before-submit hooks (P3): each may veto (nil/false — the
+  -- draft stays in the input box) or rewrite (string) the submission.
+  for _, reg in pairs(S.extReg) do
+    if type(reg.submitHooks) == 'table' then
+      for _, hook in pairs(reg.submitHooks) do
+        local ok, result = pcall(hook, text)
+        if not ok then
+          API.emit('ExtHookError', { id = reg.id, error = tostring(result) })
+        elseif result == nil or result == false then
+          return -- vetoed
+        elseif type(result) == 'string' then
+          text = result
+        end
+      end
+    end
+  end
   if AM.open() then
     AM.accept()
     return
@@ -272,7 +288,18 @@ function M.submit()
   end
   if S.channel then
     if text:match('^/') then
-      vim.rpcnotify(S.channel, 'dsh-command', text)
+      -- Lua-side extension commands execute HERE (never routed to the
+      -- runner); everything else is the runner's business.
+      local name, rest = text:match('^(%S+)%s*(.*)$')
+      local extCmd = S.extCommands[name or '']
+      if extCmd ~= nil then
+        local ok, err = pcall(extCmd.fn, rest or '')
+        if not ok then
+          API.emit('ExtHookError', { id = extCmd.owner, error = tostring(err) })
+        end
+      else
+        vim.rpcnotify(S.channel, 'dsh-command', text)
+      end
     else
       vim.rpcnotify(S.channel, 'dsh-input', text)
     end

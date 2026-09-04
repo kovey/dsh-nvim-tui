@@ -31,6 +31,13 @@ S.mainTab = nil
 S.extReg = {}
 -- The occupied right-edge panel slot (owned by exactly one extension).
 S.extPanel = nil
+-- Lua-side extension commands: '/name' -> { name, desc, owner, fn }.
+-- Merged into the completion catalog by cmd_menu.entries().
+S.extCommands = {}
+-- Payload of the most recent api.emit() — the version-proof event carrier:
+-- nvim_exec_autocmds' `data` option does not land in vim.v.event on every
+-- nvim version, so consumers read api.last_event() inside User autocmds.
+S.lastEvent = nil
 
 -- per-session registry
 S.chats = {}          -- session id -> chat buffer

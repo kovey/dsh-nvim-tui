@@ -16,14 +16,23 @@ local API = {}
 --- Extension API version (semver; handshakes against the Node EXT_API_VERSION).
 API.version = '0.1.0'
 
---- Emit a User autocmd event: `User DshTui<event>` with `data` passed to
---- callbacks as vim.v.event. Events: Ready / Attach / ActiveSession /
---- LayoutRebuilt / Shutdown / ExtRegistered / ExtWindowClosed.
+--- Emit a User autocmd event: `User DshTui<event>`. The payload is BOTH
+--- passed as nvim_exec_autocmds `data` and parked in S.lastEvent — the
+--- `data` option does not reach vim.v.event on every nvim version, so
+--- consumers inside the autocmd must read api.last_event() (version-proof).
+--- Events: Ready / Attach / ActiveSession / LayoutRebuilt / Shutdown /
+--- ExtRegistered / ExtWindowClosed / ExtEvent / SessionEvent.
 function API.emit(event, data)
+  S.lastEvent = data
   pcall(vim.api.nvim_exec_autocmds, 'User', {
     pattern = 'DshTui' .. event,
     data = data,
   })
+end
+
+--- Payload of the most recent api.emit() (see emit).
+function API.last_event()
+  return S.lastEvent
 end
 
 local function valid_id(id)
@@ -372,6 +381,187 @@ function API.panel_release(id)
     require('dsh_tui.input').focus()
   end
   return true
+end
+
+-- ===========================================================================
+-- P3: the dsh-ext RPC bus + input/command hooks + session-event mirror
+-- ===========================================================================
+
+--- Lua → Node: call a method served by a Node-side extension (registered
+--- via the Node api's luaExt.on). Blocks until the runner answers (nvim
+--- rpcrequest semantics); returns value, or nil + error message.
+function API.rpc_call(extId, method, args)
+  if not S.channel then
+    return nil, 'no runner channel'
+  end
+  local ok, res = pcall(vim.rpcrequest, S.channel, 'dsh-ext',
+    { v = 1, id = extId, method = method, args = args or {} })
+  if not ok then
+    return nil, tostring(res)
+  end
+  if type(res) == 'table' then
+    if res.ok == true then
+      return res.value
+    end
+    return nil, tostring(res.error or 'unknown ext error')
+  end
+  return res
+end
+
+--- Serve a method for Node-side callers (Node api's luaExt.call).
+function API.rpc_register(id, method, fn)
+  local reg = S.extReg[id] or API.ensure_registry(id)
+  if type(method) ~= 'string' or method == '' then
+    return nil, 'rpc_register: method (string) is required'
+  end
+  if type(fn) ~= 'function' then
+    return nil, 'rpc_register: fn (function) is required'
+  end
+  reg.rpc[method] = fn
+  return true
+end
+
+--- Node → Lua dispatch entry (called by the runner's luaExt.call).
+function API.rpc_dispatch(id, method, args)
+  local reg = S.extReg[id]
+  local fn = reg and reg.rpc[method]
+  if type(fn) ~= 'function' then
+    return { ok = false, error = 'no handler: ' .. tostring(id) .. '.' .. tostring(method) }
+  end
+  local ok, value = pcall(fn, args or {})
+  if not ok then
+    return { ok = false, error = tostring(value) }
+  end
+  return { ok = true, value = value }
+end
+
+--- Node → Lua event (the runner's luaExt.emit): fires User DshTuiExtEvent
+--- with data { id, event, payload } and any api.on_ext_event callbacks.
+function API.rpc_event(id, event, payload)
+  local reg = S.extReg[id]
+  if reg ~= nil and reg.eventCbs ~= nil then
+    for _, cb in pairs(reg.eventCbs) do
+      local ok, err = pcall(cb, event, payload)
+      if not ok then
+        API.emit('ExtHookError', { id = id, error = tostring(err) })
+      end
+    end
+  end
+  API.emit('ExtEvent', { id = id, event = event, payload = payload })
+end
+
+--- Subscribe to Node-emitted events for this extension. Returns a disposer.
+function API.on_ext_event(id, fn)
+  local reg = S.extReg[id] or API.ensure_registry(id)
+  if type(fn) ~= 'function' then
+    return nil, 'on_ext_event: fn (function) is required'
+  end
+  if reg.eventCbs == nil then reg.eventCbs = {} end
+  table.insert(reg.eventCbs, fn)
+  return function()
+    for i, f in ipairs(reg.eventCbs or {}) do
+      if f == fn then
+        table.remove(reg.eventCbs, i)
+        return true
+      end
+    end
+    return false
+  end
+end
+
+--- before_submit hook: runs on EVERY submission. Return nil/false to veto
+--- (the draft stays in the input box), a string to replace the submission.
+--- Returns a disposer.
+function API.before_submit(id, fn)
+  local reg = S.extReg[id] or API.ensure_registry(id)
+  if type(fn) ~= 'function' then
+    return nil, 'before_submit: fn (function) is required'
+  end
+  table.insert(reg.submitHooks, fn)
+  return function()
+    for i, f in ipairs(reg.submitHooks) do
+      if f == fn then
+        table.remove(reg.submitHooks, i)
+        return true
+      end
+    end
+    return false
+  end
+end
+
+--- Register a Lua-side slash command (executed in nvim, never routed to
+--- the runner). Merged into the / completion catalog. Duplicates rejected.
+function API.register_command(id, name, desc, fn)
+  local reg = S.extReg[id] or API.ensure_registry(id)
+  if type(name) ~= 'string' or name == '' then
+    return nil, 'register_command: name (string) is required'
+  end
+  name = name:match('^/') and name or ('/' .. name)
+  if type(fn) ~= 'function' then
+    return nil, 'register_command: fn (function) is required'
+  end
+  if S.extCommands[name] ~= nil then
+    return nil, 'command exists: ' .. name
+  end
+  S.extCommands[name] = { name = name, desc = tostring(desc or ''), owner = id, fn = fn }
+  return true
+end
+
+function API.unregister_command(id, name)
+  name = name:match('^/') and name or ('/' .. tostring(name))
+  local c = S.extCommands[name]
+  if c ~= nil and c.owner == id then
+    S.extCommands[name] = nil
+    return true
+  end
+  return nil, 'no such command: ' .. tostring(name)
+end
+
+--- Transient notice: routed to the runner, which appends it to the active
+--- session's feed (the Lua side owns no feed rendering).
+function API.notice(id, text)
+  if S.channel then
+    vim.rpcnotify(S.channel, 'dsh-ext-notice', { id = id, text = tostring(text) })
+  end
+end
+
+--- Session-event mirror entry (called by the runner for extensions whose
+--- register() subscribed): invokes api.on_session_event callbacks, then
+--- fires User DshTuiSessionEvent with data { ids, event }.
+function API.session_event(ids, event)
+  for _, id in ipairs(ids or {}) do
+    local reg = S.extReg[id]
+    if reg ~= nil and reg.sessionCbs ~= nil then
+      for _, cb in pairs(reg.sessionCbs) do
+        local ok, err = pcall(cb, event)
+        if not ok then
+          API.emit('ExtHookError', { id = id, error = tostring(err) })
+        end
+      end
+    end
+  end
+  API.emit('SessionEvent', { ids = ids, event = event })
+end
+
+--- Subscribe to mirrored session events for this extension. Returns a
+--- disposer. Delivery requires the extension's register() to declare
+--- `events` (the kinds to receive, e.g. { 'turn/end' }) or 'all'.
+function API.on_session_event(id, fn)
+  local reg = S.extReg[id] or API.ensure_registry(id)
+  if type(fn) ~= 'function' then
+    return nil, 'on_session_event: fn (function) is required'
+  end
+  if reg.sessionCbs == nil then reg.sessionCbs = {} end
+  table.insert(reg.sessionCbs, fn)
+  return function()
+    for i, f in ipairs(reg.sessionCbs or {}) do
+      if f == fn then
+        table.remove(reg.sessionCbs, i)
+        return true
+      end
+    end
+    return false
+  end
 end
 
 return API

@@ -34,12 +34,21 @@ function CM.set_catalog(list)
 end
 
 local function entries()
-  if type(S.cmdCatalog) == 'table' and #S.cmdCatalog > 0 then
-    return S.cmdCatalog
-  end
   local out = {}
-  for _, n in ipairs(FALLBACK) do
-    out[#out + 1] = { name = n, desc = '' }
+  local base = S.cmdCatalog
+  if type(base) == 'table' and #base > 0 then
+    for _, e in ipairs(base) do
+      out[#out + 1] = e
+    end
+  else
+    for _, n in ipairs(FALLBACK) do
+      out[#out + 1] = { name = n, desc = '' }
+    end
+  end
+  -- Lua-side extension commands (api.register_command): merged on every
+  -- read, so a later runner catalog refresh can never wipe them.
+  for _, c in pairs(S.extCommands) do
+    out[#out + 1] = { name = c.name, desc = c.desc or '' }
   end
   return out
 end

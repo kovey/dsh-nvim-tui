@@ -122,6 +122,19 @@ export interface ExtCommandSpec {
   fn: (arg: string) => unknown
 }
 
+/** The ext RPC bus face: drive / answer nvim-side extensions by extId. */
+export interface ExtLuaLayer {
+  /** Call a method registered by a Lua extension (api.rpc_register).
+   *  Rejects with the remote error message when the handler fails. */
+  call(extId: string, method: string, args?: unknown[]): Promise<unknown>
+  /** Fire an event at a Lua extension (User DshTuiExtEvent +
+   *  api.on_ext_event callbacks). */
+  emit(extId: string, event: string, payload?: unknown): void
+  /** Answer dsh-ext requests from a nvim extension (vim.rpcrequest).
+   *  Returns a disposer. */
+  on(extId: string, handler: (method: string, args: unknown[]) => unknown | Promise<unknown>): () => void
+}
+
 /** Managed UI primitives (headless degrades to no-ops where flagged). */
 export interface ExtUiLayer {
   /** Render a plugin card into a session feed. */
@@ -174,6 +187,8 @@ export interface TuiExtApi {
   /** Register slash commands (name WITHOUT '/') into the completion
    *  catalog + /help. Duplicate names are rejected. Returns a disposer. */
   registerCommands(cmds: ExtCommandSpec[]): () => void
+  /** The ext RPC bus: talk to nvim-side extensions by extId. */
+  luaExt: ExtLuaLayer
 }
 
 /** Install the extension API onto the App (runs before boot; index.ts then
@@ -349,29 +364,72 @@ export function installExtApi(app: App): void {
         void app.refreshCommandCatalog().catch(() => {})
       }
     },
+
+    luaExt: {
+      call: async (extId, method, args = []) => {
+        const res = await app.luaCall('return require("dsh_tui.api").rpc_dispatch(...)', [
+          extId, method, args,
+        ]) as { ok?: unknown; value?: unknown; error?: unknown } | null | undefined
+        if (res !== null && res !== undefined && typeof res === 'object' && res.ok === false) {
+          throw new Error(String(res.error ?? `lua ext ${extId}.${method} failed`))
+        }
+        if (res !== null && res !== undefined && typeof res === 'object' && res.ok === true) {
+          return res.value
+        }
+        return res
+      },
+      emit: (extId, event, payload) => {
+        void app.luaCall('require("dsh_tui.api").rpc_event(...)', [extId, event, payload ?? null]).catch(() => {})
+      },
+      on: (extId, handler) => {
+        app.extNodeHandlers.set(extId, handler)
+        return () => {
+          app.extNodeHandlers.delete(extId)
+        }
+      },
+    },
   }
 
   app.extApi = api
   app.extFire = fire
   app.extSessionSubs = sessionSubs
 
-  /** session/event mirror dispatch (P3 fills the Lua-side routing; the
-   *  Node-side subscribers work from P0 on). Called by boot.ts's
-   *  session/event handler AFTER the TUI's own routing. */
+  /** session/event mirror dispatch: Node-side subscribers (filtered here)
+   *  plus the Lua-side routing (extLuaSubs, fed by dsh-ext-register).
+   *  Called by boot.ts's session/event handler AFTER the TUI's own routing. */
   app.extDispatchSessionEvent = (sessionId, event) => {
-    if (sessionSubs.length === 0) return
     const matches = (f: ExtSessionEventFilter): boolean => {
       if (f.sessionId !== undefined && f.sessionId !== sessionId) return false
       if (f.type === undefined) return true
       const kinds = Array.isArray(f.type) ? f.type : [f.type]
       return kinds.includes(event.type)
     }
-    for (const { filter, cb } of sessionSubs) {
-      if (!matches(filter)) continue
-      try {
-        cb(sessionId, event)
-      } catch (err) {
-        app.notice(`⚠ 扩展会话事件 ${event.type} 处理失败: ${(err as Error).message}`)
+    if (sessionSubs.length > 0) {
+      for (const { filter, cb } of sessionSubs) {
+        if (!matches(filter)) continue
+        try {
+          cb(sessionId, event)
+        } catch (err) {
+          app.notice(`⚠ 扩展会话事件 ${event.type} 处理失败: ${(err as Error).message}`)
+        }
+      }
+    }
+    // Lua-side mirror: registered extensions with matching event kinds.
+    if (app.extLuaSubs.size > 0) {
+      const targets: string[] = []
+      for (const [id, kinds] of app.extLuaSubs) {
+        if (kinds === 'all' || kinds.has(event.type)) targets.push(id)
+      }
+      if (targets.length > 0) {
+        // msgpack-safe copy: SessionEvent payloads carry undefined fields
+        // (optional turn/step), which the RPC encoder cannot represent.
+        let clean: SessionEvent
+        try {
+          clean = JSON.parse(JSON.stringify(event)) as SessionEvent
+        } catch {
+          clean = event
+        }
+        void app.luaCall('require("dsh_tui.api").session_event(...)', [targets, clean]).catch(() => {})
       }
     }
   }
