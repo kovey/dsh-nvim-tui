@@ -9,6 +9,14 @@
  *    (keyed by parent session) and hidden from the /subagents listing, so the
  *    list stops growing.
  */
+/** Encode a session log in the backend's own physical format: one Zstandard
+ *  frame per record (header line first, then one JSON event per line). The
+ *  host decoder accepts frames without the writer's checksum param, and
+ *  unpacked (expanded) events are valid storage records — chunk packing is
+ *  an optimization, not a requirement. */
+export declare function encodeSessionLog(headerLine: string, events: readonly unknown[]): Buffer;
+/** Header-only variant (the settled-chain cleanup keeps no events). */
+export declare function encodeHeaderOnlyLog(headerLine: string): Buffer;
 /** Human age suffix for list rows ('' when unknown). */
 export declare function ageLabel(createdAt: number | undefined, now?: number): string;
 /** Whether a settled chain has passed the retention window (0 = disabled). */

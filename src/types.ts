@@ -176,8 +176,11 @@ export interface SessionPersistenceService {
     createdAt?: number
     title?: string
   }>>
-  inspect?: (id: string) => Promise<{ events?: unknown[] } | undefined>
-  truncateStored?: (id: string, seq: unknown) => Promise<unknown> | unknown
+  inspect?: (id: string) => Promise<{ events?: unknown[]; meta?: { id?: string; cwd?: string } } | undefined>
+  /** Raw physical artifact access (the backend decodes its own encoding). */
+  supportsRawArtifacts?: boolean
+  readRaw?: (id: string) => Promise<{ filename?: string; content?: string } | undefined>
+  locate?: (meta: unknown) => { kind?: string; path?: string } | undefined
 }
 
 /** dsh-attachment durable image save. */

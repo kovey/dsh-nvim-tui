@@ -13,6 +13,22 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { zstdCompressSync } from 'node:zlib'
+
+/** Encode a session log in the backend's own physical format: one Zstandard
+ *  frame per record (header line first, then one JSON event per line). The
+ *  host decoder accepts frames without the writer's checksum param, and
+ *  unpacked (expanded) events are valid storage records — chunk packing is
+ *  an optimization, not a requirement. */
+export function encodeSessionLog(headerLine: string, events: readonly unknown[]): Buffer {
+  const records = [headerLine, ...events.map((e) => JSON.stringify(e))]
+  return Buffer.concat(records.map((r) => zstdCompressSync(Buffer.from(r + '\n', 'utf8'))))
+}
+
+/** Header-only variant (the settled-chain cleanup keeps no events). */
+export function encodeHeaderOnlyLog(headerLine: string): Buffer {
+  return encodeSessionLog(headerLine, [])
+}
 
 /** Human age suffix for list rows ('' when unknown). */
 export function ageLabel(createdAt: number | undefined, now: number = Date.now()): string {

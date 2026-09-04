@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+- **修复：子代理链清理的截断分支是死路径（truncateStored 在 alpha.5/rc.1
+  均不存在），存储从未真正释放**。改用官方 raw-artifact 面重写：
+  `supportsRawArtifacts` + `locate()` 取物理路径 + `readRaw()` 取解码记录，
+  把已结束子代理的日志重写为「仅 header」的 frame-per-record zstd 产物
+  （tmp+rename 原子写，镜像后端写者；仅 zstd 魔数产物、仅非 live 会话，
+  异常一律跳过）。实测真实子代理产物 1.17MB → 206B。清理后同时调用官方
+  `workspaceRegistry.archiveSession` 隐藏（本地账本保留为列表过滤）。同时
+  删除 /rewind 中不可达的 truncateStored 死块（rc.1 Session 无 truncate，
+  /rewind 已由前置守卫优雅降级为 /fork 提示）。smoke 新增帧扫描器验证
+  encodeSessionLog 的 frame-per-record 布局逐帧 round-trip。
+
 - **升级：dsh 依赖锚点 alpha.5 → 0.1.2-rc.1 + 全量 API 核对**。
   peerDependencies（dsh-agent / dsh-llm / dsh-tools）与 devDependencies
   抬升至 `^0.1.2-rc.1`，workspace node_modules 同步刷新。适配核查：

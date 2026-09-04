@@ -22,6 +22,8 @@ import { matchIntent } from '../lib/nlcmd.js'
 import { ageLabel, isExpired, orderSubagentChildren } from '../lib/subagent-clean.js'
 import { runningBadge } from '../lib/statusline.js'
 import { readPatchRowIds, packageExists } from '../lib/deps.js'
+import { encodeSessionLog, encodeHeaderOnlyLog } from '../lib/subagent-clean.js'
+import { zstdDecompressSync } from 'node:zlib'
 import os from 'node:os'
 import {
   parseStars, buildCatalog, searchCatalog, parsePluginYaml,
@@ -1357,6 +1359,49 @@ description:
   assert.equal(formatElapsed(234), '234ms', 'sub-second stays in ms')
   assert.equal(formatElapsed(65000), '1m 5s', '65s → 1m 5s')
   assert.equal(formatElapsed(3600000 + 30000), '1h 0m', 'hours form')
+
+  // 9g0. settled-chain cleanup encoder: the backend's physical format is
+  // frame-per-record zstd (header line first, one JSON event per line);
+  // unpacked expanded events are valid storage records.
+  const hdrLine = JSON.stringify({ session: true, id: 'session-clean-test' })
+  const oneFrame = zstdDecompressSync(encodeHeaderOnlyLog(hdrLine))
+  assert.equal(oneFrame.toString('utf8'), hdrLine + '\n', 'header-only log re-encodes as one valid zstd frame')
+  const ev = [{ seq: 0, type: 'turn/start', data: { turn: 1 } }, { seq: 1, type: 'turn/end', data: { turn: 1 } }]
+  // Node's one-shot zstd decodes only the FIRST frame of a concatenated
+  // stream — the host ships its own multi-frame decoder. Walk the frame
+  // headers (magic + descriptor + block headers, same geometry the jsonl
+  // backend's scanner uses) and decode each frame individually.
+  const scanZstdFrames = (buf: Buffer): Array<[number, number]> => {
+    const frames: Array<[number, number]> = []
+    let offset = 0
+    while (offset < buf.length) {
+      const start = offset
+      if (buf.readUInt32LE(offset) !== 0xfd2fb528) break
+      offset += 4
+      const descriptor = buf.readUInt8(offset); offset += 1
+      const contentSizeFlag = descriptor >>> 6
+      const singleSegment = (descriptor & 32) !== 0
+      const checksum = (descriptor & 4) !== 0
+      const dictionaryFlag = descriptor & 3
+      offset += (dictionaryFlag === 3 ? 4 : dictionaryFlag)
+      offset += contentSizeFlag === 0 ? (singleSegment ? 1 : 0) : (1 << contentSizeFlag)
+      for (;;) {
+        const bh = buf.readUIntLE(offset, 3); offset += 3
+        const blockSize = (bh >> 3) & 0x1fffff
+        offset += blockSize
+        if ((bh & 1) !== 0) break // last block
+      }
+      if (checksum) offset += 4
+      frames.push([start, offset])
+    }
+    return frames
+  }
+  const full = encodeSessionLog(hdrLine, ev)
+  const zFrames = scanZstdFrames(full)
+  assert.equal(zFrames.length, 3, 'header + 2 events = 3 zstd frames')
+  const decoded = zFrames.map(([s, e]) => zstdDecompressSync(full.subarray(s, e)).toString('utf8'))
+  assert.equal(decoded.join(''), hdrLine + '\n' + JSON.stringify(ev[0]) + '\n' + JSON.stringify(ev[1]) + '\n',
+    'every frame round-trips (frame-per-record layout)')
 
   // 9g1. running badge: background jobs keep a live-looking statusline
   // when the agent is idle (a bare '○ idle' made users think the task died).

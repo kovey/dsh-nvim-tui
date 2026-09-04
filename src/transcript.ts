@@ -289,10 +289,6 @@ const rewindCommand = async (app: App, a: string | undefined) => {
     return
   }
   try {
-    const persistence = app.svc('sessionPersistence')
-    if (persistence !== undefined && typeof persistence.truncateStored === 'function') {
-      await persistence.truncateStored(rec.id, target.seq)
-    }
     session.truncate(target.seq)
     // Rebuild the chat from the truncated events (the harness truncates
     // in place and emits no events).
