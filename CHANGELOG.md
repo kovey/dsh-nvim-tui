@@ -3,7 +3,25 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [未发布]
+## [v0.3.0（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.0)
+
+覆盖提交：
+[`b2f51be`](https://github.com/kovey/dsh-nvim-tui/commit/b2f51be) ·
+[`8b44f34`](https://github.com/kovey/dsh-nvim-tui/commit/8b44f34) ·
+[`d050f9c`](https://github.com/kovey/dsh-nvim-tui/commit/d050f9c) ·
+[`0459fe5`](https://github.com/kovey/dsh-nvim-tui/commit/0459fe5) ·
+[`3ab46e5`](https://github.com/kovey/dsh-nvim-tui/commit/3ab46e5) ·
+[`5d965d1`](https://github.com/kovey/dsh-nvim-tui/commit/5d965d1) ·
+[`6db735c`](https://github.com/kovey/dsh-nvim-tui/commit/6db735c) ·
+[`f9aaa87`](https://github.com/kovey/dsh-nvim-tui/commit/f9aaa87) ·
+[`1574e7e`](https://github.com/kovey/dsh-nvim-tui/commit/1574e7e) ·
+[`dc39bd6`](https://github.com/kovey/dsh-nvim-tui/commit/dc39bd6) ·
+[`e051765`](https://github.com/kovey/dsh-nvim-tui/commit/e051765) ·
+[`a50a07e`](https://github.com/kovey/dsh-nvim-tui/commit/a50a07e) ·
+[`5cd0ded`](https://github.com/kovey/dsh-nvim-tui/commit/5cd0ded) ·
+[`7447045`](https://github.com/kovey/dsh-nvim-tui/commit/7447045) ·
+[`c7501ba`](https://github.com/kovey/dsh-nvim-tui/commit/c7501ba) ·
+[`689d4af`](https://github.com/kovey/dsh-nvim-tui/commit/689d4af)
 
 - **插件开放接口（EXT-API，P0–P4）**。本插件对外开放稳定接口，其他 dsh 插件
   与 nvim 插件可在 TUI 内渲染 UI、使用 nvim 窗口、读写输入、订阅会话事件：
