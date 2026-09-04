@@ -114,6 +114,7 @@ S.linesWin = nil
 S.histWin = nil    -- /history 输入历史浮窗
 S.histBuf = nil
 S.histEntries = {} -- 选中时回填原文（展示行是 ↵ 折叠的摘要行）
+S.histIdx = 1      -- 1-based 选中位置（第 1 行 = 最新）
 end -- first-run initialization
 
 return S

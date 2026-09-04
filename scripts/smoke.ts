@@ -2520,24 +2520,37 @@ description:
     'unregister removes the ext slash command from the catalog')
   await lua(`vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "" })`, [])
 
-  // 13k. /history 输入历史浮窗：最新在前、多行 ↵ 折叠展示、Enter 回填原文
+  // 13k. /history 输入历史浮窗：与其他命令浮窗统一的样式（''+条目内容、
+  // footer 提示条、lock_popup_buffer、居中几何），最新在前、多行 ↵ 折叠、
+  // Enter 回填原文
   await lua(`local S = require("dsh_tui.state")
     S.history = { "第一条", "第二条\\n多行", "第三条" }`, [])
   await lua(`require("dsh_tui").show_input_history()`, [])
   const histWin = await lua(`return require("dsh_tui")._histWin`, [])
   const histBuf = await lua(`return require("dsh_tui")._histBuf`, [])
   assert.ok(Number.isInteger(histWin), 'history float opens')
+  await assertFooter('[Enter]', 'input history')
+  await assertCentered('require("dsh_tui")._histWin', 'input history')
   const histLines = await nvim.request('nvim_buf_get_lines', [histBuf, 0, -1, false])
-  assert.equal(histLines[1], ' 第三条', 'newest entry listed first')
-  assert.ok(histLines.includes(' 第二条↵多行'), 'multi-line entry collapsed with ↵ for display')
+  assert.equal(histLines[0], '', 'unified blank first row (cursor derives index from row-1)')
+  assert.equal(histLines[1], '  第三条', 'newest entry listed first')
+  assert.ok(histLines.includes('  第二条↵多行'), 'multi-line entry collapsed with ↵ for display')
   await lua(`require("dsh_tui").input_history_select()`, [])
   assert.equal(await lua(`return table.concat(vim.api.nvim_buf_get_lines(require("dsh_tui").ids().inputBuf, 0, -1, false), "\\n")`, []),
-    '第三条', 'Enter refills the input with the selected entry')
+    '第三条', 'Enter refills the input with the selected entry (default = newest)')
   await lua(`require("dsh_tui").show_input_history()`, [])
   await lua(`vim.api.nvim_win_set_cursor(require("dsh_tui")._histWin, { 3, 0 })`, [])
   await lua(`require("dsh_tui").input_history_select()`, [])
   assert.equal(await lua(`return table.concat(vim.api.nvim_buf_get_lines(require("dsh_tui").ids().inputBuf, 0, -1, false), "\\n")`, []),
     '第二条\n多行', 'multi-line entry refills INTACT (no ↵ loss)')
+  // G jump → oldest entry (row 4), then select
+  await lua(`require("dsh_tui").show_input_history()`, [])
+  await lua(`require("dsh_tui").input_history_jump("last")`, [])
+  assert.equal(await lua(`return vim.api.nvim_win_get_cursor(require("dsh_tui")._histWin)[1]`, []), 4,
+    'G lands on the oldest entry (row 4 = 第一条)')
+  await lua(`require("dsh_tui").input_history_select()`, [])
+  assert.equal(await lua(`return table.concat(vim.api.nvim_buf_get_lines(require("dsh_tui").ids().inputBuf, 0, -1, false), "\\n")`, []),
+    '第一条', 'jump + select refills the oldest entry')
   await lua(`require("dsh_tui").show_input_history()`, [])
   const histMaps = await lua(`local out = {}
     for _, m in ipairs(vim.api.nvim_buf_get_keymap(require("dsh_tui")._histBuf, "n")) do table.insert(out, m.lhs) end
@@ -2546,6 +2559,7 @@ description:
     'history float binds q/Esc/Enter')
   await lua(`require("dsh_tui").close_input_history()`, [])
   assert.equal(await lua(`return require("dsh_tui")._histWin`, []), null, 'history float closes')
+  assert.equal(await lua(`return require("dsh_tui")._footer.win`, []), null, 'history footer closes with the float')
   await lua(`require("dsh_tui").fill_input(...)`, [''])
 
   // 12. require() must survive rtp resets (lazy.nvim rebuilds runtimepath and
