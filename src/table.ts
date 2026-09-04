@@ -2,12 +2,15 @@
  * Markdown table → box-drawing table rendering (Claude-TUI style).
  *
  * Detects GFM table blocks (header | separator | body) in a line array and
- * replaces them with aligned, bordered rows:
+ * replaces them with aligned, bordered rows — EVERY data row gets its own
+ * ├…┼…┤ divider (header included):
  *
  *   ┌─────────┬────┬─────┐
  *   │ 日期    │ AQI│ 等级│   <- the WHOLE table bold (DshTuiBold):
  *   ├─────────┼────┼─────┤      cells, │ separators, ─ borders and corners
  *   │ 今天    │ 29 │ 🟢  │      alike (uniform stroke weight)
+ *   ├─────────┼────┼─────┤
+ *   │ 明天    │ 50 │ 🟢  │
  *   └─────────┴────┴─────┘
  *
  * Column widths use DISPLAY width (CJK/emoji count 2), so the borders line up
@@ -173,8 +176,20 @@ export function renderTable(block: string[], closed: boolean, maxWidth = Infinit
     ...row(header),
     { text: border('├', '┼', '┤'), group: 'DshTuiBold', spans: [] },
   ]
-  for (const r of body) out.push(...row(r))
-  if (closed) out.push({ text: border('└', '┴', '┘'), group: 'DshTuiBold', spans: [] })
+  // Every data row carries its OWN divider; the trailing divider becomes
+  // the bottom border when the block is closed (while streaming, the open
+  // ├…┤ at the tail doubles as the "more rows coming" cue).
+  for (const r of body) {
+    out.push(...row(r))
+    out.push({ text: border('├', '┼', '┤'), group: 'DshTuiBold', spans: [] })
+  }
+  if (closed) {
+    if (body.length > 0) {
+      out[out.length - 1] = { text: border('└', '┴', '┘'), group: 'DshTuiBold', spans: [] }
+    } else {
+      out.push({ text: border('└', '┴', '┘'), group: 'DshTuiBold', spans: [] })
+    }
+  }
   return out
 }
 

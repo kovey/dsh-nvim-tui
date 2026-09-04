@@ -51,6 +51,11 @@
   工作区时提供「移出分组」；`WorkspaceEntityLike` 类型补 attachSession/
   detachSession（配套 dsh-workspaces-adapter 需透传 attachSession）。
 
+- **markdown 表格每行分割线**：每个数据行都带自己的 `├…┼…┤` 分割线
+  （此前仅表头下有一条），末行分割线闭合为底框；流式期间末尾保留 `├…┤`
+  作为「还有行」提示，回合结束替换为 `└…┘`。折行产生的续行不加分割线，
+  保持同一逻辑行的视觉分组。
+
 - **修复：markdown 表格超宽内容折行错乱**。列宽原先取整列最长单元格且无
   上限——超宽表格被 nvim 软折行后，续行没有 `│` 边框、框线错位。现在
   `renderTable` 增加最大宽度预算（chat 用视口宽度、思考面板用面板实际

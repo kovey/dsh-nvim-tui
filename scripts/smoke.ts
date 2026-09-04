@@ -742,6 +742,14 @@ description:
   log('table closed:', JSON.stringify(linesT.slice(-6)))
   log('table closed FULL:', JSON.stringify(linesT))
   assert.ok(linesT.some((l: string) => l.startsWith('└')), 'bottom border after stream closes')
+  // per-row dividers: EVERY data row carries its own ├…┤; the last one
+  // closes as the bottom border
+  const todayIdx = linesT.findIndex((l: string) => l.includes('今天 8/19'))
+  const tomorrowIdx = linesT.findIndex((l: string) => l.includes('明天 8/20'))
+  assert.ok(todayIdx >= 0 && tomorrowIdx >= 0, 'table data rows present')
+  assert.ok((linesT[todayIdx + 1] ?? '').startsWith('├'), 'data row followed by its own divider')
+  assert.ok((linesT[tomorrowIdx + 1] ?? '').startsWith('└'), 'last data row closes with the bottom border')
+  assert.ok((linesT[todayIdx - 1] ?? '').startsWith('├'), 'header divider kept above the first data row')
 
   // The WHOLE table renders bold (uniform stroke weight): every table row —
   // top border, header, separator, body, bottom border — carries one
