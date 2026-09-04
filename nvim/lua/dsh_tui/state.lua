@@ -25,6 +25,11 @@ S.buildingLayout = false
 S.bootGuardUntil = nil
 S.mainTab = nil
 
+-- extension registry (dsh_tui.api): extId -> registry table. The
+-- ownership/self-heal guards (autocmds.lua) exempt registered windows and
+-- buffers; everything unregistered keeps the strict behaviour.
+S.extReg = {}
+
 -- per-session registry
 S.chats = {}          -- session id -> chat buffer
 S.reasoningBufs = {}  -- session id -> reasoning buffer

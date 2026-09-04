@@ -54,7 +54,7 @@ do
   local submodules = {
     'state', 'buffer', 'highlight', 'statusline', 'cmd_menu', 'at_menu',
     'input', 'session', 'layout', 'rpc', 'keymaps', 'autocmds',
-    'popup_core', 'popups', 'subagent_chat',
+    'popup_core', 'popups', 'subagent_chat', 'api',
   }
   for _, name in ipairs(submodules) do
     local key = 'dsh_tui.' .. name
@@ -80,6 +80,7 @@ local SE = require('dsh_tui.session')
 local L = require('dsh_tui.layout')
 local K = require('dsh_tui.keymaps')
 local A = require('dsh_tui.autocmds')
+local API = require('dsh_tui.api')
 
 --- Public facade table. Every M._xxx field the Node runner / smoke tests
 --- introspect is an ALIAS of the matching state field, resolved lazily
@@ -94,6 +95,11 @@ local M = setmetatable({}, {
     return nil
   end,
 })
+
+--- The STABLE public extension surface for third-party nvim plugins
+--- (register / ownership / events / primitives). The rest of M.* is
+--- internal — runner + smoke tests only, no stability promise.
+M.api = API
 
 -- ---------------------------------------------------------------------------
 -- Forwarded API — grouped by owning module. The runner (src/index.ts), the
@@ -332,6 +338,9 @@ function M.start()
       and S.input_win and vim.api.nvim_win_is_valid(S.input_win)) then
       L.takeover()
       L.build()
+      -- Extension handles went stale with the rebuild: tell the exts to
+      -- re-resolve via api.handles().
+      API.emit('LayoutRebuilt', {})
     end
   end
   vim.defer_fn(reclaim, 300)

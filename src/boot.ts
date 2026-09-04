@@ -57,6 +57,7 @@ export async function boot(app: App): Promise<void> {
     app.nvim!.on('notification', async (method, args) => {
       if (app.disposed) return
       if (method === 'dsh-input') {
+        app.extFire('tui:input', { text: String(args?.[0] ?? '') })
         try { app.onInput(String(args?.[0] ?? '')) } catch (err) { app.notice(`⚠ 输入处理失败: ${(err as Error).message}`) }
       } else if (method === 'dsh-command') {
         try { app.onCommand(String(args?.[0] ?? '')) } catch (err) { app.notice(`⚠ 命令失败: ${(err as Error).message}`) }
@@ -143,6 +144,18 @@ export async function boot(app: App): Promise<void> {
       }
       else if (method === 'dsh-quit') void app.quit(0)
       else if (method === 'dsh-paste-image') app.pasteClipboardImage()
+      else if (method === 'dsh-ext-register') {
+        // A Lua-side extension registered (api.register): mirror its
+        // session-event subscription so the Node side knows what to route.
+        const spec = (args?.[0] ?? {}) as { id?: unknown; events?: unknown }
+        const id = typeof spec.id === 'string' ? spec.id : ''
+        if (id === '') return
+        const ev = Array.isArray(spec.events) ? spec.events.filter((e): e is string => typeof e === 'string') : undefined
+        app.extLuaSubs.set(id, ev === undefined || ev.length === 0 ? 'all' : new Set(ev))
+      } else if (method === 'dsh-ext-unregister') {
+        const id = typeof args?.[0] === 'string' ? args[0] : ''
+        if (id !== '') app.extLuaSubs.delete(id)
+      }
     })
 
     // Session elapsed / stats tick slowly while idle (the spinner interval
@@ -175,6 +188,9 @@ export async function boot(app: App): Promise<void> {
     }
     app.feedDisposer = app.runtimeCtx.on('session/event', (owner, event) => {
       if (app.disposed) return
+      // Extension mirror: opt-in session-event subscribers (Node-side
+      // onSessionEvent; the Lua-side routing lands with P3).
+      app.extDispatchSessionEvent(owner.id, event)
       // Open subagent CHAT window: route the child's live events into its
       // feed (reasoning/text/tools keep streaming in place). The harness's
       // replay of our own optimistic user echo is skipped (FIFO dedupe).
@@ -639,6 +655,13 @@ export async function boot(app: App): Promise<void> {
     }
 
     app.exitDiag('boot-complete', `active=${app.activeId}`)
+
+    // Extension surface: resolve readiness, notify Node subscribers, and
+    // fire the nvim-side User DshTuiReady autocmd.
+    app.extReadyResolve?.()
+    app.extReadyResolve = null
+    app.extFire('tui:ready', { active: app.activeId })
+    void app.luaCall('require("dsh_tui.api").emit(...)', ['Ready', { active: app.activeId }]).catch(() => {})
 
     // Headless e2e: kick one real agent turn with the configured prompt.
     const headlessPrompt = app.config.prompt ?? process.env.DSH_NVIM_TUI_PROMPT

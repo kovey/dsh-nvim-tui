@@ -8,6 +8,7 @@ local R = {}
 --- Called by the Node runner once it has connected and knows its channel id.
 function R.attach(channel_id)
   S.channel = channel_id
+  require('dsh_tui.api').emit('Attach', { channel = channel_id })
 end
 
 --- Accessor for tests.

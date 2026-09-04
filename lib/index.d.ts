@@ -34,6 +34,8 @@ import type { RunnerConfig } from './types.js';
 export { BUILD_VERSION, BUILD_STAMP } from './app.js';
 export declare const name = "dsh-nvim-tui";
 export type { RunnerConfig } from './types.js';
+export type { TuiExtApi, ExtNvimLayer, ExtSessionEventFilter, ExtEventName } from './ext-api.js';
+export { EXT_API_VERSION } from './ext-api.js';
 /**
  * Mount the Neovim TUI runner over dsh-base.
  */

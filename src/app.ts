@@ -21,6 +21,7 @@ import { join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { NeovimClient } from 'neovim'
 import type { FeedRenderer } from './feed.js'
+import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-api.js'
 import { diffTexts, fileDiffsFromMeta } from './diff.js'
 import { t } from './i18n.js'
 import type { RunnerConfig } from './types.js'
@@ -172,6 +173,17 @@ export interface App {
   pendingEchoes: Map<string, string[]>
   workflowRuns: Map<string, WorkflowRun>
   commandSpecs: CommandSpec[]
+
+  // -- extension surface (ext-api.ts owns these; install runs before boot) ------
+  extApi: TuiExtApi
+  extReadyResolve: (() => void) | null
+  extFire: (event: ExtEventName, payload: unknown) => void
+  extSessionSubs: Array<{ filter: ExtSessionEventFilter; cb: (sid: string, ev: SessionEvent) => void }>
+  extDispatchSessionEvent: (sessionId: string, event: SessionEvent) => void
+  /** Lua-side extension registry mirrors: extId → subscribed event kinds
+   *  ('all' = unfiltered), fed by dsh-ext-register notifications (P3 uses
+   *  it to route the session-event mirror). */
+  extLuaSubs: Map<string, Set<string> | 'all'>
 
   // -- pending UI state --------------------------------------------------------
   pendingInput: string[]
@@ -329,6 +341,13 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     pickerSettle: null,
     dirSettle: null,
     bellOn: true,
+
+    extApi: null as unknown as TuiExtApi, // installExtApi fills it before boot
+    extReadyResolve: null,
+    extFire: () => {},
+    extSessionSubs: [],
+    extDispatchSessionEvent: () => {},
+    extLuaSubs: new Map(),
 
     svc,
     luaCall,
@@ -683,6 +702,14 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     }
     app.sessions.clear()
     app.childParent.clear()
+    // Extension surface: broadcast teardown (Node subscribers + nvim-side
+    // User DshTuiShutdown autocmd) so extensions release windows/handles
+    // BEFORE the nvim window closes.
+    try {
+      app.extFire('tui:teardown', {})
+      void app.luaCall('require("dsh_tui.api").emit(...)', ['Shutdown', {}]).catch(() => {})
+    } catch {}
+    app.extLuaSubs.clear()
     await app.closeNvimWindow()
   }
 

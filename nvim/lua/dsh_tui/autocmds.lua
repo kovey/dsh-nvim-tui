@@ -15,6 +15,7 @@ local SL = require('dsh_tui.statusline')
 local K = require('dsh_tui.keymaps')
 local H = require('dsh_tui.highlight')
 local B = require('dsh_tui.buffer')
+local API = require('dsh_tui.api')
 local A = {}
 
 --- Buffer-scoped input autocmds (re-registered whenever the input buffer is
@@ -185,10 +186,36 @@ function A.install()
         if not (S.input_buf and vim.api.nvim_buf_is_valid(S.input_buf)) then return end
         local w = vim.api.nvim_get_current_win()
         if w == S.input_win then return end
+        -- Registered extension windows are exempt from the clone guard.
+        if API.is_ext_win(w) then return end
         local ok, cfg = pcall(vim.api.nvim_win_get_config, w)
         if ok and cfg.relative ~= '' and cfg.relative ~= nil then return end
         if vim.api.nvim_win_get_buf(w) == S.input_buf then
           pcall(vim.api.nvim_win_close, w, true)
+        end
+      end)
+    end,
+  })
+  -- Extension windows closed from OUTSIDE (user :q, another plugin):
+  -- notify the owner, then prune the stale exemption — a dead handle must
+  -- not leave a permanent guard bypass behind.
+  vim.api.nvim_create_autocmd('WinClosed', {
+    callback = function()
+      local closed = tonumber(vim.fn.expand('<afile>'))
+      if closed == nil then return end
+      local owners = {}
+      for id, reg in pairs(S.extReg) do
+        if reg.windows[closed] ~= nil
+          or (reg.panel ~= nil and reg.panel.win == closed) then
+          owners[#owners + 1] = id
+        end
+      end
+      vim.schedule(function()
+        for _, id in ipairs(owners) do
+          API.emit('ExtWindowClosed', { id = id, win = closed })
+        end
+        if API.prune_dead_handles() and #owners > 0 then
+          API.emit('ExtWindowsPruned', {})
         end
       end)
     end,
@@ -329,12 +356,17 @@ function A.boot_guard()
         -- Only police the TUI's own tab: windows the window-ownership guard
         -- relocated into a fresh tab belong to the plugin and stay put.
         if vim.api.nvim_win_get_tabpage(w) ~= S.mainTab then return end
+        -- Registered extension windows are exempt: extensions opt into the
+        -- layout through api.register, everything else keeps the strict
+        -- startup behaviour.
+        if API.is_ext_win(w) then return end
         local ok, cfg = pcall(vim.api.nvim_win_get_config, w)
         local isFloat = ok and cfg.relative ~= '' and cfg.relative ~= nil
         if not isFloat and w ~= S.chat_win and w ~= S.input_win then
           pcall(vim.api.nvim_win_close, w, true)
         end
         local b = vim.api.nvim_get_current_buf()
+        if API.is_ext_buf(b) then return end
         local chatBuf = S.activeId and S.chats[S.activeId] or nil
         if b ~= chatBuf and b ~= S.input_buf and vim.bo[b].buflisted then
           pcall(vim.api.nvim_buf_delete, b, { force = true })

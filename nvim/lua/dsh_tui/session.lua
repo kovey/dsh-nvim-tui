@@ -127,6 +127,7 @@ function SE.set_active(id)
   end
   -- A session-list float tracking the old session is now stale: close it.
   PP.close_session_list()
+  require('dsh_tui.api').emit('ActiveSession', { id = id })
 end
 
 --- Buffer/window ids for the runner's renderer.

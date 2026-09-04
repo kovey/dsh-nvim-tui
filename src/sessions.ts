@@ -202,6 +202,7 @@ const switchTo = async (app: App, id: string) => {
   app.ensureSpinner()
   app.updateStatusline()
   updateTitle(app)
+  app.extFire('tui:active-session', { id })
   void app.seedRunningSubagents(id)
   if (app.sessions.has(id)) app.recordState(id)
 }

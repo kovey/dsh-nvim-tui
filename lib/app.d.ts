@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { NeovimClient } from 'neovim';
 import type { FeedRenderer } from './feed.js';
+import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-api.js';
 import type { RunnerConfig } from './types.js';
 import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspacesService } from './types.js';
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
@@ -178,6 +179,18 @@ export interface App {
     pendingEchoes: Map<string, string[]>;
     workflowRuns: Map<string, WorkflowRun>;
     commandSpecs: CommandSpec[];
+    extApi: TuiExtApi;
+    extReadyResolve: (() => void) | null;
+    extFire: (event: ExtEventName, payload: unknown) => void;
+    extSessionSubs: Array<{
+        filter: ExtSessionEventFilter;
+        cb: (sid: string, ev: SessionEvent) => void;
+    }>;
+    extDispatchSessionEvent: (sessionId: string, event: SessionEvent) => void;
+    /** Lua-side extension registry mirrors: extId → subscribed event kinds
+     *  ('all' = unfiltered), fed by dsh-ext-register notifications (P3 uses
+     *  it to route the session-event mirror). */
+    extLuaSubs: Map<string, Set<string> | 'all'>;
     pendingInput: string[];
     pendingImages: Array<SaveImageAttachment | Extract<MessageContent, {
         type: 'image';
