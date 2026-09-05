@@ -224,6 +224,8 @@ const EN_DICT: Record<string, string> = {
   '已删除': 'deleted',
   '已暂停': 'paused',
   '已恢复': 'resumed',
+  '恢复会话失败': 'failed to restore session',
+  '已新建会话': 'opened a fresh session',
   '已标记完成': 'marked complete',
   '已清空': 'cleared',
   '没有进行中的目标': 'no goal in progress',
