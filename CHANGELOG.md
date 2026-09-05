@@ -3,9 +3,15 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [Unreleased]
+## [v0.3.1（2026-09-05）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.1)
 
-- **修复：打开旧版本会话报错不再直接退出，改为新建会话并在聊天区提示**。
+覆盖提交：
+[`7cb811e`](https://github.com/kovey/dsh-nvim-tui/commit/7cb811e)
+
+- **修复：打开旧版本会话报错不再直接退出，改为新建会话并在聊天区提示**
+  （issue [#5](https://github.com/kovey/dsh-nvim-tui/issues/5)：0.3.0 安装后
+  `dsh --profile nvim` 闪一下就退出——旧会话恢复失败直通 boot 外层 catch →
+  `quit(1)`，整个 dsh 进程随 TUI 一起退出）。
   此前启动时恢复会话（`resumeSessionId` 显式指定或自动恢复上次会话）一旦
   reject（旧版本/不兼容的会话日志等），rejection 直通 boot 外层 catch →
   `quit(1)`，整个 dsh 进程随 TUI 一起退出。现在 boot 恢复路径改为
