@@ -6,10 +6,12 @@
  * @module dsh-nvim-tui/transcript
  */
 import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { FeedRenderer } from './feed.js'
 import { t } from './i18n.js'
+import { diffTexts, fileDiffsFromMeta } from './diff.js'
 import type { ChatMessage, HarnessSession, InboxLike, MessageContent, SessionEvent } from './types.js'
 import type { App, CommandSpec, SessionRec } from './app.js'
 
@@ -365,6 +367,66 @@ const queueCommand = async (app: App): Promise<void> => {
 
 /** Fill the transcript module's App slots and register its commands. */
 export function installTranscript(app: App): void {
+  // -- core services this module owns (moved out of createApp, I1) --
+  /** Read a file as a diff snapshot (null when absent/unreadable/binary/
+   *  oversized — those cases render no diff block). */
+  app.slices.ui.readFileSnapshot = async (p: string): Promise<string | null> => {
+    try {
+      const abs = resolve(p)
+      const st = await stat(abs)
+      if (!st.isFile() || st.size > 256 * 1024) return null
+      const text = await readFile(abs, 'utf8')
+      return text.includes('\0') ? null : text
+    } catch {
+      return null
+    }
+  }
+
+  /** tool/result: render ✎ diff blocks into the feed that rendered the
+   *  tool line. Primary source = the tool's official presentationMeta
+   *  (`meta.diffs = [{ path, oldText, newText }]` — exact, cwd-immune);
+   *  falls back to the pre-call file snapshot for flows the meta misses
+   *  (creates, deletes). Also runs during history REPLAYS: the persisted
+   *  events carry the same meta, so diff blocks survive restarts. */
+  app.slices.ui.maybePushFileDiff = (feed: FeedRenderer, event: SessionEvent, labelPrefix = ''): void => {
+    if (event.type !== 'tool/result') return
+    const callId = event.data?.message?.source?.callId
+    // One diff render per tool call per feed: replay loops and live event
+    // re-emission must never stack the same ✎ block twice.
+    const seenCalls = app.slices.ui.renderedDiffCalls.get(feed) ?? new Set<string>()
+    const callKey = typeof callId === 'string' ? callId : ''
+    if (callKey !== '' && seenCalls.has(callKey)) return
+    if (callKey !== '') seenCalls.add(callKey)
+    app.slices.ui.renderedDiffCalls.set(feed, seenCalls)
+    const metaDiffs = fileDiffsFromMeta((event.data as { meta?: unknown } | undefined)?.meta)
+    if (metaDiffs !== null) {
+      if (callKey !== '') app.slices.ui.pendingFileSnaps.delete(callKey)
+      for (const d of metaDiffs.slice(0, 4)) {
+        const block = diffTexts(d.oldText ?? null, d.newText ?? null)
+        if (block.stats.added === 0 && block.stats.removed === 0) continue
+        const action = d.oldText === undefined
+          ? t('新增')
+          : d.newText === undefined
+            ? t('删除')
+            : t('修改')
+        feed.pushDiff(`✎ ${labelPrefix}${action} ${d.path} (+${block.stats.added} −${block.stats.removed})`, block.lines)
+      }
+      return
+    }
+    if (typeof callId !== 'string' || callId === '') return
+    const snap = app.slices.ui.pendingFileSnaps.get(callId)
+    if (snap === undefined) return
+    app.slices.ui.pendingFileSnaps.delete(callId)
+    void app.slices.ui.readFileSnapshot(snap.display).then((after) => {
+      if (app.slices.runtime.disposed) return
+      const block = diffTexts(snap.before, after)
+      if (block.stats.added === 0 && block.stats.removed === 0) return
+      const action = snap.before === null ? t('新增') : after === null ? t('删除') : t('修改')
+      feed.pushDiff(`✎ ${labelPrefix}${action} ${snap.display} (+${block.stats.added} −${block.stats.removed})`, block.lines)
+    })
+  }
+
+
   app.slices.trans.sessionEvents = (session) => sessionEvents(session)
   app.slices.trans.synthesizeToolResult = (rec, callId, seq, turn, step) => synthesizeToolResult(rec, callId, seq, turn, step)
   app.slices.trans.surfaceReplace = (session, type, seq, data) => surfaceReplace(session, type, seq, data)

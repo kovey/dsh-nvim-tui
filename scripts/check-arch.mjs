@@ -38,7 +38,22 @@ for (const f of readdirSync(join(root, 'src')).filter((n) => n.endsWith('.ts')))
   }
 }
 
-// 3) legacy flat access must not reappear (outside app.ts's own internal
+// 3) createApp must stay a SHELL: the core-service implementations moved
+//    into their owner modules (I1) — any of these assignments reappearing
+//    in app.ts means an implementation crept back into the kernel factory.
+const MOVED_SERVICES = [
+  'app.slices.sessions.readState =', 'app.slices.sessions.recordState =',
+  'app.slices.sessions.refreshHistory =', 'app.slices.sessions.refreshList =',
+  'app.slices.ui.readFileSnapshot =', 'app.slices.ui.maybePushFileDiff =',
+  'app.slices.ui.feedForSubagent =', 'app.slices.agent.refreshCommandCatalog =',
+  'app.slices.agent.registerCommands =', 'app.slices.agent.commandCatalog =',
+  'app.exitDiag =', 'app.closeNvimWindow =', 'app.teardown =', 'app.quit =',
+]
+for (const s of MOVED_SERVICES) {
+  if (appSrc.includes(s)) fail(`createApp re-implements a moved service (${s.split(' =')[0]})`)
+}
+
+// 4) legacy flat access must not reappear (outside app.ts's own internal
 //    slice-literal implementations which are exempt)
 for (const f of readdirSync(join(root, 'src')).filter((n) => n.endsWith('.ts'))) {
   if (f === 'app.ts') continue

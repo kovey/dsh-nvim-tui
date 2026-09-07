@@ -1383,6 +1383,39 @@ const TUI_COMMAND_WHITELIST = new Set([
 
 /** Fill the commands module's App slots and register its commands. */
 export function installCommands(app: App): void {
+  // -- core services this module owns (moved out of createApp, I1) --
+  app.slices.agent.registerCommands = (specs: CommandSpec[]) => {
+    // Duplicate-name protection (internal modules register first, ext
+    // commands land later at runtime): the second registrant is skipped
+    // with a notice instead of shadowing the first handler.
+    for (const s of specs) {
+      if (app.slices.agent.commandSpecs.some((e) => e.name === s.name)) {
+        app.notice(`⚠ 命令 ${s.name} 已注册，忽略重复`)
+        continue
+      }
+      app.slices.agent.commandSpecs.push(s)
+    }
+  }
+  app.slices.agent.commandCatalog = () => app.slices.agent.commandSpecs.map(({ name, desc }) => ({ name, desc }))
+  /** Refresh the `/` completion catalog: built-in commands plus skill
+   *  entries (the official client's slash trigger merges command and skill
+   *  sources; `/skills:<name>` shows the skill detail float). */
+  app.slices.agent.refreshCommandCatalog = async (): Promise<void> => {
+    const entries = app.slices.agent.commandSpecs.map(({ name, desc }) => ({ name, desc }))
+    const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
+    const skills = app.svc('skills')
+    if (rec !== undefined && skills !== undefined) {
+      try {
+        const list = await skills.list({ scope: rec.handle.agent })
+        for (const sk of list) {
+          entries.push({ name: `/skills:${sk.name}`, desc: String(sk.description ?? '').slice(0, 40) })
+        }
+      } catch {}
+    }
+    await app.luaCall('require("dsh_tui").set_commands(...)', [entries]).catch(() => {})
+  }
+
+
   app.slices.agent.followup = (rec, text, images) => followup(app, rec, text, images)
   app.slices.agent.queueSubagentPrompt = (parentAgent, childId, text) => queueSubagentPrompt(app, parentAgent, childId, text)
   app.slices.agent.send = (text) => send(app, text)

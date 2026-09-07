@@ -10,7 +10,7 @@ import { FeedRenderer } from './feed.js'
 import { t } from './i18n.js'
 import { ageLabel, encodeHeaderOnlyLog, isExpired, orderSubagentChildren, readCleanedIds, writeCleanedIds } from './subagent-clean.js'
 import { queueSubagentPromptKey } from './types.js'
-import type { SessionEvent } from './types.js'
+import type { SessionEvent, SubagentInfo } from './types.js'
 import type { App, CommandSpec } from './app.js'
 
 /** Enumerate the active session's subagent children (live + persisted).
@@ -405,6 +405,19 @@ const subagentsCommand = async (app: App) => {
 
 /** Fill the subagents module's App slots and register its commands. */
 export function installSubagents(app: App): void {
+  // -- core services this module owns (moved out of createApp, I1) --
+  /** Route a subagent lifecycle event to its PARENT session's feed. */
+  app.slices.ui.feedForSubagent = (info: SubagentInfo) => {
+    if (!info?.id) return undefined
+    const child = app.runtimeCtx.sessions.get(info.id)
+    const parentId = child?.header?.parentSession
+    const rec = parentId !== undefined ? app.slices.sessions.live.get(parentId) : undefined
+    if (rec) return rec
+    // Fallback: subagents usually spawn while their parent is the active session.
+    return app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
+  }
+
+
   app.slices.sessions.listSubagentChildren = (parentId) => listSubagentChildren(app, parentId)
   app.slices.sessions.seedRunningSubagents = (parentId) => seedRunningSubagents(app, parentId)
   app.slices.sessions.cleanSubagentChain = (parentId, childId) => cleanSubagentChain(app, parentId, childId)
