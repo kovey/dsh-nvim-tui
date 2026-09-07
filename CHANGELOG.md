@@ -29,6 +29,13 @@
   plain 动作打断后，下一次输入仍会被路由给已失效的旧动作）；`api.register`
   拒绝 `__node` 保留前缀（防止插件抢注与 Node slot 机制串扰）。
 
+- **待办/任务面板钉底化**：📋 待办与 ⚙ 任务板改为**底部钉住**（与
+  thinking 指示同区、位于其上、流式内容无法顶走、永不遮挡 thinking
+  行）——进行中实时原位更新；待办全部 ✓ / 任务全部终态时**提交进聊天
+  流成为内容**（turn/end 未完成待办以最终状态提交）；jobs 侧新增
+  rec.jobsCache（jobs.list + onJobDone 合并，live 列表掉落的运行态
+  兜底为 killed），终态板带 ✓/✗/⚠ 标记落盘。
+
 - **任务（jobs）弹窗化 + 聊天区实时任务板**：`/tasks` 从逐条 notice
   改为弹窗列表（选中即取消该任务）；`FeedRenderer.setJobsBlock` 新增
   常驻任务板原语（与待办块同款就地替换 + 偏移修正 + 内容不变 no-op +

@@ -180,17 +180,17 @@ export class FeedRenderer {
   /** cardId → rendered extmark range (markId + buffer rows). */
   cardRanges: Map<string, { markId: number; startRow: number; endRow: number }>
   cardNs: number | null
-  /** Live todo block (todo/write): base-range of the CURRENT turn's
-   *  standing list — re-emissions REPLACE it in place instead of stacking
-   *  stale copies (the model re-writes the whole list on every status
-   *  change). Reset at turn/start. */
-  todoBlockStart: number | null
-  todoBlockLen: number
-  /** Live jobs board (setJobsBlock): base-range + last content key of the
-   *  standing task list — updates replace in place, empty removes. */
-  jobsBlockStart: number | null
-  jobsBlockLen: number
-  jobsBlockKey: string
+  /** Pinned todo panel (todo/write): while ANY item is incomplete the
+   *  standing list renders at the BOTTOM of the view (above the thinking
+   *  row, never displaced by streaming content); once every item is ✓ the
+   *  block COMMITS into base (ordinary chat content). Incomplete state at
+   *  turn/end commits as the turn's final state. */
+  todoLiveRows: string[]
+  /** Pinned jobs board (setJobsBoard): same bottom-pinned slot — updates
+   *  replace live; commitJobsBoard lands the FINAL state (all jobs
+   *  terminal) into base. */
+  jobsLiveRows: string[]
+  jobsLiveKey: string
   /** Cached viewport width: the cap renderTable wraps overwide tables
    *  against (refreshed by winSize, throttled once per 2s per flush). */
   lastWinW: number
@@ -254,11 +254,9 @@ export class FeedRenderer {
     this.extCardSeq = 0
     this.cardHandlers = new Map()
     this.cardRanges = new Map()
-    this.todoBlockStart = null
-    this.todoBlockLen = 0
-    this.jobsBlockStart = null
-    this.jobsBlockLen = 0
-    this.jobsBlockKey = ''
+    this.todoLiveRows = []
+    this.jobsLiveRows = []
+    this.jobsLiveKey = ''
     this.cardNs = null
     this.lastWinW = 100
     this.lastWinAt = 0
@@ -280,6 +278,9 @@ export class FeedRenderer {
     this.toolActivity = null
     this.extCards.clear()
     this.cardHandlers.clear()
+    this.todoLiveRows = []
+    this.jobsLiveRows = []
+    this.jobsLiveKey = ''
     if (this.ticker !== null) clearTimeout(this.ticker)
     if (this.reasoningBuf !== null) {
       this.panelLines = []
@@ -353,29 +354,23 @@ export class FeedRenderer {
     this.schedule()
   }
 
-  /** Standing jobs board (the /tasks counterpart in the chat): ONE live
-   *  block — callers (statusline's refreshBgJobs) re-emit the FULL row set
-   *  on every jobs change; identical content is a no-op, empty rows remove
-   *  the block. Mirrors the todo-block replace machinery. */
-  setJobsBlock(rows: string[]): void {
+  /** Pinned jobs board (the /tasks counterpart in the chat): while ANY
+   *  job is running/stopping the board renders at the BOTTOM of the view
+   *  (above the thinking row); identical content is a no-op. */
+  setJobsBoard(rows: string[]): void {
     const key = rows.join('\n')
-    if (key === this.jobsBlockKey) return
-    this.jobsBlockKey = key
-    const start = this.jobsBlockStart
-    if (start !== null && start < this.base.length) {
-      this.base.splice(start, this.jobsBlockLen, ...rows)
-      this.shiftExtCards(start, rows.length - this.jobsBlockLen)
-      if (rows.length === 0) {
-        this.jobsBlockStart = null
-        this.jobsBlockLen = 0
-      } else {
-        this.jobsBlockLen = rows.length
-      }
-    } else if (rows.length > 0) {
-      this.jobsBlockStart = this.base.length
-      this.jobsBlockLen = rows.length
-      this.base.push(...rows)
-    }
+    if (key === this.jobsLiveKey) return
+    this.jobsLiveKey = key
+    this.jobsLiveRows = rows
+    this.schedule()
+  }
+
+  /** All jobs terminal: the FINAL board state lands in base (ordinary chat
+   *  content) and the pinned slot clears. */
+  commitJobsBoard(rows: string[]): void {
+    if (rows.length > 0) this.base.push(...rows)
+    this.jobsLiveRows = []
+    this.jobsLiveKey = ''
     this.schedule()
   }
 
@@ -779,8 +774,7 @@ export class FeedRenderer {
       case 'turn/start':
         this.base.push('', '── turn ──')
         this.turnStartedAt = Date.now()
-        this.todoBlockStart = null
-        this.todoBlockLen = 0
+        this.todoLiveRows = []
         this.turnMarkerBase = this.base.length
         if (!history && this.reasoningBuf !== null) {
           // The panel is a per-turn activity log (live turns only).
@@ -792,6 +786,12 @@ export class FeedRenderer {
         this.schedule()
         break
       case 'turn/end':
+        // An incomplete todo panel at turn end lands as the turn's final
+        // state (the NEXT turn starts a fresh pinned block).
+        if (this.todoLiveRows.length > 0) {
+          this.base.push(...this.todoLiveRows)
+          this.todoLiveRows = []
+        }
         this.commitReasoning()
         this.commitTail()
         this.base.push('── turn end ──')
@@ -800,11 +800,11 @@ export class FeedRenderer {
         this.schedule()
         break
       case 'todo/write': {
-        // Standing todo list (todo_write): ONE live block per turn — the
-        // model re-emits the FULL list on every status change, so a
-        // re-emission REPLACES the previous block in place (stale copies
-        // used to stack and the statuses never updated). Empty todos
-        // remove the block.
+        // Standing todo list (todo_write): while ANY item is incomplete the
+        // block is PINNED at the bottom of the view (the thinking row stays
+        // the bottom-most line below it); once every item is ✓ the block
+        // COMMITS into base as ordinary chat content. Empty todos clear
+        // the pinned slot without committing.
         const todos = event.data?.todos ?? []
         const rows: string[] = []
         if (todos.length > 0) {
@@ -818,21 +818,12 @@ export class FeedRenderer {
             rows.push(`  ${mark} ${td.content}`)
           }
         }
-        const start = this.todoBlockStart
-        if (start !== null && start < this.base.length) {
-          // Replace the existing block in place; later cards shift along.
-          this.base.splice(start, this.todoBlockLen, ...rows)
-          this.shiftExtCards(start, rows.length - this.todoBlockLen)
-          if (rows.length === 0) {
-            this.todoBlockStart = null
-            this.todoBlockLen = 0
-          } else {
-            this.todoBlockLen = rows.length
-          }
-        } else if (rows.length > 0) {
-          this.todoBlockStart = this.base.length
-          this.todoBlockLen = rows.length
+        const allDone = todos.length > 0 && todos.every((td) => td.status === 'completed')
+        if (allDone) {
           this.base.push(...rows)
+          this.todoLiveRows = []
+        } else {
+          this.todoLiveRows = rows
         }
         this.schedule()
         break
@@ -1128,7 +1119,11 @@ export class FeedRenderer {
         : 0
       if (idleMs >= 800) activityLines = [`·· thinking… ${Math.floor(idleMs / 1000)}s`]
     }
-    const raw = [...this.base, ...progressLines, ...restTail, ...activityLines]
+    // Pinned panels (todo + jobs): bottom of the view, DIRECTLY above the
+    // activity row — streaming content can never push them into the chat
+    // middle, and they never cover the thinking line.
+    const panelLines = [...this.jobsLiveRows, ...this.todoLiveRows]
+    const raw = [...this.base, ...progressLines, ...restTail, ...panelLines, ...activityLines]
     // Raw-line → rendered-row mapping (interactive cards need their
     // POST-transform rows: tables expand, fences collapse — base offsets
     // alone cannot be trusted).

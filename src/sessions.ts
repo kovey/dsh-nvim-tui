@@ -50,6 +50,7 @@ const attachSession = async (app: App, handle: AgentHandle, modelRef: ModelRef) 
     deliverables: { turn: undefined, paths: [] },
     todos: null,
     todosItems: [],
+    jobsCache: new Map(),
     pendingToolCalls: new Map(),
     visionTmp: null,
     lastTurnStartAt: 0,

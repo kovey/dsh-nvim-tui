@@ -640,47 +640,69 @@ description:
   assert.ok(linesB3.some((l: string) => /^·· thinking… \d+s$/.test(l)), 'silent turn shows thinking placeholder')
   feedB.applyEvent({ type: 'turn/end', time: 6500, data: {} })
 
-  // 6a2b. jobs board: live updates replace in place, identical no-op, empty removes
-  const jobsRows1 = ['', '⚙ 任务 2 项 · 1 运行中', '  ⏳ lint · j1', '  · test · j2']
-  feedB.setJobsBlock(jobsRows1)
-  await new Promise((r) => setTimeout(r, 200))
-  let jobsLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
-  assert.equal(jobsLines.filter((l: string) => l.startsWith('⚙ 任务')).length, 1, 'jobs board renders once')
-  feedB.setJobsBlock(jobsRows1) // identical → no churn
-  await new Promise((r) => setTimeout(r, 200))
-  jobsLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
-  assert.equal(jobsLines.filter((l: string) => l.startsWith('⚙ 任务')).length, 1, 'identical content is a no-op')
-  const jobsRows2 = ['', '⚙ 任务 2 项 · 2 运行中', '  ⏳ lint · j1', '  ⏳ test · j2']
-  feedB.setJobsBlock(jobsRows2)
-  await new Promise((r) => setTimeout(r, 200))
-  jobsLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
-  assert.equal(jobsLines.filter((l: string) => l.startsWith('⚙ 任务')).length, 1, 'update replaces in place')
-  assert.ok(jobsLines.some((l: string) => l.includes('2 运行中')), 'count updates live')
-  feedB.setJobsBlock([])
-  await new Promise((r) => setTimeout(r, 200))
-  jobsLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
-  assert.equal(jobsLines.filter((l: string) => l.startsWith('⚙ 任务')).length, 0, 'empty rows remove the board')
-
-  // 6a2. todo live block: re-emissions REPLACE in place (no stale copies)
+  // 6a2. todo pinned panel: incomplete → pinned at the BOTTOM (above the
+  // thinking row, never displaced by content); all-✓ → commits into base.
   feedB.applyEvent({ type: 'todo/write', time: 7000, data: { todos: [
     { content: '功能实现', status: 'in_progress' }, { content: '补测试', status: 'pending' } ] } })
-  await new Promise((r) => setTimeout(r, 200))
-  let todoLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
-  assert.equal(todoLines.filter((l: string) => l.startsWith('📋 待办')).length, 1, 'one standing todo block')
-  assert.ok(todoLines.some((l: string) => l.includes('… 功能实现')), 'initial status renders')
-  feedB.applyEvent({ type: 'todo/write', time: 7050, data: { todos: [
+  feedB.applyEvent({ type: 'assistant/message', time: 7010, data: { turn: 2, step: 1, message: { content: [{ type: 'text', text: '中间内容行A' }] } } })
+  feedB.applyEvent({ type: 'assistant/chunk', time: 7020, data: { chunk: { type: 'reasoning-delta', text: '想一下' } } })
+  await new Promise((r) => setTimeout(r, 250))
+  let tLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  const tHeader = tLines.findIndex((l: string) => l.startsWith('📋 待办'))
+  const tThink = tLines.findIndex((l: string) => l.startsWith('·· thinking'))
+  assert.ok(tHeader >= 0 && tThink >= 0, 'todo panel + thinking line both render')
+  assert.equal(tHeader, tLines.length - 4, 'incomplete todo pinned directly above the thinking row (2 items)')
+  assert.equal(tThink, tLines.length - 1, 'thinking row stays the bottom-most line (never covered)')
+  // re-emission updates IN the pinned slot (no stacking, no flow copies)
+  feedB.applyEvent({ type: 'todo/write', time: 7030, data: { todos: [
     { content: '功能实现', status: 'completed' }, { content: '补测试', status: 'in_progress' } ] } })
-  await new Promise((r) => setTimeout(r, 200))
-  todoLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
-  assert.equal(todoLines.filter((l: string) => l.startsWith('📋 待办')).length, 1, 're-emission replaces instead of stacking')
-  assert.ok(todoLines.some((l: string) => l.includes('✓ 功能实现')), 'status updates in place')
-  assert.ok(todoLines.some((l: string) => l.includes('… 补测试')), 'second item updates too')
-  assert.ok(!todoLines.some((l: string) => l.includes('… 功能实现')), 'stale row gone')
-  // empty todos → block removed
-  feedB.applyEvent({ type: 'todo/write', time: 7090, data: { todos: [] } })
-  await new Promise((r) => setTimeout(r, 200))
-  todoLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
-  assert.equal(todoLines.filter((l: string) => l.startsWith('📋 待办')).length, 0, 'empty todos remove the block')
+  await new Promise((r) => setTimeout(r, 250))
+  tLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(tLines.filter((l: string) => l.startsWith('📋 待办')).length, 1, 're-emission replaces the pinned block')
+  assert.ok(tLines.some((l: string) => l.includes('✓ 功能实现')), 'pinned status updates in place')
+  assert.ok(!tLines.some((l: string) => l.includes('… 功能实现')), 'stale pinned row gone')
+  // all-✓ → COMMITS into base as ordinary chat content
+  feedB.applyEvent({ type: 'todo/write', time: 7040, data: { todos: [
+    { content: '功能实现', status: 'completed' }, { content: '补测试', status: 'completed' } ] } })
+  await new Promise((r) => setTimeout(r, 250))
+  tLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  const tHeader2 = tLines.findIndex((l: string) => l.startsWith('📋 待办'))
+  const tThink2 = tLines.findIndex((l: string) => l.startsWith('·· thinking'))
+  assert.ok(tHeader2 >= 0 && tHeader2 < tThink2, 'completed todo committed into the chat flow (above the tail/thinking)')
+  assert.ok(tHeader2 < tLines.length - 2, 'committed block no longer occupies the pinned slot')
+  // turn/end with an incomplete todo → commits as the turn's final state
+  feedB.applyEvent({ type: 'todo/write', time: 7050, data: { todos: [
+    { content: '收尾', status: 'in_progress' } ] } })
+  feedB.applyEvent({ type: 'turn/end', time: 7060, data: {} })
+  await new Promise((r) => setTimeout(r, 250))
+  tLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(tLines.filter((l: string) => l.startsWith('📋 待办')).length, 2, 'incomplete todo at turn end commits (two blocks total in history)')
+
+  // 6a2b. jobs pinned board: live updates in the bottom slot, all-terminal
+  // commits the final state into base.
+  feedB.applyEvent({ type: 'turn/start', time: 7070, data: { turn: 3 } })
+  const jobsRows1 = ['', '⚙ 任务 2 项 · 1 运行中', '  ⏳ lint', '  · test']
+  feedB.setJobsBoard(jobsRows1)
+  feedB.applyEvent({ type: 'assistant/chunk', time: 7080, data: { chunk: { type: 'reasoning-delta', text: '任务跑着' } } })
+  await new Promise((r) => setTimeout(r, 250))
+  let jLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  const jHeader = jLines.findIndex((l: string) => l.startsWith('⚙ 任务'))
+  const jThink = jLines.findIndex((l: string) => l.startsWith('·· thinking'))
+  assert.ok(jHeader >= 0 && jThink >= 0, 'jobs board + thinking line both render')
+  assert.equal(jHeader, jLines.length - 4, 'jobs board pinned directly above the thinking row (2 jobs)')
+  assert.equal(jThink, jLines.length - 1, 'thinking stays bottom-most with the board pinned above')
+  feedB.setJobsBoard(jobsRows1) // identical → no churn
+  await new Promise((r) => setTimeout(r, 250))
+  jLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(jLines.filter((l: string) => l.startsWith('⚙ 任务')).length, 1, 'identical board is a no-op')
+  // all terminal → commit
+  feedB.commitJobsBoard(['', '⚙ 任务 2 项 · 0 运行中', '  ✓ lint', '  ✗ test'])
+  await new Promise((r) => setTimeout(r, 250))
+  jLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  const jHeader2 = jLines.findIndex((l: string) => l.startsWith('⚙ 任务'))
+  const jThink2 = jLines.findIndex((l: string) => l.startsWith('·· thinking'))
+  assert.ok(jHeader2 >= 0 && jHeader2 < jThink2 - 1, 'terminal board committed into the flow')
+  feedB.applyEvent({ type: 'turn/end', time: 7090, data: {} })
 
   // 6b. task step-progress block: while ANY step is incomplete the trailing
   // `- ✅/⏳/⬜ …` block renders ABOVE the thinking line (dynamic — each new

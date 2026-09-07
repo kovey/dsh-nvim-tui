@@ -87,6 +87,14 @@ export interface SessionRec {
         content: string;
         status: string;
     }>;
+    /** Jobs board cache: id → last known state (fed by jobs.list + onJobDone;
+     *  terminal states survive the live-list drop so the FINAL board can
+     *  commit with ✓/✗/⚠ marks). */
+    jobsCache: Map<string, {
+        label?: string;
+        status: string;
+        startedAt?: number;
+    }>;
     runningSince?: number | null;
     /** tool/call events whose tool/result has not arrived yet (live-turn
      *  orphan detection for the duplicate-dsh-tools scheduler crash). */

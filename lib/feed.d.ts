@@ -156,17 +156,17 @@ export declare class FeedRenderer {
         endRow: number;
     }>;
     cardNs: number | null;
-    /** Live todo block (todo/write): base-range of the CURRENT turn's
-     *  standing list — re-emissions REPLACE it in place instead of stacking
-     *  stale copies (the model re-writes the whole list on every status
-     *  change). Reset at turn/start. */
-    todoBlockStart: number | null;
-    todoBlockLen: number;
-    /** Live jobs board (setJobsBlock): base-range + last content key of the
-     *  standing task list — updates replace in place, empty removes. */
-    jobsBlockStart: number | null;
-    jobsBlockLen: number;
-    jobsBlockKey: string;
+    /** Pinned todo panel (todo/write): while ANY item is incomplete the
+     *  standing list renders at the BOTTOM of the view (above the thinking
+     *  row, never displaced by streaming content); once every item is ✓ the
+     *  block COMMITS into base (ordinary chat content). Incomplete state at
+     *  turn/end commits as the turn's final state. */
+    todoLiveRows: string[];
+    /** Pinned jobs board (setJobsBoard): same bottom-pinned slot — updates
+     *  replace live; commitJobsBoard lands the FINAL state (all jobs
+     *  terminal) into base. */
+    jobsLiveRows: string[];
+    jobsLiveKey: string;
     /** Cached viewport width: the cap renderTable wraps overwide tables
      *  against (refreshed by winSize, throttled once per 2s per flush). */
     lastWinW: number;
@@ -205,11 +205,13 @@ export declare class FeedRenderer {
     pushDiff(header: string, lines: string[]): void;
     pushSubagent(line: string): void;
     pushWorkflow(line: string): void;
-    /** Standing jobs board (the /tasks counterpart in the chat): ONE live
-     *  block — callers (statusline's refreshBgJobs) re-emit the FULL row set
-     *  on every jobs change; identical content is a no-op, empty rows remove
-     *  the block. Mirrors the todo-block replace machinery. */
-    setJobsBlock(rows: string[]): void;
+    /** Pinned jobs board (the /tasks counterpart in the chat): while ANY
+     *  job is running/stopping the board renders at the BOTTOM of the view
+     *  (above the thinking row); identical content is a no-op. */
+    setJobsBoard(rows: string[]): void;
+    /** All jobs terminal: the FINAL board state lands in base (ordinary chat
+     *  content) and the pinned slot clears. */
+    commitJobsBoard(rows: string[]): void;
     /** Ext card (P1 extension API): a `▣ plugin · title` header block with an
      *  indented body and optional action hints. Returns a handle that updates
      *  or dismisses the block IN PLACE (tracked base range). With `onAction`
