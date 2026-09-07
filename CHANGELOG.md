@@ -23,6 +23,13 @@
 
 ## [v0.3.0（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.0)
 
+- **Node 侧 ui.panel/ui.region 多块并发（slot 机制）**：每次 claim 映射到
+  独立伪 extId（`__node*` 保留前缀；'default' 槽沿用 `__node__` 向后
+  兼容），同槽重复 claim = 释放旧块换新块，不同槽并发堆叠；句柄新增
+  `slot` + `release()`（只释放自己），`panelRelease/regionRelease(slot?)`
+  按槽释放（无参 = 仅 default），`ui.panels()` 盘点；teardown 前统一释放
+  全部槽。
+
 - **region 四边停靠槽（路线图落地）**：`api.region_claim/release` 与
   `tui.ui.region/regionRelease` —— 右/左纵向列栈（panel 同款形态，panel
   API 保留为 right/left 别名）、上/下横向行栈（显式 width 或权重分摊、

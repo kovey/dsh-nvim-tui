@@ -119,8 +119,14 @@ export interface ExtPickerOpts {
   items: Array<{ label: string; value: string; active?: boolean }>
 }
 
-/** ui.panel options (the panel column — one per extension). */
+/** ui.panel options (the panel column — MULTI-BLOCK: each slot owns one
+ *  block; multiple slots stack concurrently). */
 export interface ExtPanelOpts {
+  /** Claim slot name (Node-side free-form; 'default' when omitted — the
+   *  back-compat single-panel slot). Re-claiming the SAME slot replaces
+   *  its block. Prefix slot names with your plugin id to avoid collisions
+   *  (e.g. 'dsh-git:log'). */
+  slot?: string
   /** Column side (default 'right'). */
   side?: 'right' | 'left'
   width?: number
@@ -138,11 +144,18 @@ export interface ExtPanelOpts {
 export interface ExtPanelHandles {
   win: number
   buf: number
+  /** The claim slot this panel occupies. */
+  slot: string
+  /** Release exactly THIS panel (slot + side). */
+  release(): Promise<void>
 }
 
 /** ui.region options (the four-edge dock slots — floats only, no splits;
- *  the chat/input layout never changes). */
+ *  the chat/input layout never changes). Same slot machinery as ui.panel:
+ *  one block per slot per side, re-claim replaces. */
 export interface ExtRegionOpts {
+  /** Claim slot name (Node-side free-form; 'default' when omitted). */
+  slot?: string
   /** Dock side (default 'right'). */
   side?: 'right' | 'left' | 'top' | 'bottom'
   /** right/left: column width; top/bottom: explicit cols — omitted =
@@ -163,6 +176,10 @@ export interface ExtRegionOpts {
 export interface ExtRegionHandles {
   win: number
   buf: number
+  /** The claim slot this region occupies. */
+  slot: string
+  /** Release exactly THIS region (slot + side). */
+  release(): Promise<void>
 }
 
 /** Extension slash command (name WITHOUT the leading '/'). */
@@ -205,15 +222,20 @@ export interface ExtUiLayer {
   notice(text: unknown): void
   /** Add/update a statusline segment ('' removes it). */
   statuslineSegment(id: string, text: string, priority?: number): void
-  /** Claim the right-edge panel slot (null when unavailable/headless). */
+  /** Claim a panel block (MULTI-BLOCK: one per slot, concurrent stacking).
+   *  null when unavailable/headless. */
   panel(opts: ExtPanelOpts): Promise<ExtPanelHandles | null>
-  /** Release the panel slot claimed via ui.panel. */
-  panelRelease(): Promise<void>
+  /** Release the slot's panel blocks claimed via ui.panel (omitted =
+   *  the 'default' slot only — back-compat). */
+  panelRelease(slot?: string): Promise<void>
+  /** Every Node-side panel/region claim (slot → side → handles). */
+  panels(): Array<{ slot: string; side: string; win: number; buf: number }>
   /** Claim a dock region (four edges; floats only, the chat/input layout
-   *  never changes). null when unavailable/headless. */
+   *  never changes; multi-block per slot). null when unavailable/headless. */
   region(opts: ExtRegionOpts): Promise<ExtRegionHandles | null>
-  /** Release the region claimed via ui.region. */
-  regionRelease(): Promise<void>
+  /** Release the slot's region blocks claimed via ui.region (omitted =
+   *  the 'default' slot only). */
+  regionRelease(slot?: string): Promise<void>
 }
 
 /** The stable public surface. Consume via `ctx.get('nvim-tui')`. */
@@ -263,6 +285,56 @@ export function installExtApi(app: App): void {
   /** Node-side floats opened via ui.float: key → win id. */
   const nodeFloats = new Map<string, number>()
   let floatSeq = 0
+  /**
+   * Node-side panel/region slot machinery (MULTI-BLOCK): every claim slot
+   * maps to its own pseudo-extId in the Lua registry — the Lua side allows
+   * ONE block per ext per side, so distinct slots stack concurrently.
+   *   slot ('default' = back-compat) → { luaId, claims: side → { win, buf } }
+   * Slot names are Node-side free-form; the LUA id must match the
+   * `^[%w_%.-]+$` pattern — the `__node*` prefix is RESERVED for this map.
+   */
+  const nodeSlots = new Map<string, { luaId: string; claims: Map<string, { win: number; buf: number }> }>()
+  let slotSeq = 0
+  const slotLuaId = (slot: string): string => {
+    if (slot === 'default') return '__node__'
+    const existing = nodeSlots.get(slot)
+    if (existing !== undefined) return existing.luaId
+    return `__node_${++slotSeq}`
+  }
+  const slotEntry = (slot: string): { luaId: string; claims: Map<string, { win: number; buf: number }> } => {
+    const entry = nodeSlots.get(slot)
+    if (entry !== undefined) return entry
+    const fresh = { luaId: slotLuaId(slot), claims: new Map() }
+    nodeSlots.set(slot, fresh)
+    return fresh
+  }
+  /** Release every claim of one slot (all sides); drops the mapping. */
+  const releaseSlot = async (slot: string): Promise<void> => {
+    const entry = nodeSlots.get(slot)
+    if (entry === undefined) return
+    for (const side of [...entry.claims.keys()]) {
+      await app.luaCall('require("dsh_tui.api").region_release(...)', [entry.luaId, side]).catch(() => {})
+    }
+    nodeSlots.delete(slot)
+  }
+  /** Replace semantics: a re-claim of the same slot+side releases the old
+   *  block first (width/title may differ). */
+  const releaseClaim = async (slot: string, side: string): Promise<void> => {
+    const entry = nodeSlots.get(slot)
+    if (entry === undefined) return
+    const claim = entry.claims.get(side)
+    if (claim === undefined) return
+    entry.claims.delete(side)
+    await app.luaCall('require("dsh_tui.api").region_release(...)', [entry.luaId, side]).catch(() => {})
+    if (entry.claims.size === 0) nodeSlots.delete(slot)
+  }
+  /** Teardown hook (app.ts calls it before the window closes). */
+  app.extNodeCleanup = async () => {
+    for (const slot of [...nodeSlots.keys()]) {
+      await releaseSlot(slot)
+    }
+  }
+
   /** Last payload per fired event — late subscribers of the ONE-SHOT
    *  lifecycle events (tui:ready / tui:active-session) get an immediate
    *  replay. Stream events (tui:input) and terminal events (tui:teardown)
@@ -422,8 +494,14 @@ export function installExtApi(app: App): void {
       },
       panel: async (opts) => {
         if (app.nvim === null || app.headless) return null
-        const res = await app.luaCall('return require("dsh_tui.api").panel_claim(...)', [
-          '__node__', { side: opts.side, width: opts.width, height: opts.height,
+        const slot = opts.slot ?? 'default'
+        const side = opts.side ?? 'right'
+        const entry = slotEntry(slot)
+        await app.luaCall('require("dsh_tui.api").ensure_registry(...)', [entry.luaId]).catch(() => {})
+        // Replace semantics: same slot + side re-claim frees the old block.
+        await releaseClaim(slot, side)
+        const res = await app.luaCall('return require("dsh_tui.api").region_claim(...)', [
+          entry.luaId, { side, width: opts.width, height: opts.height,
             title: opts.title, footer: opts.footer, lines: opts.lines ?? [] },
         ]) as { win?: unknown; buf?: unknown; err?: unknown } | null | undefined
         if (res === null || res === undefined || typeof res.err === 'string') {
@@ -431,16 +509,34 @@ export function installExtApi(app: App): void {
           return null
         }
         if (typeof res.win !== 'number' || typeof res.buf !== 'number') return null
-        return { win: res.win, buf: res.buf }
+        entry.claims.set(side, { win: res.win, buf: res.buf })
+        return {
+          win: res.win, buf: res.buf, slot,
+          release: () => releaseClaim(slot, side),
+        }
       },
-      panelRelease: async () => {
+      panelRelease: async (slot = 'default') => {
         if (app.nvim === null) return
-        await app.luaCall('require("dsh_tui.api").panel_release(...)', ['__node__']).catch(() => {})
+        await releaseSlot(slot)
+      },
+      panels: () => {
+        const out: Array<{ slot: string; side: string; win: number; buf: number }> = []
+        for (const [slot, entry] of nodeSlots) {
+          for (const [side, claim] of entry.claims) {
+            out.push({ slot, side, win: claim.win, buf: claim.buf })
+          }
+        }
+        return out
       },
       region: async (opts) => {
         if (app.nvim === null || app.headless) return null
+        const slot = opts.slot ?? 'default'
+        const side = opts.side ?? 'right'
+        const entry = slotEntry(slot)
+        await app.luaCall('require("dsh_tui.api").ensure_registry(...)', [entry.luaId]).catch(() => {})
+        await releaseClaim(slot, side)
         const res = await app.luaCall('return require("dsh_tui.api").region_claim(...)', [
-          '__node__', { side: opts.side, width: opts.width, height: opts.height, size: opts.size,
+          entry.luaId, { side, width: opts.width, height: opts.height, size: opts.size,
             title: opts.title, footer: opts.footer, lines: opts.lines ?? [] },
         ]) as { win?: unknown; buf?: unknown; err?: unknown } | null | undefined
         if (res === null || res === undefined || typeof res.err === 'string') {
@@ -448,11 +544,15 @@ export function installExtApi(app: App): void {
           return null
         }
         if (typeof res.win !== 'number' || typeof res.buf !== 'number') return null
-        return { win: res.win, buf: res.buf }
+        entry.claims.set(side, { win: res.win, buf: res.buf })
+        return {
+          win: res.win, buf: res.buf, slot,
+          release: () => releaseClaim(slot, side),
+        }
       },
-      regionRelease: async () => {
+      regionRelease: async (slot = 'default') => {
         if (app.nvim === null) return
-        await app.luaCall('require("dsh_tui.api").region_release(...)', ['__node__', null]).catch(() => {})
+        await releaseSlot(slot)
       },
     },
 

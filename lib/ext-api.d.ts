@@ -110,8 +110,14 @@ export interface ExtPickerOpts {
         active?: boolean;
     }>;
 }
-/** ui.panel options (the panel column — one per extension). */
+/** ui.panel options (the panel column — MULTI-BLOCK: each slot owns one
+ *  block; multiple slots stack concurrently). */
 export interface ExtPanelOpts {
+    /** Claim slot name (Node-side free-form; 'default' when omitted — the
+     *  back-compat single-panel slot). Re-claiming the SAME slot replaces
+     *  its block. Prefix slot names with your plugin id to avoid collisions
+     *  (e.g. 'dsh-git:log'). */
+    slot?: string;
     /** Column side (default 'right'). */
     side?: 'right' | 'left';
     width?: number;
@@ -128,10 +134,17 @@ export interface ExtPanelOpts {
 export interface ExtPanelHandles {
     win: number;
     buf: number;
+    /** The claim slot this panel occupies. */
+    slot: string;
+    /** Release exactly THIS panel (slot + side). */
+    release(): Promise<void>;
 }
 /** ui.region options (the four-edge dock slots — floats only, no splits;
- *  the chat/input layout never changes). */
+ *  the chat/input layout never changes). Same slot machinery as ui.panel:
+ *  one block per slot per side, re-claim replaces. */
 export interface ExtRegionOpts {
+    /** Claim slot name (Node-side free-form; 'default' when omitted). */
+    slot?: string;
     /** Dock side (default 'right'). */
     side?: 'right' | 'left' | 'top' | 'bottom';
     /** right/left: column width; top/bottom: explicit cols — omitted =
@@ -151,6 +164,10 @@ export interface ExtRegionOpts {
 export interface ExtRegionHandles {
     win: number;
     buf: number;
+    /** The claim slot this region occupies. */
+    slot: string;
+    /** Release exactly THIS region (slot + side). */
+    release(): Promise<void>;
 }
 /** Extension slash command (name WITHOUT the leading '/'). */
 export interface ExtCommandSpec {
@@ -194,15 +211,25 @@ export interface ExtUiLayer {
     notice(text: unknown): void;
     /** Add/update a statusline segment ('' removes it). */
     statuslineSegment(id: string, text: string, priority?: number): void;
-    /** Claim the right-edge panel slot (null when unavailable/headless). */
+    /** Claim a panel block (MULTI-BLOCK: one per slot, concurrent stacking).
+     *  null when unavailable/headless. */
     panel(opts: ExtPanelOpts): Promise<ExtPanelHandles | null>;
-    /** Release the panel slot claimed via ui.panel. */
-    panelRelease(): Promise<void>;
+    /** Release the slot's panel blocks claimed via ui.panel (omitted =
+     *  the 'default' slot only — back-compat). */
+    panelRelease(slot?: string): Promise<void>;
+    /** Every Node-side panel/region claim (slot → side → handles). */
+    panels(): Array<{
+        slot: string;
+        side: string;
+        win: number;
+        buf: number;
+    }>;
     /** Claim a dock region (four edges; floats only, the chat/input layout
-     *  never changes). null when unavailable/headless. */
+     *  never changes; multi-block per slot). null when unavailable/headless. */
     region(opts: ExtRegionOpts): Promise<ExtRegionHandles | null>;
-    /** Release the region claimed via ui.region. */
-    regionRelease(): Promise<void>;
+    /** Release the slot's region blocks claimed via ui.region (omitted =
+     *  the 'default' slot only). */
+    regionRelease(slot?: string): Promise<void>;
 }
 /** The stable public surface. Consume via `ctx.get('nvim-tui')`. */
 export interface TuiExtApi {

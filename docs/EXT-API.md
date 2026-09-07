@@ -99,20 +99,26 @@ const pick = await tui.ui.picker({ title: '选择会话', items: [{ label: 'A', 
 tui.ui.notice('操作完成')
 tui.ui.statuslineSegment('git-badge', '⎇ main', 50)   // 优先级排序，'' 移除
 
-// 面板列（多面板并发）：每个 extId 一块，按 claim 顺序自上而下堆叠在
+// 面板列（多面板并发）：每个 slot 一块，按 claim 顺序自上而下堆叠在
 // 右缘（side:'left' 可选）；height 显式行数，否则按权重分摊剩余预算；
-// reasoning 面板打开时排到列底。Node 侧 '__node__' 同一时刻持有一块
-// （重复 claim 返回 null + notice）。
-const p = await tui.ui.panel({ title: 'Git 面板', width: 52, lines: ['…'] })
+// reasoning 面板打开时排到列底。Node 侧 slot 是自由格式名字（建议
+// '插件名:用途'），'default' 槽 = 向后兼容的单面板；同槽重复 claim =
+// 释放旧块换新块。
+const p = await tui.ui.panel({ slot: 'dsh-git:log', title: 'Git 面板', width: 52, lines: ['…'] })
+const q = await tui.ui.panel({ slot: 'dsh-build', title: '构建', width: 40 }) // 并发！
 // 写内容: nvim_buf_set_lines(p.buf, …)（buffer 保持可写、编辑键已 Nop）
-await tui.ui.panelRelease()
+await p.release()                      // 只释放自己这块
+await tui.ui.panelRelease()            // 只释放 'default' 槽（兼容旧行为）
+await tui.ui.panelRelease('dsh-build') // 释放指定槽
+tui.ui.panels()                        // [{ slot, side, win, buf }, …] 盘点
 
 // 四边停靠槽（仅浮动窗口，聊天区/输入框布局永不改变，无分屏）：
 // right/left = 纵向列栈（panel 的同款形态），top/bottom = 横向行栈；
 // 每 ext 每边一块，同边多 ext 按 claim 顺序堆叠。
-const t = await tui.ui.region({ side: 'top', size: 3, width: 40, title: '构建进度', lines: ['…'] })
-const b = await tui.ui.region({ side: 'bottom', size: 4 })   // width 缺省按权重分摊
-await tui.ui.regionRelease()   // __node__ 每次释放一个区域（panel 别名 = right）
+const t = await tui.ui.region({ slot: 'dsh-build', side: 'top', size: 3, width: 40, title: '构建进度', lines: ['…'] })
+const b = await tui.ui.region({ slot: 'dsh-build', side: 'bottom', size: 4 }) // 同槽跨边并存
+await t.release()                      // 只释放 top 这块
+await tui.ui.regionRelease('dsh-build') // 释放槽的全部边
 ```
 
 ### 2.3 事件 / 会话 / 命令
@@ -317,3 +323,4 @@ Node → Lua: runner 调 api.rpc_dispatch(extId, method, args) / api.rpc_event(.
 - 卡片动作的确认/输入型交互（当前为单选动作）。
 - region 的 `side='full'` 全屏区域（reasoning 与其余区域临时隐藏，关闭后
   恢复）——当前四边停靠槽已覆盖主要场景。
+- 面板/区域拖拽重排与 tab 化（`insertBefore` 类能力，另行评估）。

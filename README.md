@@ -348,9 +348,10 @@ dsh-nvim-tui 对外开放**稳定接口**，其他 dsh 插件与 nvim 插件可�
 UI、使用 nvim 窗口、读写输入、订阅会话事件：
 
 - Node 面（dsh 插件）：`ctx.get('nvim-tui')` → `TuiExtApi` —— nvim 执行层 /
-  ui 原语（**交互卡片** card 1-9/Enter 动作、float/picker、**多面板列栈**、
-  **四边停靠槽 region**）/ 命令注册 / 会话事件（一次性事件晚订阅补发）/
-  dsh-ext 双向总线（**30s 有界应答**，`luaExt.on` 可 per-handler 调超时）
+  ui 原语（**交互卡片** card 1-9/Enter 动作、float/picker、**多面板列栈与
+  四边停靠槽 region（slot 多块并发）**）/ 命令注册 / 会话事件（一次性
+  事件晚订阅补发）/ dsh-ext 双向总线（**30s 有界应答**，`luaExt.on` 可
+  per-handler 调超时）
 - Lua 面（TUI 实例内的 nvim 插件）：`require('dsh_tui').api` —— 登记制窗口
   原语（守卫放行）、面板列栈与四边停靠槽（region_claim/release）、
   before_submit 钩子、Lua 命令、双向 RPC；晚加载插件（lazy.nvim VeryLazy）

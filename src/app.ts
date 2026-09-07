@@ -184,6 +184,9 @@ export interface App {
    *  ('all' = unfiltered), fed by dsh-ext-register notifications (P3 uses
    *  it to route the session-event mirror). */
   extLuaSubs: Map<string, Set<string> | 'all'>
+  /** Teardown hook set by ext-api: releases every Node-side panel/region
+   *  slot before the nvim window closes. */
+  extNodeCleanup: (() => void | Promise<void>) | null
   /** dsh-ext bus: extId → { handler, timeoutMs } registered by a Node-side
    *  consumer via `luaExt.on` (answered over the shared RPC channel). */
   extNodeHandlers: Map<string, { handler: (method: string, args: unknown[]) => unknown | Promise<unknown>; timeoutMs: number }>
@@ -353,6 +356,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     extSessionSubs: [],
     extDispatchSessionEvent: () => {},
     extLuaSubs: new Map(),
+    extNodeCleanup: null,
     extNodeHandlers: new Map(),
     extStatusSegments: new Map(),
 
@@ -724,6 +728,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     // pre-close (the window is gone by the time teardown runs) — skip there.
     try {
       if (!app.quitting) {
+        await app.extNodeCleanup?.()
         app.extFire('tui:teardown', {})
         void app.luaCall('require("dsh_tui.api").emit(...)', ['Shutdown', {}]).catch(() => {})
       }
@@ -741,8 +746,10 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     app.exitDiag('quit', `code=${code}`, `disposed=${app.disposed}`)
     try {
       // Tell nvim-side extensions BEFORE the window closes — the teardown
-      // path below runs after ':qa!' and can no longer reach them.
+      // path below runs after ':qa!' and can no longer reach them. Node-side
+      // panel/region slots release first (they hold Lua registry entries).
       try {
+        await app.extNodeCleanup?.()
         app.extFire('tui:teardown', {})
         void app.luaCall('require("dsh_tui.api").emit(...)', ['Shutdown', {}]).catch(() => {})
       } catch {}

@@ -191,6 +191,9 @@ export interface App {
      *  ('all' = unfiltered), fed by dsh-ext-register notifications (P3 uses
      *  it to route the session-event mirror). */
     extLuaSubs: Map<string, Set<string> | 'all'>;
+    /** Teardown hook set by ext-api: releases every Node-side panel/region
+     *  slot before the nvim window closes. */
+    extNodeCleanup: (() => void | Promise<void>) | null;
     /** dsh-ext bus: extId → { handler, timeoutMs } registered by a Node-side
      *  consumer via `luaExt.on` (answered over the shared RPC channel). */
     extNodeHandlers: Map<string, {
