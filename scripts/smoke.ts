@@ -640,6 +640,27 @@ description:
   assert.ok(linesB3.some((l: string) => /^·· thinking… \d+s$/.test(l)), 'silent turn shows thinking placeholder')
   feedB.applyEvent({ type: 'turn/end', time: 6500, data: {} })
 
+  // 6a2b. jobs board: live updates replace in place, identical no-op, empty removes
+  const jobsRows1 = ['', '⚙ 任务 2 项 · 1 运行中', '  ⏳ lint · j1', '  · test · j2']
+  feedB.setJobsBlock(jobsRows1)
+  await new Promise((r) => setTimeout(r, 200))
+  let jobsLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(jobsLines.filter((l: string) => l.startsWith('⚙ 任务')).length, 1, 'jobs board renders once')
+  feedB.setJobsBlock(jobsRows1) // identical → no churn
+  await new Promise((r) => setTimeout(r, 200))
+  jobsLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(jobsLines.filter((l: string) => l.startsWith('⚙ 任务')).length, 1, 'identical content is a no-op')
+  const jobsRows2 = ['', '⚙ 任务 2 项 · 2 运行中', '  ⏳ lint · j1', '  ⏳ test · j2']
+  feedB.setJobsBlock(jobsRows2)
+  await new Promise((r) => setTimeout(r, 200))
+  jobsLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(jobsLines.filter((l: string) => l.startsWith('⚙ 任务')).length, 1, 'update replaces in place')
+  assert.ok(jobsLines.some((l: string) => l.includes('2 运行中')), 'count updates live')
+  feedB.setJobsBlock([])
+  await new Promise((r) => setTimeout(r, 200))
+  jobsLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(jobsLines.filter((l: string) => l.startsWith('⚙ 任务')).length, 0, 'empty rows remove the board')
+
   // 6a2. todo live block: re-emissions REPLACE in place (no stale copies)
   feedB.applyEvent({ type: 'todo/write', time: 7000, data: { todos: [
     { content: '功能实现', status: 'in_progress' }, { content: '补测试', status: 'pending' } ] } })

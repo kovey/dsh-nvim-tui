@@ -186,6 +186,11 @@ export class FeedRenderer {
    *  change). Reset at turn/start. */
   todoBlockStart: number | null
   todoBlockLen: number
+  /** Live jobs board (setJobsBlock): base-range + last content key of the
+   *  standing task list — updates replace in place, empty removes. */
+  jobsBlockStart: number | null
+  jobsBlockLen: number
+  jobsBlockKey: string
   /** Cached viewport width: the cap renderTable wraps overwide tables
    *  against (refreshed by winSize, throttled once per 2s per flush). */
   lastWinW: number
@@ -251,6 +256,9 @@ export class FeedRenderer {
     this.cardRanges = new Map()
     this.todoBlockStart = null
     this.todoBlockLen = 0
+    this.jobsBlockStart = null
+    this.jobsBlockLen = 0
+    this.jobsBlockKey = ''
     this.cardNs = null
     this.lastWinW = 100
     this.lastWinAt = 0
@@ -342,6 +350,32 @@ export class FeedRenderer {
 
   pushWorkflow(line: string): void {
     this.base.push('', line)
+    this.schedule()
+  }
+
+  /** Standing jobs board (the /tasks counterpart in the chat): ONE live
+   *  block — callers (statusline's refreshBgJobs) re-emit the FULL row set
+   *  on every jobs change; identical content is a no-op, empty rows remove
+   *  the block. Mirrors the todo-block replace machinery. */
+  setJobsBlock(rows: string[]): void {
+    const key = rows.join('\n')
+    if (key === this.jobsBlockKey) return
+    this.jobsBlockKey = key
+    const start = this.jobsBlockStart
+    if (start !== null && start < this.base.length) {
+      this.base.splice(start, this.jobsBlockLen, ...rows)
+      this.shiftExtCards(start, rows.length - this.jobsBlockLen)
+      if (rows.length === 0) {
+        this.jobsBlockStart = null
+        this.jobsBlockLen = 0
+      } else {
+        this.jobsBlockLen = rows.length
+      }
+    } else if (rows.length > 0) {
+      this.jobsBlockStart = this.base.length
+      this.jobsBlockLen = rows.length
+      this.base.push(...rows)
+    }
     this.schedule()
   }
 

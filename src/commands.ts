@@ -406,7 +406,7 @@ const planCommand = (app: App, a: string | undefined) => {
 }
 
 /** /tasks [kill <id>] — job registry view / cancel one job. */
-const tasksCommand = (app: App, a: string | undefined) => {
+const tasksCommand = async (app: App, a: string | undefined) => {
   const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
@@ -434,9 +434,15 @@ const tasksCommand = (app: App, a: string | undefined) => {
     return
   }
   const icon = (s: string): string => s === 'running' ? '⏳' : s === 'completed' ? '✓' : s === 'killed' ? '✗' : s === 'failed' ? '⚠' : '·'
-  for (const j of list) {
+  const sel = await app.openPicker(t('任务列表（选中取消该任务）'), list.map((j) => {
     const elapsed = j.startedAt !== undefined ? ` · ${((Date.now() - j.startedAt) / 1000).toFixed(0)}s` : ''
-    app.notice(`${icon(j.status)} ${j.id} ${j.label ?? ''}${elapsed}`)
+    return { label: `${icon(j.status)} ${j.label ?? j.id} · ${j.id}${elapsed}`, value: `kill:${j.id}` }
+  }))
+  if (sel === null) return
+  if (sel.startsWith('kill:')) {
+    const id = sel.slice(5)
+    const r = jobs.kill(id, rec.handle.agent, 'user asked')
+    app.notice(r === 'requested' ? `已请求取消 ${id}` : `${id} 已结束`)
   }
 }
 

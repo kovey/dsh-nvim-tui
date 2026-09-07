@@ -29,6 +29,12 @@
   plain 动作打断后，下一次输入仍会被路由给已失效的旧动作）；`api.register`
   拒绝 `__node` 保留前缀（防止插件抢注与 Node slot 机制串扰）。
 
+- **任务（jobs）弹窗化 + 聊天区实时任务板**：`/tasks` 从逐条 notice
+  改为弹窗列表（选中即取消该任务）；`FeedRenderer.setJobsBlock` 新增
+  常驻任务板原语（与待办块同款就地替换 + 偏移修正 + 内容不变 no-op +
+  空列表移除），statusline 的 refreshBgJobs 在每次 jobs 变更时重发全量
+  行集——后台任务状态随 ⚙/⏳/✓/✗/⚠ 标记实时刷新。
+
 - **修复：待办清单状态不实时更新**。todo/write 每次重发全量清单，feed 原
   实现每次**追加**新块——旧块堆叠、状态永不刷新。改为每回合**单块就地
   替换**（复用 ext-card 的 splice + shiftExtCards 偏移修正，重发时原位

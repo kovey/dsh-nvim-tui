@@ -162,6 +162,11 @@ export declare class FeedRenderer {
      *  change). Reset at turn/start. */
     todoBlockStart: number | null;
     todoBlockLen: number;
+    /** Live jobs board (setJobsBlock): base-range + last content key of the
+     *  standing task list — updates replace in place, empty removes. */
+    jobsBlockStart: number | null;
+    jobsBlockLen: number;
+    jobsBlockKey: string;
     /** Cached viewport width: the cap renderTable wraps overwide tables
      *  against (refreshed by winSize, throttled once per 2s per flush). */
     lastWinW: number;
@@ -200,6 +205,11 @@ export declare class FeedRenderer {
     pushDiff(header: string, lines: string[]): void;
     pushSubagent(line: string): void;
     pushWorkflow(line: string): void;
+    /** Standing jobs board (the /tasks counterpart in the chat): ONE live
+     *  block — callers (statusline's refreshBgJobs) re-emit the FULL row set
+     *  on every jobs change; identical content is a no-op, empty rows remove
+     *  the block. Mirrors the todo-block replace machinery. */
+    setJobsBlock(rows: string[]): void;
     /** Ext card (P1 extension API): a `▣ plugin · title` header block with an
      *  indented body and optional action hints. Returns a handle that updates
      *  or dismisses the block IN PLACE (tracked base range). With `onAction`
