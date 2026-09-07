@@ -2456,15 +2456,47 @@ description:
   const intHeaderRow = intLines0.findIndex((l: string) => l.includes('交互卡片'))
   assert.ok(intMarks[0][1] <= intHeaderRow && intMarks[0][3].end_row >= intHeaderRow,
     'card mark spans the rendered card block')
-  // activation: picker-list form + direct index form + out-of-range + unknown
+  // activation: picker-list form + resolve/fire split + out-of-range + unknown
   const intMarkId = intMarks[0][0] as number
   assert.deepEqual(feedA.activateCard(intMarkId, null),
     [{ label: '甲', value: 'a' }, { label: '乙', value: 'b' }], 'activateCard(null) returns the action list')
-  assert.deepEqual(feedA.activateCard(intMarkId, 2), { invoked: true }, 'direct action reports invocation')
+  const resolved2 = feedA.activateCard(intMarkId, 2) as { cardId: string; action: { label: string; value: string; kind?: string } }
+  assert.equal(resolved2.action.value, 'b', 'activateCard(2) resolves the action record')
+  assert.equal(feedA.fireCardAction(resolved2.cardId, 'b'), true, 'fireCardAction invokes the handler')
   assert.deepEqual(firedActions, ['b'], 'action 2 fired with its value')
-  feedA.activateCard(intMarkId, 9)
-  assert.deepEqual(firedActions, ['b'], 'out-of-range action is a no-op')
+  assert.equal(feedA.activateCard(intMarkId, 9), null, 'out-of-range action resolves to null')
   assert.equal(feedA.activateCard(999_999, 1), null, 'unknown mark resolves to null')
+  // confirm / input kinds resolve with their metadata (dispatch lives in the
+  // runner — the feed-level contract is resolve + fire with the final value)
+  const kindCard = feedA.pushExtCard({
+    plugin: 'smoke', title: '交互卡片2', body: '三种形态',
+    actions: [
+      { label: '直接', value: 'plain-v' },
+      { label: '危险操作', value: 'confirm-v', kind: 'confirm', confirmText: '确认执行？' },
+      { label: '重命名', value: 'input-v', kind: 'input', inputPrompt: '新名字', inputDefault: '默认名' },
+    ],
+    onAction: (v: string) => { firedActions.push('kind:' + v) },
+  })
+  await new Promise((r) => setTimeout(r, 250))
+  const kindMarks: any[] = await nvim.request('nvim_buf_get_extmarks', [chatA.chatBuf, cardNs, 0, -1, { details: true }])
+  assert.equal(kindMarks.length, 2, 'second interactive card mark placed')
+  const kindMarkId = kindMarks[1][0] as number
+  assert.ok(Number.isInteger(kindMarkId), 'kind card mark resolvable')
+  const kindList = feedA.activateCard(kindMarkId, null) as Array<{ kind?: string; value: string }>
+  assert.equal(kindList[1].kind, 'confirm', 'confirm kind carried in the picker list')
+  assert.equal(kindList[2].kind, 'input', 'input kind carried in the picker list')
+  const resolvedConfirm = feedA.activateCard(kindMarkId, 2) as { cardId: string; action: { kind?: string; confirmText?: string } }
+  assert.equal(resolvedConfirm.action.kind, 'confirm', 'confirm action resolves with its kind')
+  assert.equal(resolvedConfirm.action.confirmText, '确认执行？', 'confirmText carried')
+  // plain fire + confirm-style fire (runner passes action.value) + input fire
+  // (runner passes the TYPED text)
+  feedA.fireCardAction(resolvedConfirm.cardId, 'confirm-v')
+  const resolvedInput = feedA.activateCard(kindMarkId, 3) as { cardId: string; action: { kind?: string; inputDefault?: string } }
+  assert.equal(resolvedInput.action.kind, 'input', 'input action resolves with its kind')
+  assert.equal(resolvedInput.action.inputDefault, '默认名', 'inputDefault carried')
+  feedA.fireCardAction(resolvedInput.cardId, '用户输入的内容')
+  assert.deepEqual(firedActions, ['b', 'kind:confirm-v', 'kind:用户输入的内容'], 'all three kinds fired with their final values')
+  kindCard.dismiss()
   // update() grows the block → the mark range follows the rendered rows
   const beforeRows = intMarks[0][3].end_row - intMarks[0][1]
   intCard.update({ body: '选择一项\n多了两行\n第三行' })

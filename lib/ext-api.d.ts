@@ -62,10 +62,18 @@ export interface ExtCardOpts {
     body: string;
     /** Action hints rendered as a footer row. With onAction, they become
      *  interactive: cursor on the card + 1-9 fires action N, Enter opens
-     *  the action picker (both only on the main chat window). */
+     *  the action picker (both only on the main chat window).
+     *  kind: 'plain' (default, immediate) / 'confirm' (picker gate) /
+     *  'input' (typed value via the input box; headless degrades to plain).
+     *  onAction receives action.value for plain/confirm, the TYPED text
+     *  for input. */
     actions?: Array<{
         label: string;
         value: string;
+        kind?: 'plain' | 'confirm' | 'input';
+        confirmText?: string;
+        inputPrompt?: string;
+        inputDefault?: string;
     }>;
     /** Interactive activation callback (value = the fired action's value). */
     onAction?: (value: string) => void;

@@ -194,6 +194,14 @@ export interface App {
     /** Teardown hook set by ext-api: releases every Node-side panel/region
      *  slot before the nvim window closes. */
     extNodeCleanup: (() => void | Promise<void>) | null;
+    /** Pending card INPUT action: the next dsh-input belongs to this card
+     *  action instead of the agent (set by boot's card dispatcher; empty
+     *  input cancels). */
+    pendingCardInput: {
+        mark: number;
+        actionIdx: number;
+        prompt: string;
+    } | null;
     /** dsh-ext bus: extId → { handler, timeoutMs } registered by a Node-side
      *  consumer via `luaExt.on` (answered over the shared RPC channel). */
     extNodeHandlers: Map<string, {

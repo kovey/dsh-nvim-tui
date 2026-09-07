@@ -44,9 +44,10 @@ dsh --profile nvim-tui
   `/search` 跨会话搜索、`/archive` 归档、`/queue` 消息队列
 - **插件开放接口（EXT-API）**：其他 dsh 插件经 `ctx.get('nvim-tui')`、
   TUI 内的 nvim 插件经 `require('dsh_tui').api` 渲染 UI / 使用 nvim 窗口 /
-  订阅会话事件——含卡片交互（1-9 / Enter 触发动作）、多面板列栈、
-  **四边停靠槽 region**（仅浮动窗口、无分屏、聊天/输入布局不变）、
-  dsh-ext 双向 RPC（30s 有界应答）、晚加载快照对齐（见 [docs/EXT-API.md](docs/EXT-API.md)）
+  订阅会话事件——含卡片交互（1-9 / Enter 触发动作，支持确认型与输入型）、
+  多面板列栈、**四边停靠槽 region**（仅浮动窗口、无分屏、聊天/输入布局
+  不变）、dsh-ext 双向 RPC（30s 有界应答）、晚加载快照对齐（见
+  [docs/EXT-API.md](docs/EXT-API.md)）
 - **引用与补全**：`@` 文件引用 + **@session 会话引用**（官方规范 mention）；
   `/` 补全菜单含全部命令 + 技能条目
 - **多模态识图**：原生 image 直发，或经 `dsh-vision-bridge` 本地 OCR 转文字；

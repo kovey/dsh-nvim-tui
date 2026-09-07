@@ -112,8 +112,33 @@ export async function boot(app: App): Promise<void> {
     app.nvim!.on('notification', async (method, args) => {
       if (app.disposed) return
       if (method === 'dsh-input') {
-        app.extFire('tui:input', { text: String(args?.[0] ?? '') })
-        try { app.onInput(String(args?.[0] ?? '')) } catch (err) { app.notice(`⚠ 输入处理失败: ${(err as Error).message}`) }
+        const raw = String(args?.[0] ?? '')
+        // Card INPUT actions claim the next input: it belongs to the card,
+        // not the agent (interception sits BEFORE the tui:input broadcast,
+        // so ext subscribers never see card inputs as chat input).
+        if (app.pendingCardInput !== null) {
+          const pending = app.pendingCardInput
+          app.pendingCardInput = null
+          const text = raw.trim()
+          if (text === '') {
+            app.notice('已取消卡片输入')
+            return
+          }
+          const feed = app.activeFeed()
+          const r = feed === undefined ? null : feed.resolveCardAction(pending.mark, pending.actionIdx)
+          if (r === null || r.action === undefined) {
+            app.notice('⚠ 卡片已失效，输入已取消')
+            return
+          }
+          try {
+            feed!.fireCardAction(r.cardId, text)
+          } catch (err) {
+            app.notice(`⚠ 卡片操作失败: ${(err as Error).message}`)
+          }
+          return
+        }
+        app.extFire('tui:input', { text: raw })
+        try { app.onInput(raw) } catch (err) { app.notice(`⚠ 输入处理失败: ${(err as Error).message}`) }
       } else if (method === 'dsh-command') {
         try { app.onCommand(String(args?.[0] ?? '')) } catch (err) { app.notice(`⚠ 命令失败: ${(err as Error).message}`) }
       } else if (method === 'dsh-abort') {
@@ -218,22 +243,73 @@ export async function boot(app: App): Promise<void> {
       } else if (method === 'dsh-ext-card-activate') {
         // Interactive ext card: the chat keymap resolved the card mark under
         // the cursor (active session feed). action null → open the action
-        // picker; a number → fire that action directly.
+        // picker; a number → dispatch that action (plain fires immediately,
+        // confirm gates behind a picker, input claims the next dsh-input).
         const payload = (args?.[0] ?? {}) as { mark?: unknown; action?: unknown }
         const mark = Number(payload.mark)
         if (!Number.isInteger(mark)) return
         const feed = app.activeFeed()
         if (feed === undefined) return
+        const dispatch = (feed2: typeof feed, idx: number): void => {
+          const r = feed2.resolveCardAction(mark, idx)
+          if (r === null || r.action === undefined) {
+            app.notice('⚠ 卡片已失效')
+            return
+          }
+          const act = r.action
+          const kind = act.kind ?? 'plain'
+          try {
+            if (kind === 'confirm') {
+              // headless degrades to plain (no TTY to confirm on).
+              if (app.headless) {
+                feed2.fireCardAction(r.cardId, act.value)
+                return
+              }
+              void app.openPicker(String(act.confirmText ?? `确认执行「${act.label}」？`), [
+                { label: '确认', value: 'yes' },
+                { label: '取消', value: 'no' },
+              ]).then((sel) => {
+                if (sel === 'yes') {
+                  try { feed2.fireCardAction(r.cardId, act.value) }
+                  catch (err) { app.notice(`⚠ 卡片操作失败: ${(err as Error).message}`) }
+                }
+              })
+              return
+            }
+            if (kind === 'input') {
+              // headless degrades to plain (no input box to type into).
+              if (app.headless) {
+                feed2.fireCardAction(r.cardId, act.value)
+                return
+              }
+              const prompt = String(act.inputPrompt ?? `输入「${act.label}」的参数`)
+              app.pendingCardInput = { mark, actionIdx: idx, prompt }
+              if (typeof act.inputDefault === 'string' && act.inputDefault !== '') {
+                void app.luaCall('require("dsh_tui").fill_input(...)', [act.inputDefault]).catch(() => {})
+              }
+              app.notice(`✎ ${prompt}（Enter 提交 · 空输入取消）`)
+              return
+            }
+            feed2.fireCardAction(r.cardId, act.value)
+          } catch (err) {
+            app.notice(`⚠ 卡片操作失败: ${(err as Error).message}`)
+          }
+        }
         try {
           const action = typeof payload.action === 'number' ? payload.action : null
           const res = feed.activateCard(mark, action)
-          if (res === null || 'invoked' in res) return
-          if (res.length === 0) return
-          void app.openPicker('卡片操作', res).then((value) => {
-            if (value === null) return
-            const idx = res.findIndex((i) => i.value === value) + 1
-            if (idx > 0) feed.activateCard(mark, idx)
-          })
+          if (res === null) return
+          if (Array.isArray(res)) {
+            if (res.length === 0) return
+            void app.openPicker('卡片操作', res).then((value) => {
+              if (value === null) return
+              const idx = res.findIndex((i) => i.value === value) + 1
+              if (idx > 0) dispatch(feed, idx)
+            })
+            return
+          }
+          // Direct 1-9: the dispatcher handles the kind.
+          dispatch(feed, action as number)
         } catch (err) {
           app.notice(`⚠ 卡片操作失败: ${(err as Error).message}`)
         }

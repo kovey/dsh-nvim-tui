@@ -23,6 +23,13 @@
 
 ## [v0.3.0（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.0)
 
+- **卡片动作确认/输入型交互**：`actions` 支持 `kind`——`plain`（缺省，
+  立即执行）、`confirm`（选择器确认，`confirmText` 提示）、`input`（输入框
+  取值，`inputPrompt`/`inputDefault`；`pendingCardInput` 拦截下一条
+  dsh-input，空输入取消，拦截先于 `tui:input` 广播）；headless 下
+  confirm/input 退化为 plain 直接执行；feed 层动作 API 拆为
+  resolveCardAction + fireCardAction（分派在 runner 侧）。
+
 - **Node 侧 ui.panel/ui.region 多块并发（slot 机制）**：每次 claim 映射到
   独立伪 extId（`__node*` 保留前缀；'default' 槽沿用 `__node__` 向后
   兼容），同槽重复 claim = 释放旧块换新块，不同槽并发堆叠；句柄新增

@@ -94,15 +94,28 @@ export interface WelcomeLine {
   group?: string
 }
 
+/** One card action. kind 'plain' (default) fires immediately; 'confirm'
+ *  gates behind a picker; 'input' collects a typed value via the input box
+ *  (headless degrades both to plain). */
+export interface ExtCardAction {
+  label: string
+  value: string
+  kind?: 'plain' | 'confirm' | 'input'
+  confirmText?: string
+  inputPrompt?: string
+  inputDefault?: string
+}
+
 /** Ext-card render options (the P1 extension API's ui.card). */
 export interface ExtCardOpts {
   /** Extension name shown in the card header. */
   plugin: string
   title: string
   body: string
-  actions?: Array<{ label: string; value: string }>
+  actions?: ExtCardAction[]
   /** Interactive activation (P4-③): invoked with the action's value when
-   *  the user activates the card in the chat (1-9 / Enter). */
+   *  the user activates the card in the chat (1-9 / Enter). plain/confirm
+   *  actions pass action.value; input actions pass the TYPED text. */
   onAction?: (value: string) => void
 }
 
@@ -163,7 +176,7 @@ export class FeedRenderer {
   extCards: Map<string, { start: number; length: number }>
   extCardSeq: number
   /** Interactive cards (P4-③): cardId → action surface. */
-  cardHandlers: Map<string, { actions: Array<{ label: string; value: string }>; onAction?: (value: string) => void }>
+  cardHandlers: Map<string, { actions: ExtCardAction[]; onAction?: (value: string) => void }>
   /** cardId → rendered extmark range (markId + buffer rows). */
   cardRanges: Map<string, { markId: number; startRow: number; endRow: number }>
   cardNs: number | null
@@ -409,11 +422,21 @@ export class FeedRenderer {
     }
   }
 
-  /** Activate the interactive card under an extmark (P4-③). actionIdx null
-   *  → returns the action list for the picker; otherwise fires action N and
-   *  returns { invoked: true }. Null when no interactive card owns the mark
+  /** Resolve the interactive card under an extmark (P4-③). actionIdx null
+   *  → returns the action list for the picker (items carry their kind);
+   *  a number → { cardId, action } for the dispatcher (plain/confirm/input
+   *  routing lives in boot.ts). Null when no interactive card owns the mark
    *  (action-less cards stay display-only). */
-  activateCard(markId: number, actionIdx: number | null): Array<{ label: string; value: string }> | { invoked: boolean } | null {
+  activateCard(markId: number, actionIdx: number | null): ExtCardAction[] | { cardId: string; action: ExtCardAction } | null {
+    const r = this.resolveCardAction(markId, actionIdx)
+    if (r === null) return null
+    if (actionIdx === null) return r.actions
+    if (r.action === undefined) return null
+    return { cardId: r.cardId, action: r.action }
+  }
+
+  /** Look up a card by mark id: returns the handler surface. */
+  resolveCardAction(markId: number, actionIdx: number | null): { cardId: string; actions: ExtCardAction[]; action?: ExtCardAction } | null {
     let cardId: string | null = null
     for (const [id, r] of this.cardRanges) {
       if (r.markId === markId) {
@@ -424,12 +447,21 @@ export class FeedRenderer {
     if (cardId === null) return null
     const entry = this.cardHandlers.get(cardId)
     if (entry === undefined || typeof entry.onAction !== 'function' || entry.actions.length === 0) return null
-    if (actionIdx === null) return entry.actions
+    if (actionIdx === null) return { cardId, actions: entry.actions }
     const act = entry.actions[actionIdx - 1]
     if (act === undefined) return null
+    return { cardId, actions: entry.actions, action: act }
+  }
+
+  /** Fire a resolved card action with the FINAL value (plain/confirm pass
+   *  action.value; input passes the typed text). Returns false when the
+   *  card vanished since resolution. */
+  fireCardAction(cardId: string, value: string): boolean {
+    const entry = this.cardHandlers.get(cardId)
+    if (entry === undefined || typeof entry.onAction !== 'function') return false
     // Exceptions propagate to boot.ts's guard (feed notice), never into nvim.
-    entry.onAction(act.value)
-    return { invoked: true }
+    entry.onAction(value)
+    return true
   }
 
   pushError(text: unknown): void {

@@ -63,18 +63,27 @@ export interface WelcomeLine {
     text: string;
     group?: string;
 }
+/** One card action. kind 'plain' (default) fires immediately; 'confirm'
+ *  gates behind a picker; 'input' collects a typed value via the input box
+ *  (headless degrades both to plain). */
+export interface ExtCardAction {
+    label: string;
+    value: string;
+    kind?: 'plain' | 'confirm' | 'input';
+    confirmText?: string;
+    inputPrompt?: string;
+    inputDefault?: string;
+}
 /** Ext-card render options (the P1 extension API's ui.card). */
 export interface ExtCardOpts {
     /** Extension name shown in the card header. */
     plugin: string;
     title: string;
     body: string;
-    actions?: Array<{
-        label: string;
-        value: string;
-    }>;
+    actions?: ExtCardAction[];
     /** Interactive activation (P4-③): invoked with the action's value when
-     *  the user activates the card in the chat (1-9 / Enter). */
+     *  the user activates the card in the chat (1-9 / Enter). plain/confirm
+     *  actions pass action.value; input actions pass the TYPED text. */
     onAction?: (value: string) => void;
 }
 /** Handle returned by pushExtCard: update/dismiss the block in place. */
@@ -137,10 +146,7 @@ export declare class FeedRenderer {
     extCardSeq: number;
     /** Interactive cards (P4-③): cardId → action surface. */
     cardHandlers: Map<string, {
-        actions: Array<{
-            label: string;
-            value: string;
-        }>;
+        actions: ExtCardAction[];
         onAction?: (value: string) => void;
     }>;
     /** cardId → rendered extmark range (markId + buffer rows). */
@@ -203,16 +209,25 @@ export declare class FeedRenderer {
      *  re-placed only when a card's range changed; dismissed cards' marks
      *  are deleted. */
     private syncCardMarks;
-    /** Activate the interactive card under an extmark (P4-③). actionIdx null
-     *  → returns the action list for the picker; otherwise fires action N and
-     *  returns { invoked: true }. Null when no interactive card owns the mark
+    /** Resolve the interactive card under an extmark (P4-③). actionIdx null
+     *  → returns the action list for the picker (items carry their kind);
+     *  a number → { cardId, action } for the dispatcher (plain/confirm/input
+     *  routing lives in boot.ts). Null when no interactive card owns the mark
      *  (action-less cards stay display-only). */
-    activateCard(markId: number, actionIdx: number | null): Array<{
-        label: string;
-        value: string;
-    }> | {
-        invoked: boolean;
+    activateCard(markId: number, actionIdx: number | null): ExtCardAction[] | {
+        cardId: string;
+        action: ExtCardAction;
     } | null;
+    /** Look up a card by mark id: returns the handler surface. */
+    resolveCardAction(markId: number, actionIdx: number | null): {
+        cardId: string;
+        actions: ExtCardAction[];
+        action?: ExtCardAction;
+    } | null;
+    /** Fire a resolved card action with the FINAL value (plain/confirm pass
+     *  action.value; input passes the typed text). Returns false when the
+     *  card vanished since resolution. */
+    fireCardAction(cardId: string, value: string): boolean;
     pushError(text: unknown): void;
     /** Extract plain text from a message (content blocks or raw text). */
     static messageText(message: ChatMessage | undefined): string;

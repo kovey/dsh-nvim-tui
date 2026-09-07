@@ -80,7 +80,14 @@ await tui.nvim.request('nvim_eval', ['slow()'], { timeoutMs: 2000 })
 const card = tui.ui.card({
   sessionId: tui.getActiveSessionId()!,  // 省略 = 当前活跃会话
   plugin: 'dsh-git', title: '分支清理', body: '已删除 3 个合并分支',
-  actions: [{ label: '确认', value: 'yes' }, { label: '详情', value: 'detail' }],
+  actions: [
+    { label: '详情', value: 'detail' },                                       // plain：立即执行
+    { label: '删除分支', value: 'delete', kind: 'confirm',
+      confirmText: '确认删除该分支？不可逆' },                                  // confirm：选择器确认
+    { label: '重命名', value: 'rename', kind: 'input',
+      inputPrompt: '输入新分支名', inputDefault: 'main' },                     // input：输入框取值
+  ],
+  // plain/confirm → value = action.value；input → value = 用户输入文本
   onAction: (value) => tui.ui.notice('选择了 ' + value),
   ttlMs: 8000,                                   // 可选自动消失
 })
@@ -320,7 +327,6 @@ Node → Lua: runner 调 api.rpc_dispatch(extId, method, args) / api.rpc_event(.
 
 ## 八、路线图（未实现项）
 
-- 卡片动作的确认/输入型交互（当前为单选动作）。
 - region 的 `side='full'` 全屏区域（reasoning 与其余区域临时隐藏，关闭后
   恢复）——当前四边停靠槽已覆盖主要场景。
 - 面板/区域拖拽重排与 tab 化（`insertBefore` 类能力，另行评估）。
