@@ -110,3 +110,53 @@ boot/自愈层、feed 渲染引擎、picker/审批/提问核心、面板与 regi
 - 风险控制：每阶段行为零变化、smoke 全绿；P0/P1 不混入新功能；
 - 明确不做：内部 cordis 克隆、Lua 侧重构（nvim/lua 模块化已达标）、
   破坏性 API 变更。
+
+## 五、app.ts 瘦身：核心服务实现外移，模块反向注入（待评审）
+
+> 用户观察：P0–P2 后 app.ts 行数几乎没变（806 → ~800）。原因：切片只改了
+> **状态存放位置**，createApp 仍内联实现 13 个核心服务（state IO / 历史刷新 /
+> 文件快照 / diff 推送 / 命令目录 / 退出诊断 / 生命周期）与 slices 全量默认值。
+
+### 5.1 诊断
+
+app.ts 现状构成：
+- kernel 原语（luaCall/svc/notice/openPicker/guard/sleep/信号接线）：~150 行，**应保留**
+- slices 空默认值字面量：~150 行，可外移
+- 核心服务实现（readState/recordState/refreshHistory/readFileSnapshot/
+  maybePushFileDiff/feedForSubagent/refreshList/refreshCommandCatalog/
+  exitDiag/closeNvimWindow/teardown/quit/registerCommands）：~450 行，**应外移**
+
+### 5.2 所有权反转：实现跟 owner 走，install 时注入
+
+原则：谁消费、谁拥有——实现代码写在 owner 模块文件里，install 时写回
+slice 槽位（这正是现有「模块填槽」机制，只是核心服务还没走这条路；
+**不引入通用服务注册表**——字符串键丢编译期检查、与宿主 cordis 职责
+重叠，明确不做）。
+
+| createApp 中的实现 | 新归属模块 | 注入点 |
+|---|---|---|
+| readState/recordState/refreshHistory/refreshList | sessions.ts | installSessions |
+| readFileSnapshot/pendingFileSnaps/renderedDiffCalls/maybePushFileDiff | transcript.ts | installTranscript |
+| feedForSubagent | subagents.ts | installSubagents |
+| registerCommands/commandCatalog/refreshCommandCatalog | commands.ts | installCommands |
+| exitDiag/closeNvimWindow/quit/teardown | boot.ts | boot() 入口 |
+| 信号钩子 + ctx.effect disposer | 保留 createApp（需要 ctx），委托 teardown 槽位 | — |
+
+app.ts 预期：806 → ~300 行（kernel + 壳 + 注入辅助）。
+
+### 5.3 分阶段
+
+- **I1 实现外移（纯搬移，行为零变化）**：13 个核心服务按表搬到 owner 模块；
+  createApp 留壳；check-arch.mjs 增哨兵（createApp 函数体不得再出现业务
+  实现——按函数名白名单校验）；smoke 全绿后提交。
+- **I2 默认值外移**：slices 字面量的初始状态由各 owner 模块在 install 时
+  注入（如 sessions 域 Map 由 installSessions 建）——app.ts 只剩 kernel。
+  时序安全依赖既有「no-op until install」模式（installs 先于 boot）。
+- **I3（不做）**：kernel 再拆（bridge/lifecycle 独立）——kernel 已是稳定面，
+  拆分无收益。
+
+### 5.4 风险
+
+- I1 为纯搬移，风险低；搬移时禁止顺手改逻辑（diff 只允许代码位移）。
+- I2 注意：install 顺序无关性必须保持（不能出现「A 模块在 install 期读
+  B 模块注入的默认值」——boot 前只允许写槽位、读 kernel）。
