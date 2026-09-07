@@ -180,6 +180,12 @@ export class FeedRenderer {
   /** cardId → rendered extmark range (markId + buffer rows). */
   cardRanges: Map<string, { markId: number; startRow: number; endRow: number }>
   cardNs: number | null
+  /** Live todo block (todo/write): base-range of the CURRENT turn's
+   *  standing list — re-emissions REPLACE it in place instead of stacking
+   *  stale copies (the model re-writes the whole list on every status
+   *  change). Reset at turn/start. */
+  todoBlockStart: number | null
+  todoBlockLen: number
   /** Cached viewport width: the cap renderTable wraps overwide tables
    *  against (refreshed by winSize, throttled once per 2s per flush). */
   lastWinW: number
@@ -243,6 +249,8 @@ export class FeedRenderer {
     this.extCardSeq = 0
     this.cardHandlers = new Map()
     this.cardRanges = new Map()
+    this.todoBlockStart = null
+    this.todoBlockLen = 0
     this.cardNs = null
     this.lastWinW = 100
     this.lastWinAt = 0
@@ -737,6 +745,8 @@ export class FeedRenderer {
       case 'turn/start':
         this.base.push('', '── turn ──')
         this.turnStartedAt = Date.now()
+        this.todoBlockStart = null
+        this.todoBlockLen = 0
         this.turnMarkerBase = this.base.length
         if (!history && this.reasoningBuf !== null) {
           // The panel is a per-turn activity log (live turns only).
@@ -756,18 +766,39 @@ export class FeedRenderer {
         this.schedule()
         break
       case 'todo/write': {
-        // Standing todo list (todo_write): the terminal counterpart of the
-        // web's TodoDock strip — a compact block at its flow position.
+        // Standing todo list (todo_write): ONE live block per turn — the
+        // model re-emits the FULL list on every status change, so a
+        // re-emission REPLACES the previous block in place (stale copies
+        // used to stack and the statuses never updated). Empty todos
+        // remove the block.
         const todos = event.data?.todos ?? []
-        if (todos.length === 0) break
-        const count = (st: string) => todos.filter((t) => t.status === st).length
-        const done = count('completed')
-        const doing = count('in_progress')
-        const pending = count('pending')
-        this.base.push('', `${t('📋 待办')} ${todos.length} ${t('项')} · ${done} ${t('完成')} · ${doing} ${t('进行中')} · ${pending} ${t('待办')}`)
-        for (const t of todos) {
-          const mark = t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '…' : '·'
-          this.base.push(`  ${mark} ${t.content}`)
+        const rows: string[] = []
+        if (todos.length > 0) {
+          const count = (st: string) => todos.filter((td) => td.status === st).length
+          const done = count('completed')
+          const doing = count('in_progress')
+          const pending = count('pending')
+          rows.push('', `${t('📋 待办')} ${todos.length} ${t('项')} · ${done} ${t('完成')} · ${doing} ${t('进行中')} · ${pending} ${t('待办')}`)
+          for (const td of todos) {
+            const mark = td.status === 'completed' ? '✓' : td.status === 'in_progress' ? '…' : '·'
+            rows.push(`  ${mark} ${td.content}`)
+          }
+        }
+        const start = this.todoBlockStart
+        if (start !== null && start < this.base.length) {
+          // Replace the existing block in place; later cards shift along.
+          this.base.splice(start, this.todoBlockLen, ...rows)
+          this.shiftExtCards(start, rows.length - this.todoBlockLen)
+          if (rows.length === 0) {
+            this.todoBlockStart = null
+            this.todoBlockLen = 0
+          } else {
+            this.todoBlockLen = rows.length
+          }
+        } else if (rows.length > 0) {
+          this.todoBlockStart = this.base.length
+          this.todoBlockLen = rows.length
+          this.base.push(...rows)
         }
         this.schedule()
         break

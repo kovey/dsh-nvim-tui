@@ -29,6 +29,12 @@
   plain 动作打断后，下一次输入仍会被路由给已失效的旧动作）；`api.register`
   拒绝 `__node` 保留前缀（防止插件抢注与 Node slot 机制串扰）。
 
+- **修复：待办清单状态不实时更新**。todo/write 每次重发全量清单，feed 原
+  实现每次**追加**新块——旧块堆叠、状态永不刷新。改为每回合**单块就地
+  替换**（复用 ext-card 的 splice + shiftExtCards 偏移修正，重发时原位
+  更新、清空时移除块，turn/start 重置跟踪）；状态栏 📋 计数本就实时
+  （foldEvent → updateStatusline），无改动。
+
 - **跨域状态写收口（「跨域读走方法」落地）**：slice 状态字段 readonly 化，
   所有者经 `WritableSlice` 视图写入；跨域变更收敛为 21 个域操作方法
   （agent/ext/runtime 三域 ops），38 处历史跨域状态写全部改造；check-arch

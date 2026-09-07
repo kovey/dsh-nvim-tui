@@ -640,6 +640,27 @@ description:
   assert.ok(linesB3.some((l: string) => /^·· thinking… \d+s$/.test(l)), 'silent turn shows thinking placeholder')
   feedB.applyEvent({ type: 'turn/end', time: 6500, data: {} })
 
+  // 6a2. todo live block: re-emissions REPLACE in place (no stale copies)
+  feedB.applyEvent({ type: 'todo/write', time: 7000, data: { todos: [
+    { content: '功能实现', status: 'in_progress' }, { content: '补测试', status: 'pending' } ] } })
+  await new Promise((r) => setTimeout(r, 200))
+  let todoLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(todoLines.filter((l: string) => l.startsWith('📋 待办')).length, 1, 'one standing todo block')
+  assert.ok(todoLines.some((l: string) => l.includes('… 功能实现')), 'initial status renders')
+  feedB.applyEvent({ type: 'todo/write', time: 7050, data: { todos: [
+    { content: '功能实现', status: 'completed' }, { content: '补测试', status: 'in_progress' } ] } })
+  await new Promise((r) => setTimeout(r, 200))
+  todoLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(todoLines.filter((l: string) => l.startsWith('📋 待办')).length, 1, 're-emission replaces instead of stacking')
+  assert.ok(todoLines.some((l: string) => l.includes('✓ 功能实现')), 'status updates in place')
+  assert.ok(todoLines.some((l: string) => l.includes('… 补测试')), 'second item updates too')
+  assert.ok(!todoLines.some((l: string) => l.includes('… 功能实现')), 'stale row gone')
+  // empty todos → block removed
+  feedB.applyEvent({ type: 'todo/write', time: 7090, data: { todos: [] } })
+  await new Promise((r) => setTimeout(r, 200))
+  todoLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(todoLines.filter((l: string) => l.startsWith('📋 待办')).length, 0, 'empty todos remove the block')
+
   // 6b. task step-progress block: while ANY step is incomplete the trailing
   // `- ✅/⏳/⬜ …` block renders ABOVE the thinking line (dynamic — each new
   // message replaces the live version); once every step is ✅ it falls back

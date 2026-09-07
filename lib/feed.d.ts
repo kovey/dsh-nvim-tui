@@ -156,6 +156,12 @@ export declare class FeedRenderer {
         endRow: number;
     }>;
     cardNs: number | null;
+    /** Live todo block (todo/write): base-range of the CURRENT turn's
+     *  standing list — re-emissions REPLACE it in place instead of stacking
+     *  stale copies (the model re-writes the whole list on every status
+     *  change). Reset at turn/start. */
+    todoBlockStart: number | null;
+    todoBlockLen: number;
     /** Cached viewport width: the cap renderTable wraps overwide tables
      *  against (refreshed by winSize, throttled once per 2s per flush). */
     lastWinW: number;
