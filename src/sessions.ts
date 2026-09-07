@@ -19,19 +19,19 @@ import type { App, CommandSpec, ModelRef } from './app.js'
 const attachSession = async (app: App, handle: AgentHandle, modelRef: ModelRef) => {
   const id = handle.agent.session.id
   const ids = await app.lua.ensureChat(id)
-  app.chatWinId = ids.chatWin
+  app.slices.runtime.chatWinId = ids.chatWin
   const rids = await app.lua.ensureReasoning(id)
-  if (rids?.reasoningWin !== null && rids?.reasoningWin !== undefined) app.reasoningWinId = rids.reasoningWin
-  app.reasoningOpen = rids?.reasoningOpen === true
-  const feed = new FeedRenderer(app.nvim!, ids.chatBuf, ids.chatWin, {
+  if (rids?.reasoningWin !== null && rids?.reasoningWin !== undefined) app.slices.runtime.reasoningWinId = rids.reasoningWin
+  app.slices.runtime.reasoningOpen = rids?.reasoningOpen === true
+  const feed = new FeedRenderer(app.slices.runtime.nvim!, ids.chatBuf, ids.chatWin, {
     idsProvider: () => app.luaCall('return require("dsh_tui").ensure_chat(...)', [id]),
-    activeChecker: () => id === app.activeId,
+    activeChecker: () => id === app.slices.sessions.activeId,
     reasoningBuf: rids?.reasoningBuf ?? null,
-    reasoningView: () => ({ open: app.reasoningOpen, win: app.reasoningWinId }),
+    reasoningView: () => ({ open: app.slices.runtime.reasoningOpen, win: app.slices.runtime.reasoningWinId }),
     whale: app.config.whaleArt !== 'off',
     welcome: welcomeLines,
   })
-  app.sessions.set(id, {
+  app.slices.sessions.live.set(id, {
     id, handle, feed, title: undefined, status: undefined, modelRef,
     model: modelRef?.current ? modelRef.current.model : undefined,
     createdAt: handle.agent.session.header?.createdAt ?? Date.now(),
@@ -54,15 +54,15 @@ const attachSession = async (app: App, handle: AgentHandle, modelRef: ModelRef) 
     bgJobs: 0,
   })
   // Boot banner: version + build stamp + channel (proves which code runs).
-  feed.appendNotice(`dsh-nvim-tui ${BUILD_VERSION} (build ${BUILD_STAMP}) · channel ${app.channelIdValue}`)
+  feed.appendNotice(`dsh-nvim-tui ${BUILD_VERSION} (build ${BUILD_STAMP}) · channel ${app.slices.runtime.channelIdValue}`)
   // Heal a poisoned session (a scheduler crash left a tool/call with no
   // tool/result → the DeepSeek API rejects every later request with
   // "insufficient tool messages following tool_calls message"): synthesize
   // the missing error results once at open so the history re-pairs.
   try {
-    const rec = app.sessions.get(id)
+    const rec = app.slices.sessions.live.get(id)
     if (rec !== undefined) {
-      const repaired = app.repairOrphanToolCalls(rec)
+      const repaired = app.slices.trans.repairOrphanToolCalls(rec)
       if (repaired > 0) {
         feed.appendNotice(`♻ ${t('已修复')} ${repaired} ${t('处损坏的工具调用记录——会话此前因 "insufficient tool messages" 被 400 拒绝的问题已解除')}`)
       }
@@ -117,7 +117,7 @@ const welcomeLines = (): { above: Array<{ text: string; group?: string }>; below
 /** Create a fresh session+agent and switch to it. `cwdPath` (optional)
  *  overrides the process working directory (validated: must be a dir). */
 const createSession = async (app: App, cwdPath?: string) => {
-  const selection = app.currentSelection()
+  const selection = app.slices.agent.currentSelection()
   const modelRef = { current: selection, assembled: void 0 }
   let cwd = process.cwd()
   if (cwdPath) {
@@ -143,8 +143,8 @@ const createSession = async (app: App, cwdPath?: string) => {
   })
   const id = await attachSession(app, handle, modelRef)
   await switchTo(app, id)
-  app.refreshList()
-  void app.refreshCommandCatalog()
+  app.slices.sessions.refreshList()
+  void app.slices.agent.refreshCommandCatalog()
   app.notice(`session ${id} (${selection.provider}/${selection.model}${cwdPath ? ` · ${cwd}` : ''})`)
   return id
 }
@@ -154,8 +154,8 @@ const createSession = async (app: App, cwdPath?: string) => {
  *  row actions (e.g. rename) that need a live session but must not move the
  *  user away from the current chat. Returns the live id, or undefined. */
 const ensureLiveSession = async (app: App, id: string): Promise<string | undefined> => {
-  if (app.sessions.has(id)) return id
-  const selection = app.currentSelection()
+  if (app.slices.sessions.live.has(id)) return id
+  const selection = app.slices.agent.currentSelection()
   const modelRef = { current: selection, assembled: void 0 }
   const handle = await app.runtimeCtx.agents.resume({
     resumeSessionId: id,
@@ -168,15 +168,15 @@ const ensureLiveSession = async (app: App, id: string): Promise<string | undefin
     },
   })
   const sid = await attachSession(app, handle, modelRef)
-  const rec = app.sessions.get(sid)!
-  const events = app.sessionEvents(handle.agent.session)
+  const rec = app.slices.sessions.live.get(sid)!
+  const events = app.slices.trans.sessionEvents(handle.agent.session)
   rec.feed.appendNotice(`history replay: ${events.length} events`)
   for (const event of events) {
-    app.foldEvent(rec, event)
+    app.slices.ui.foldEvent(rec, event)
     rec.feed.applyEvent(event, { history: true })
-    app.maybePushFileDiff(rec.feed, event)
+    app.slices.ui.maybePushFileDiff(rec.feed, event)
   }
-  app.refreshList()
+  app.slices.sessions.refreshList()
   return sid
 }
 
@@ -190,29 +190,29 @@ const resumeSession = async (app: App, id: string) => {
 
 /** Terminal title: active session title + model (OSC 2 via nvim). */
 const updateTitle = (app: App) => {
-  if (app.nvim === null || app.disposed) return
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  if (app.slices.runtime.nvim === null || app.slices.runtime.disposed) return
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   const title = rec?.title ?? 'dsh'
   void app.luaCall('require("dsh_tui").set_title(...)', [title]).catch(() => {})
 }
 
 const switchTo = async (app: App, id: string) => {
-  app.activeId = id
+  app.slices.sessions.activeId = id
   await app.lua.setActive(id)
-  app.ensureSpinner()
-  app.updateStatusline()
+  app.slices.ui.ensureSpinner()
+  app.slices.ui.updateStatusline()
   updateTitle(app)
-  app.extFire('tui:active-session', { id })
-  void app.seedRunningSubagents(id)
-  if (app.sessions.has(id)) app.recordState(id)
+  app.slices.ext.extFire('tui:active-session', { id })
+  void app.slices.sessions.seedRunningSubagents(id)
+  if (app.slices.sessions.live.has(id)) app.slices.sessions.recordState(id)
 }
 
 const selectSession = async (app: App, id: string) => {
-  if (app.disposed) return
-  if (app.sessions.has(id)) {
+  if (app.slices.runtime.disposed) return
+  if (app.slices.sessions.live.has(id)) {
     await switchTo(app, id)
-    app.refreshList()
-  } else if (app.historyHeaders.some((h) => h.id === id) || app.historyById.has(id)) {
+    app.slices.sessions.refreshList()
+  } else if (app.slices.sessions.historyHeaders.some((h) => h.id === id) || app.slices.sessions.historyById.has(id)) {
     // Any persisted project session is openable — not just the current
     // cwd's (the workspace browser lists sessions from every workspace).
     await resumeSession(app, id)
@@ -224,7 +224,7 @@ const selectSession = async (app: App, id: string) => {
 /** /fork [directive]: child session seeded with the active history;
  *  an optional directive is sent as its first message. */
 const forkSession = async (app: App, directive: string | undefined): Promise<string | undefined> => {
-  if (app.activeId === null) {
+  if (app.slices.sessions.activeId === null) {
     app.notice(t('没有活跃会话可分叉'))
     return
   }
@@ -235,8 +235,8 @@ const forkSession = async (app: App, directive: string | undefined): Promise<str
     // (sessions.fork → child.events → agents.create with meta.seedLength)
     // cannot work in alpha.4: fork() enters a live child that create()
     // then collides on, and Session.events / meta.seedLength are gone.
-    const parent = app.runtimeCtx.sessions.get(app.activeId)
-    const events = parent === undefined ? [] : app.sessionEvents(parent)
+    const parent = app.runtimeCtx.sessions.get(app.slices.sessions.activeId)
+    const events = parent === undefined ? [] : app.slices.trans.sessionEvents(parent)
     let lastEnd: SessionEvent | undefined
     for (let i = events.length - 1; i >= 0; i--) {
       if (events[i]?.type === 'turn/end') { lastEnd = events[i]; break }
@@ -247,7 +247,7 @@ const forkSession = async (app: App, directive: string | undefined): Promise<str
     }
     let cut = (lastEnd.seq ?? 0) + 1
     while (cut < events.length && events[cut]?.type !== 'turn/start') cut++
-    const selection = app.currentSelection()
+    const selection = app.slices.agent.currentSelection()
     const modelRef = { current: selection, assembled: void 0 }
     const handle = await app.runtimeCtx.agents.create({
       sessionId: `session-${randomUUID()}`,
@@ -255,7 +255,7 @@ const forkSession = async (app: App, directive: string | undefined): Promise<str
       inheritedEventCount: cut,
       meta: {
         cwd: parent?.header?.cwd ?? process.cwd(),
-        parentSession: app.activeId,
+        parentSession: app.slices.sessions.activeId,
         isSeeded: true,
       },
       agentOptions: { provider: selection.provider, model: selection.model },
@@ -263,9 +263,9 @@ const forkSession = async (app: App, directive: string | undefined): Promise<str
     })
     const id = await attachSession(app, handle, modelRef)
     await switchTo(app, id)
-    app.refreshList()
+    app.slices.sessions.refreshList()
     app.notice(`已分叉到 ${id}（继承 ${cut} 条历史事件）`)
-    if (directive && directive.trim()) app.send(directive.trim())
+    if (directive && directive.trim()) app.slices.agent.send(directive.trim())
     return id
   } catch (err) {
     app.notice(`分叉失败: ${(err as Error).message}`)
@@ -279,8 +279,8 @@ const forkSession = async (app: App, directive: string | undefined): Promise<str
  *  section, archived sessions hidden, Enter opens, workspace rows carry
  *  actions. */
 const sessionsCommand = async (app: App): Promise<void> => {
-  await app.refreshHistory()
-  app.refreshList()
+  await app.slices.sessions.refreshHistory()
+  app.slices.sessions.refreshList()
   const ws = app.svc('workspaceRegistry')
   const workspaceRows = typeof ws?.list === 'function' ? ws.list() : []
   const archived = new Set(ws?.archivedSessionIds ?? [])
@@ -297,20 +297,20 @@ const sessionsCommand = async (app: App): Promise<void> => {
       // children (bare UUIDs / origin subagent) never appear here.
       if (!/^session-/.test(sid)) continue
       if (app.runtimeCtx.sessions.get(sid)?.header?.origin === 'subagent') continue
-      const rec = app.sessions.get(sid)
-      const hist = app.historyById.get(sid)
+      const rec = app.slices.sessions.live.get(sid)
+      const hist = app.slices.sessions.historyById.get(sid)
       const title = rec?.title ?? hist?.title ?? ''
-      rows.push({ label: `    ${sid === app.activeId ? '▸' : ' '} ${title || sid.slice(0, 8)} · ${sid}`, value: `sess:${sid}` })
+      rows.push({ label: `    ${sid === app.slices.sessions.activeId ? '▸' : ' '} ${title || sid.slice(0, 8)} · ${sid}`, value: `sess:${sid}` })
     }
   }
   rows.push({ label: '未分组', value: 'ws:none' })
   for (const s of app.runtimeCtx.sessions.list()) {
     if (inWs.has(s.id) || archived.has(s.id) || s.header?.origin === 'subagent' || !/^session-/.test(s.id)) continue
-    const rec = app.sessions.get(s.id)
-    rows.push({ label: `    ${s.id === app.activeId ? '▸' : ' '} ${rec?.title ?? ''} · ${s.id}`, value: `sess:${s.id}` })
+    const rec = app.slices.sessions.live.get(s.id)
+    rows.push({ label: `    ${s.id === app.slices.sessions.activeId ? '▸' : ' '} ${rec?.title ?? ''} · ${s.id}`, value: `sess:${s.id}` })
   }
-  for (const h of app.historyHeaders) {
-    if (inWs.has(h.id) || archived.has(h.id) || app.sessions.has(h.id)) continue
+  for (const h of app.slices.sessions.historyHeaders) {
+    if (inWs.has(h.id) || archived.has(h.id) || app.slices.sessions.live.has(h.id)) continue
     rows.push({ label: `    ${h.title ?? ''} · ${h.id}（历史）`, value: `sess:${h.id}` })
   }
   const sel = await app.openPicker(t('会话（工作区分组 · Enter 打开）'), rows)
@@ -343,7 +343,7 @@ const sessionsCommand = async (app: App): Promise<void> => {
         // NOT switch the active view.
         await ensureLiveSession(app, sid)
       }
-      app.pendingRename = { kind: 'session', id: sid }
+      app.slices.agent.pendingRename = { kind: 'session', id: sid }
       app.notice(t('下一条输入将作为该会话的新标题（空输入取消）'))
       return
     }
@@ -356,7 +356,7 @@ const sessionsCommand = async (app: App): Promise<void> => {
       try {
         await ws2.archiveSession(sid)
         app.notice(`已归档 ${sid}（从各列表隐藏）`)
-        app.refreshList()
+        app.slices.sessions.refreshList()
       } catch (err) {
         app.notice(`归档失败: ${(err as Error).message}`)
       }
@@ -416,7 +416,7 @@ const sessionsCommand = async (app: App): Promise<void> => {
     if (act === 'new') {
       await createSession(app, w.path)
     } else if (act === 'rename') {
-      app.pendingRename = { kind: 'workspace', id: wid }
+      app.slices.agent.pendingRename = { kind: 'workspace', id: wid }
       app.notice(`下一条输入将作为工作区「${w.title}」的新名称（/sessions 期间可继续操作）`)
     }
     return
@@ -473,7 +473,7 @@ const workspaceCommand = async (app: App, a: string | undefined): Promise<void> 
   const sel = await app.openPicker(t('工作区管理'), rows)
   if (sel === null) return
   if (sel === 'act:new') {
-    const dir = await app.openDirPicker(process.cwd())
+    const dir = await app.slices.agent.openDirPicker(process.cwd())
     if (dir === null || dir === '') return
     try {
       await ws.create?.(dir)
@@ -492,7 +492,7 @@ const workspaceCommand = async (app: App, a: string | undefined): Promise<void> 
     { label: t('取消'), value: 'cancel' },
   ])
   if (act === 'rename') {
-    app.pendingRename = { kind: 'workspace', id: wid }
+    app.slices.agent.pendingRename = { kind: 'workspace', id: wid }
     app.notice(`下一条输入将作为工作区「${w.title}」的新名称`)
     return
   }
@@ -518,7 +518,7 @@ const archiveCommand = async (app: App, a: string | undefined): Promise<void> =>
     app.notice(t('归档不可用（workspaceRegistry 服务未装配）'))
     return
   }
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   const target = (a ?? '').trim() || rec?.id
   if (target === undefined || target === '') {
     app.notice(t('用法: /archive [会话id]（无参数归档当前会话）'))
@@ -557,7 +557,7 @@ const renameCommand = (app: App, a: string | undefined) => {
     app.notice(t('用法: /rename <新标题>'))
     return
   }
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -577,20 +577,20 @@ const renameCommand = (app: App, a: string | undefined) => {
 
 /** Fill the sessions module's App slots and register its commands. */
 export function installSessions(app: App): void {
-  app.attachSession = (handle, modelRef) => attachSession(app, handle, modelRef).then(() => {})
-  app.welcomeLines = welcomeLines
-  app.createSession = (cwdPath) => createSession(app, cwdPath).then(() => {})
-  app.resumeSession = (id) => resumeSession(app, id).then(() => {})
-  app.updateTitle = () => updateTitle(app)
-  app.switchTo = (id) => switchTo(app, id)
-  app.selectSession = (id) => selectSession(app, id)
-  app.forkSession = (directive) => forkSession(app, directive)
+  app.slices.sessions.attachSession = (handle, modelRef) => attachSession(app, handle, modelRef).then(() => {})
+  app.slices.ui.welcomeLines = welcomeLines
+  app.slices.sessions.createSession = (cwdPath) => createSession(app, cwdPath).then(() => {})
+  app.slices.sessions.resumeSession = (id) => resumeSession(app, id).then(() => {})
+  app.slices.sessions.updateTitle = () => updateTitle(app)
+  app.slices.sessions.switchTo = (id) => switchTo(app, id)
+  app.slices.sessions.selectSession = (id) => selectSession(app, id)
+  app.slices.sessions.forkSession = (directive) => forkSession(app, directive)
   const specs: CommandSpec[] = [
     { name: '/sessions', desc: t('会话浏览器（打开/重命名/归档）'), usage: t('会话列表'), group: t('系统'), fn: () => sessionsCommand(app) },
     { name: '/workspace', desc: t('工作区管理'), usage: t('[add <目录> [标题] | delete <id>]'), group: t('会话'), fn: (a) => workspaceCommand(app, a) },
     { name: '/archive', desc: t('归档会话（从列表隐藏）'), usage: t('[会话id]'), group: t('会话'), fn: (a) => archiveCommand(app, a) },
     { name: '/new', desc: t('新建会话（可带目录）'), usage: t('[目录]'), group: t('会话'), fn: (a) => createSession(app, (a ?? '').trim() || undefined) },
-    { name: '/clear', desc: t('清空当前会话屏幕'), usage: t(''), group: t('会话'), fn: () => app.activeFeed()?.clear() },
+    { name: '/clear', desc: t('清空当前会话屏幕'), usage: t(''), group: t('会话'), fn: () => app.slices.ui.activeFeed()?.clear() },
     { name: '/fork', desc: t('分叉当前会话'), usage: t('[directive]'), group: t('会话'), fn: (a) => forkSession(app, a) },
     { name: '/branch', desc: t('分叉（/fork 别名）'), usage: t(''), group: t('会话'), fn: (a) => forkSession(app, a) },
     { name: '/btw', desc: t('侧问：分叉新会话并发送问题'), usage: t('<问题>'), group: t('会话'), fn: (a) => {
@@ -603,5 +603,5 @@ export function installSessions(app: App): void {
     { name: '/rename', desc: t('重命名会话'), usage: t('<新标题>'), group: t('会话'), fn: (a) => renameCommand(app, a) },
     { name: '/layout', desc: t('布局预设'), usage: t('default|panel'), group: t('显示'), fn: (a) => layoutCommand(app, a) },
   ]
-  app.registerCommands(specs)
+  app.slices.agent.registerCommands(specs)
 }

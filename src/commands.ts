@@ -32,11 +32,11 @@ import type { App, CommandSpec, ModelRef, SessionRec } from './app.js'
  * turn of the same drain.
  */
 const followup = async (app: App, rec: SessionRec, text: string, images?: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }> | string>) => {
-  if (app.disposed || rec === undefined) return
+  if (app.slices.runtime.disposed || rec === undefined) return
   // Surface the queueing so the message doesn't look lost. (Use /btw to
   // fork a side session instead.)
   if (rec.status === '● running') {
-    app.activeFeed()?.appendNotice('已排队：当前回合结束后处理')
+    app.slices.ui.activeFeed()?.appendNotice('已排队：当前回合结束后处理')
   }
   if (images !== undefined && images.length > 0 && (text ?? '').trim() === '') {
     text = '📎 图片消息'
@@ -53,7 +53,7 @@ const followup = async (app: App, rec: SessionRec, text: string, images?: Array<
     // 自动切回原模型（boot.ts 的 turn/end 恢复）。目录里没有任何带 image
     // 模态的模型时 fail fast——不要让回合死在适配器里（UNSUPPORTED_CONTENT）。
     const llm = app.runtimeCtx.get('llm') as LlmService | undefined
-    const sel = app.currentSelection()
+    const sel = app.slices.agent.currentSelection()
     const curInfo = await llm?.resolveModelInfo(sel.provider, sel.model).catch(() => undefined)
     if (curInfo?.inputModalities?.includes('image') !== true) {
       const candidates = ['deepseek-v4-flash-vision-exp', 'deepseek-vl2', 'deepseek-vl']
@@ -72,7 +72,7 @@ const followup = async (app: App, rec: SessionRec, text: string, images?: Array<
       rec.modelRef.current = { ...sel, model: visionModel }
       rec.visionTmp = { prev: sel, switchAt: Date.now() }
       app.notice(`📎 图片消息: 临时切换官方识图模型 ${sel.provider}/${visionModel}（回合结束自动切回 ${sel.provider}/${sel.model}）`)
-      app.updateStatusline()
+      app.slices.ui.updateStatusline()
     }
     const max = attachments.imageLimits?.maxImagesPerMessage ?? 4
     if (images.length > max) {
@@ -127,18 +127,18 @@ const queueSubagentPrompt = async (app: App, parentAgent: unknown, childId: stri
 }
 
 const send = (app: App, text: string) => {
-  if (app.disposed) return
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  if (app.slices.runtime.disposed) return
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
-    app.pendingInput.push(text)
+    app.slices.agent.pendingInput.push(text)
     return
   }
   // /subagents → 继续对话: this input line goes to the continuable child
   // through the official host prompt queue (parent-authority check
   // built in) instead of the main agent.
-  if (app.pendingSubagentFollowup !== null) {
-    const target = app.pendingSubagentFollowup
-    app.pendingSubagentFollowup = null
+  if (app.slices.agent.pendingSubagentFollowup !== null) {
+    const target = app.slices.agent.pendingSubagentFollowup
+    app.slices.agent.pendingSubagentFollowup = null
     void (async () => {
       try {
         await queueSubagentPrompt(app, rec.handle.agent, target.childId, text)
@@ -152,14 +152,14 @@ const send = (app: App, text: string) => {
   // Pasted data URLs become image attachments; the URL text is stripped.
   const { text: clean, images } = splitImageDataUrls(text)
   // Clipboard images queued via <C-v> ride along with the submitted text.
-  const all = [...images, ...app.pendingImages]
-  app.pendingImages = []
+  const all = [...images, ...app.slices.agent.pendingImages]
+  app.slices.agent.pendingImages = []
   void followup(app, rec, clean, all)
 }
 
 /** <C-v> handler: queue the macOS clipboard image for the next submit. */
 const pasteClipboardImage = (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -175,8 +175,8 @@ const pasteClipboardImage = (app: App) => {
     app.notice(t('剪贴板里没有图片（截图/复制图片后按 C-v）'))
     return
   }
-  app.pendingImages.push(image)
-  app.notice(`📎 已附加剪贴板图片（共 ${app.pendingImages.length} 张，回车随消息发送；/image clear 清空）`)
+  app.slices.agent.pendingImages.push(image)
+  app.notice(`📎 已附加剪贴板图片（共 ${app.slices.agent.pendingImages.length} 张，回车随消息发送；/image clear 清空）`)
 }
 
 /** /image [<path>] [prompt] — attach an image and send. No path on macOS
@@ -184,12 +184,12 @@ const pasteClipboardImage = (app: App) => {
  *  drops the <C-v> pending queue. */
 const imageCommand = (app: App, a: string | undefined) => {
   if ((a ?? '').trim() === 'clear') {
-    const n = app.pendingImages.length
-    app.pendingImages = []
+    const n = app.slices.agent.pendingImages.length
+    app.slices.agent.pendingImages = []
     app.notice(n > 0 ? `已清空 ${n} 张待发送图片` : '（没有待发送图片）')
     return
   }
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -219,7 +219,7 @@ const imageCommand = (app: App, a: string | undefined) => {
 
 /** /stop — abort the active turn (agent.cancel with a user cause). */
 const stopCommand = (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -243,7 +243,7 @@ const steerCommand = (app: App, a: string | undefined) => {
     app.notice(t('用法: /steer <directive>（注入到最近一步的引导指令）'))
     return
   }
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -266,7 +266,7 @@ const steerCommand = (app: App, a: string | undefined) => {
 /** /compact — manually compact the session context via the compaction
  *  engine; null result means there was nothing worth compacting. */
 const compactCommand = async (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -294,7 +294,7 @@ const compactCommand = async (app: App) => {
  *  so adding a task = asking the agent to update its list; with no
  *  argument the current list pops up (read-only, from todo/write folds). */
 const todoCommand = (app: App, a: string | undefined): void => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) { app.notice(t('无活跃会话')); return }
   const text = (a ?? '').trim()
   if (text !== '') {
@@ -325,7 +325,7 @@ const todoCommand = (app: App, a: string | undefined): void => {
 /** /goal [show|new <objective>|pause|resume|complete|clear] — the active
  *  goal (compare-and-set on the GoalRef). */
 const goalCommand = (app: App, a: string | undefined) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -379,7 +379,7 @@ const goalCommand = (app: App, a: string | undefined) => {
 
 /** /plan [on|off|status] — plan mode state. */
 const planCommand = (app: App, a: string | undefined) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -405,7 +405,7 @@ const planCommand = (app: App, a: string | undefined) => {
 
 /** /tasks [kill <id>] — job registry view / cancel one job. */
 const tasksCommand = (app: App, a: string | undefined) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -440,7 +440,7 @@ const tasksCommand = (app: App, a: string | undefined) => {
 
 /** /skills [name] — skill catalog; picker → detail float (show_skill). */
 const skillsCommand = async (app: App, a: string | undefined) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -510,7 +510,7 @@ const pluginsCommand = async (app: App): Promise<void> => {
  *  official dsh-permission-presets service: sandbox mode + approval
  *  policy pair; the profile's patch must mount the `permission` row). */
 const permissionCommand = async (app: App, a: string | undefined) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -552,7 +552,7 @@ const permissionCommand = async (app: App, a: string | undefined) => {
     }
     permission.set(rec.handle.agent.session, name)
     app.notice(`权限预设: ${name}`)
-    app.updateStatusline()
+    app.slices.ui.updateStatusline()
   } catch (err) {
     app.notice(`permission 失败: ${(err as Error).message}`)
   }
@@ -560,9 +560,9 @@ const permissionCommand = async (app: App, a: string | undefined) => {
 
 /** Directory picker promise (Lua navigable float → 'dsh-dir-selected'). */
 const openDirPicker = (app: App, startPath: string): Promise<string | null> => new Promise((resolve) => {
-  app.dirSettle = resolve
+  app.slices.agent.dirSettle = resolve
   void app.luaCall('require("dsh_tui").show_dir_picker(...)', [startPath ?? process.cwd()])
-    .catch(() => { app.dirSettle = null; resolve(null) })
+    .catch(() => { app.slices.agent.dirSettle = null; resolve(null) })
 })
 
 /** Format an @-mention: quote paths containing whitespace. */
@@ -593,7 +593,7 @@ const localFileCandidates = async (cwd: string, query: string): Promise<Array<{ 
  *  Files first, then @session references (the official client's unified
  *  `@file`/`@session` source, in the same deterministic order). */
 const atQuery = async (app: App, query: string, start = 0): Promise<void> => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   const agent = rec?.handle.agent
   let items: Array<{ path: string; mention: string }> = []
   try {
@@ -634,7 +634,7 @@ const attachCommand = async (app: App, a: string | undefined) => {
   const abs = isAbsolute(path) ? path : join(process.cwd(), path)
   const media = sniffMediaType(abs as unknown as Uint8Array)
   if (media !== null) {
-    const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+    const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
     const attachments = app.svc('attachments')
     if (!rec || typeof attachments?.saveImage !== 'function') {
       app.notice(t('附件服务未装配'))
@@ -643,7 +643,7 @@ const attachCommand = async (app: App, a: string | undefined) => {
     try {
       const img = await readImageFile(abs, media)
       const ref = await attachments.saveImage(img)
-      app.pendingImages.push({ type: 'image', attachment: ref })
+      app.slices.agent.pendingImages.push({ type: 'image', attachment: ref })
       app.notice(`📎 图片已附加: ${imageLabel(ref)}（随下一条消息发送）`)
     } catch (err) {
       app.notice(`附件失败: ${(err as Error).message}`)
@@ -679,7 +679,7 @@ const linesCommand = async (app: App, a: string | undefined) => {
     if (path === null) return
   }
   const abs = isAbsolute(path) ? path : join(process.cwd(), path)
-  const content = await app.readFileSnapshot(abs)
+  const content = await app.slices.ui.readFileSnapshot(abs)
   if (content === null) {
     app.notice(`无法读取 ${abs}（不存在 / 目录 / 二进制 / 超过 256KB）`)
     return
@@ -696,7 +696,7 @@ const historyCommand = (app: App) => {
 /** /deliverables — files this session's current turn produced (mutation
  *  tools' follow-along paths, derived from tool/call arguments). */
 const deliverablesCommand = async (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -714,12 +714,12 @@ const deliverablesCommand = async (app: App) => {
 
 /** /workflow — live registry view of workflow runs (phases, agents). */
 const workflowCommand = (app: App) => {
-  if (app.workflowRuns.size === 0) {
+  if (app.slices.trans.workflowRuns.size === 0) {
     app.notice(t('没有工作流记录（workflow 工具运行后此处显示阶段树）'))
     return
   }
   const lines = []
-  for (const run of app.workflowRuns.values()) {
+  for (const run of app.slices.trans.workflowRuns.values()) {
     const elapsed = run.startedAt ? formatElapsed(Date.now() - run.startedAt) : '?'
     lines.push(`◈ ${run.name ?? run.id} · ${run.running ? `运行中 ${elapsed}` : `完成 ${run.stopReason ?? ''}`}`)
     for (const ph of run.phases) {
@@ -820,14 +820,14 @@ const settingsCommand = async (app: App, a: string | undefined) => {
 
 /** /bell [on|off] — terminal bell on turn end (approvals always ring). */
 const bellCommand = (app: App, a: string | undefined) => {
-  if ((a ?? '').trim() !== '') app.bellOn = String(a).trim() === 'on'
-  else app.bellOn = !app.bellOn
-  app.notice(`回合结束响铃: ${app.bellOn ? '开' : '关'}`)
+  if ((a ?? '').trim() !== '') app.slices.agent.bellOn = String(a).trim() === 'on'
+  else app.slices.agent.bellOn = !app.slices.agent.bellOn
+  app.notice(`回合结束响铃: ${app.slices.agent.bellOn ? '开' : '关'}`)
 }
 
 /** /mcp — MCP tools grouped by server (prefix mcp__<server>__<tool>). */
 const mcpCommand = (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -879,7 +879,7 @@ const searchCommand = async (app: App, a: string | undefined) => {
         label: `${String(h.header?.id ?? '?')} · ${String(h.bestMatch?.snippet ?? '').slice(0, 48)}`,
         value: String(h.header?.id),
       })))
-    if (sel !== null) await app.selectSession(sel)
+    if (sel !== null) await app.slices.sessions.selectSession(sel)
   } catch (err) {
     app.notice(`搜索失败: ${(err as Error).message}`)
   }
@@ -887,7 +887,7 @@ const searchCommand = async (app: App, a: string | undefined) => {
 
 /** /fb up|down [note] — feedback on the last assistant message. */
 const feedbackCommand = async (app: App, a: string | undefined) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -934,10 +934,10 @@ const feedbackCommand = async (app: App, a: string | undefined) => {
 const onInput = (app: App, text: string): void => {
   // Queue edit flow: the next submitted line REPLACES the queued message
   // (official client's per-row edit action).
-  if (app.pendingQueueEdit !== null) {
-    const target = app.pendingQueueEdit
-    app.pendingQueueEdit = null
-    const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  if (app.slices.agent.pendingQueueEdit !== null) {
+    const target = app.slices.agent.pendingQueueEdit
+    app.slices.agent.pendingQueueEdit = null
+    const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
     const inbox = rec?.handle.agent.inbox as InboxLike | undefined
     const text0 = text.trim()
     if (text0 === '' || typeof inbox?.replace !== 'function') {
@@ -957,9 +957,9 @@ const onInput = (app: App, text: string): void => {
   }
   // Row-action rename flow: the next submitted line IS the new name
   // (the terminal counterpart of the web's rename dialog).
-  if (app.pendingRename !== null) {
-    const target = app.pendingRename
-    app.pendingRename = null
+  if (app.slices.agent.pendingRename !== null) {
+    const target = app.slices.agent.pendingRename
+    app.slices.agent.pendingRename = null
     const name = text.trim()
     if (name === '') { app.notice(t('已取消重命名（空输入）')); return }
     void (async () => {
@@ -996,47 +996,47 @@ const onInput = (app: App, text: string): void => {
       // routing hint and the tui_command tool executes the command when
       // the user really wanted one. Instant routing stays for slash
       // commands, patterns and exact phrases.
-      const nlRec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+      const nlRec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
       if (nlRec === undefined) { send(app, trimmed); return }
       const candidate = `/${nl.name}${nl.arg !== undefined ? ` ${nl.arg}` : ''}`
       const hint = `（TUI 操作判定：这句话可能是想执行命令 ${candidate}。若确实如此，请调用 tui_command 工具；若只是聊天提问，请正常回答，不要调用工具。）\n${trimmed}`
       nlRec.feed.pushUser(hint, [])
-      const q = app.pendingEchoes.get(app.activeId as string) ?? []
+      const q = app.slices.ui.pendingEchoes.get(app.slices.sessions.activeId as string) ?? []
       q.push(hint)
       if (q.length > 4) q.shift()
-      app.pendingEchoes.set(app.activeId as string, q)
+      app.slices.ui.pendingEchoes.set(app.slices.sessions.activeId as string, q)
       void followup(app, nlRec, hint)
       return
     }
-    const nlRec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+    const nlRec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
     nlRec?.feed.appendNotice(`→ 命令: /${nl.name}${nl.arg !== undefined ? ` ${nl.arg}` : ''}`)
     onCommand(app, `/${nl.name}${nl.arg !== undefined ? ` ${nl.arg}` : ''}`)
     return
   }
-  const echoRec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
-  if (echoRec !== undefined && app.pendingImages.length === 0 &&
+  const echoRec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
+  if (echoRec !== undefined && app.slices.agent.pendingImages.length === 0 &&
     splitImageDataUrls(trimmed).images.length === 0) {
     echoRec.feed.pushUser(trimmed, [])
-    const q = app.pendingEchoes.get(app.activeId as string) ?? []
+    const q = app.slices.ui.pendingEchoes.get(app.slices.sessions.activeId as string) ?? []
     q.push(trimmed)
     if (q.length > 4) q.shift()
-    app.pendingEchoes.set(app.activeId as string, q)
+    app.slices.ui.pendingEchoes.set(app.slices.sessions.activeId as string, q)
   }
   send(app, trimmed)
 }
 
 const applyModelSelection = async (app: App, next: ModelRef['current']): Promise<void> => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (rec?.modelRef) rec.modelRef.current = next // hot for the active session
   if (rec) rec.model = next.model
   await app.runtimeCtx.agentDefaultModel.saveSelection(next) // persist default
   app.notice(`模型已切换: ${next.provider}/${next.model}${next.reasoningEffort ? ` (${next.reasoningEffort})` : ''}`)
-  app.updateStatusline()
+  app.slices.ui.updateStatusline()
 }
 
 /** /model [provider/model]: picker without an argument, direct switch with. */
 const pickModel = async (app: App, arg: string | undefined): Promise<void> => {
-  const sel = app.currentSelection()
+  const sel = app.slices.agent.currentSelection()
   if (arg) {
     const [provider, model] = arg.includes('/') ? arg.split('/') : [sel.provider, arg]
     if (!model) {
@@ -1063,14 +1063,14 @@ const pickModel = async (app: App, arg: string | undefined): Promise<void> => {
 /** /effort [off|high|max|auto] */
 const effortCommand = async (app: App, a: string | undefined) => {
   if (!a) {
-    app.notice(`当前推理等级: ${app.currentSelection().reasoningEffort ?? 'auto（模型默认）'}`)
+    app.notice(`当前推理等级: ${app.slices.agent.currentSelection().reasoningEffort ?? 'auto（模型默认）'}`)
     return
   }
   if (!['off', 'high', 'max', 'auto'].includes(a)) {
     app.notice(t('用法: /effort [off|high|max|auto]'))
     return
   }
-  const next = { ...app.currentSelection(), reasoningEffort: a === 'auto' ? undefined : a }
+  const next = { ...app.slices.agent.currentSelection(), reasoningEffort: a === 'auto' ? undefined : a }
   try {
     await applyModelSelection(app, next)
   } catch (err) {
@@ -1096,7 +1096,7 @@ const presetCommand = async (app: App, a: string | undefined) => {
       for (const p of await presets.list()) app.notice(`${p.id} · ${p.name ?? ''}`)
       return
     }
-    const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+    const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
     const agent = rec?.handle.agent
     if (!agent) {
       app.notice(t('没有活动会话，无法切换预设'))
@@ -1106,7 +1106,7 @@ const presetCommand = async (app: App, a: string | undefined) => {
     // no `turn/start` event yet. Standalone events like /plan and /goal
     // keep a session blank; any started turn locks the preset, because
     // the history was produced under the old composition's tools.
-    if (app.sessionEvents(agent.session).some((e) => e.type === 'turn/start')) {
+    if (app.slices.trans.sessionEvents(agent.session).some((e) => e.type === 'turn/start')) {
       app.notice(t('预设已锁定: 会话已开始，官方规则下预设只能在空白会话切换（请新开会话后再试）'))
       return
     }
@@ -1120,13 +1120,13 @@ const presetCommand = async (app: App, a: string | undefined) => {
 
 /** /yolo [on|off] — approval policy ask/never. */
 const yoloCommand = (app: App, a: string | undefined) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) return
   const policy = a === 'on' ? 'never' : a === 'off' ? 'ask' : rec.policy === 'never' ? 'ask' : 'never'
   try {
     rec.handle.agent.session.append('approval/policy', { policy })
     rec.policy = policy
-    app.updateStatusline()
+    app.slices.ui.updateStatusline()
     app.notice(`审批策略: ${policy === 'never' ? 'never（不再询问 · 需要审批的操作自动拒绝）' : 'ask（逐项询问）'}`)
   } catch (err) {
     app.notice(`yolo 失败: ${(err as Error).message}`)
@@ -1135,8 +1135,8 @@ const yoloCommand = (app: App, a: string | undefined) => {
 
 /** /config — current runtime summary. */
 const configCommand = (app: App) => {
-  const sel = app.currentSelection()
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const sel = app.slices.agent.currentSelection()
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   app.notice(`模型 ${sel.provider}/${sel.model} · effort ${sel.reasoningEffort ?? 'auto'}`)
   app.notice(`权限 ${modeLabel(rec?.mode)} · 审批 ${rec?.policy ?? 'ask'} · 用户配置 ${app.config.loadUserConfig !== false ? '已加载' : '关闭'}`)
   app.notice(`主题覆盖 ${app.config.theme ? Object.keys(app.config.theme).length + ' 组' : '无（跟随 colorscheme）'}`)
@@ -1231,7 +1231,7 @@ const themeCommand = (app: App, a: string | undefined) => {
 /** /models — provider/model catalog + current selection (official
  *  model-selection settings counterpart). */
 const modelsCommand = (app: App): void => {
-  const sel = app.currentSelection()
+  const sel = app.slices.agent.currentSelection()
   app.notice(`当前模型: ${sel.provider}/${sel.model}${sel.reasoningEffort ? ` ◎${sel.reasoningEffort}` : ''}`)
   const llm = app.runtimeCtx.get('llm') as LlmService | undefined
   if (llm === undefined) {
@@ -1259,7 +1259,7 @@ const modelsCommand = (app: App): void => {
  *  occupancy ring panel counterpart): ~used/capacity, heuristic
  *  composition rows, claim window. */
 const contextCommand = async (app: App): Promise<void> => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -1300,15 +1300,15 @@ const localeCommand = (app: App, a: string | undefined): void => {
     return
   }
   setLocale(want)
-  app.refreshList()
-  void app.refreshCommandCatalog()
-  app.updateStatusline()
+  app.slices.sessions.refreshList()
+  void app.slices.agent.refreshCommandCatalog()
+  app.slices.ui.updateStatusline()
   app.notice(`语言已切换: ${want}`)
 }
 
 /** /status — active session snapshot. */
 const statusCommand = (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -1323,7 +1323,7 @@ const statusCommand = (app: App) => {
  *  menu's Enter logic: type args, a second Enter executes). */
 const helpCommand = async (app: App) => {
   const groups = new Map<string, CommandSpec[]>()
-  for (const s of app.commandSpecs) {
+  for (const s of app.slices.agent.commandSpecs) {
     const group = s.group ?? t('其他')
     const list = groups.get(group) ?? []
     list.push(s)
@@ -1349,7 +1349,7 @@ const onCommand = (app: App, line: string): void => {
   const m = line.match(/^(\S+)(?:\s+(.*))?$/)
   const name = m?.[1] ?? ''
   const rest = m?.[2] ?? ''
-  const spec = app.commandSpecs.find((s) => s.name === name)
+  const spec = app.slices.agent.commandSpecs.find((s) => s.name === name)
   if (spec) {
     // Command fns are async (pickers, session resume, model switch…):
     // a rejection here must surface as a notice + log line — in alpha.4
@@ -1383,19 +1383,19 @@ const TUI_COMMAND_WHITELIST = new Set([
 
 /** Fill the commands module's App slots and register its commands. */
 export function installCommands(app: App): void {
-  app.followup = (rec, text, images) => followup(app, rec, text, images)
-  app.queueSubagentPrompt = (parentAgent, childId, text) => queueSubagentPrompt(app, parentAgent, childId, text)
-  app.send = (text) => send(app, text)
-  app.pasteClipboardImage = () => pasteClipboardImage(app)
-  app.stopCommand = () => stopCommand(app)
-  app.openDirPicker = (startPath) => openDirPicker(app, startPath)
-  app.atQuery = (query) => atQuery(app, query)
-  app.applyModelSelection = (next) => applyModelSelection(app, next)
-  app.pickModel = (arg) => pickModel(app, arg)
-  app.onInput = (text) => onInput(app, text)
-  app.onCommand = (line) => onCommand(app, line)
-  app.helpCommand = () => helpCommand(app)
-  app.restartCommand = () => restartCommand(app)
+  app.slices.agent.followup = (rec, text, images) => followup(app, rec, text, images)
+  app.slices.agent.queueSubagentPrompt = (parentAgent, childId, text) => queueSubagentPrompt(app, parentAgent, childId, text)
+  app.slices.agent.send = (text) => send(app, text)
+  app.slices.agent.pasteClipboardImage = () => pasteClipboardImage(app)
+  app.slices.agent.stopCommand = () => stopCommand(app)
+  app.slices.agent.openDirPicker = (startPath) => openDirPicker(app, startPath)
+  app.slices.agent.atQuery = (query) => atQuery(app, query)
+  app.slices.agent.applyModelSelection = (next) => applyModelSelection(app, next)
+  app.slices.agent.pickModel = (arg) => pickModel(app, arg)
+  app.slices.agent.onInput = (text) => onInput(app, text)
+  app.slices.agent.onCommand = (line) => onCommand(app, line)
+  app.slices.agent.helpCommand = () => helpCommand(app)
+  app.slices.agent.restartCommand = () => restartCommand(app)
 
   const specs: CommandSpec[] = [
     { name: '/exit', desc: t('退出 dsh'), usage: t('退出'), group: t('系统'), fn: () => app.quit(0) },
@@ -1439,12 +1439,12 @@ export function installCommands(app: App): void {
     { name: '/settings', desc: t('设置总览/编辑'), usage: t('[edit]'), group: t('系统'), fn: (a) => settingsCommand(app, a) },
     { name: '/bell', desc: t('回合结束响铃开关'), usage: t('[on|off]'), group: t('系统'), fn: (a) => bellCommand(app, a) },
   ]
-  app.registerCommands(specs)
+  app.slices.agent.registerCommands(specs)
 
   const toolsSvc = app.ctx.get('tools') as { register?: (tool: unknown) => unknown } | undefined
   if (typeof toolsSvc?.register === 'function') {
     try {
-      const safeSpecs = app.commandSpecs.filter((sp) => TUI_COMMAND_WHITELIST.has(sp.name))
+      const safeSpecs = app.slices.agent.commandSpecs.filter((sp) => TUI_COMMAND_WHITELIST.has(sp.name))
       toolsSvc.register(defineTool({
         name: 'tui_command',
         description: [

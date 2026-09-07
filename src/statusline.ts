@@ -40,29 +40,29 @@ const foldEvent = (app: App, rec: SessionRec, event: SessionEvent) => {
     const count = (st: string) => todos.filter((t) => t.status === st).length
     rec.todos = { completed: count('completed'), inProgress: count('in_progress'), pending: count('pending') }
     rec.todosItems = todos
-    if (rec.id === app.activeId) app.updateStatusline()
+    if (rec.id === app.slices.sessions.activeId) app.slices.ui.updateStatusline()
   }
 }
 
 const runningSubagentsOf = (app: App, parentId: string | null): Array<{ parentId: string; label: string; startedAt: number }> =>
-  parentId === null ? [] : [...app.runningSubagents.values()].filter((s) => s.parentId === parentId)
+  parentId === null ? [] : [...app.slices.sessions.runningSubagents.values()].filter((s) => s.parentId === parentId)
 
 // The running-subagents BADGE lives in the feed's activity line (same
 // slot and transient logic as the thinking line) — the registry here
 // only drives the statusline running state + spinner.
 const ensureSpinner = (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   const running = rec?.status === '● running' ||
-    runningSubagentsOf(app, app.activeId).length > 0 ||
+    runningSubagentsOf(app, app.slices.sessions.activeId).length > 0 ||
     (rec?.bgJobs ?? 0) > 0
-  if (running && app.spinnerTimer === null) {
-    app.spinnerTimer = setInterval(() => {
-      app.spinnerIndex = (app.spinnerIndex + 1) % WHALE_EMOJI_FRAMES.length
-      app.updateStatusline()
+  if (running && app.slices.runtime.spinnerTimer === null) {
+    app.slices.runtime.spinnerTimer = setInterval(() => {
+      app.slices.runtime.spinnerIndex = (app.slices.runtime.spinnerIndex + 1) % WHALE_EMOJI_FRAMES.length
+      app.slices.ui.updateStatusline()
     }, 450)
-  } else if (!running && app.spinnerTimer !== null) {
-    clearInterval(app.spinnerTimer)
-    app.spinnerTimer = null
+  } else if (!running && app.slices.runtime.spinnerTimer !== null) {
+    clearInterval(app.slices.runtime.spinnerTimer)
+    app.slices.runtime.spinnerTimer = null
   }
 }
 
@@ -80,7 +80,7 @@ export function runningBadge(mainRunning: boolean, subRunning: number, bgJobs: n
 
 /** Re-read the ACTIVE session's live background jobs (running + stopping). */
 const refreshBgJobs = (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (rec === undefined) return
   const jobs = app.svc('jobs')
   let count = 0
@@ -96,9 +96,9 @@ const refreshBgJobs = (app: App) => {
 /** Statusline: left = permission mode + hints; right = model/effort,
  *  cache, context, tokens, elapsed, cost, route (+ spinner while running). */
 const updateStatusline = (app: App) => {
-  if (app.chatWinId === null) return
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
-  const subRunning = runningSubagentsOf(app, app.activeId)
+  if (app.slices.runtime.chatWinId === null) return
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
+  const subRunning = runningSubagentsOf(app, app.slices.sessions.activeId)
   const mainRunning = rec?.status === '● running'
   const bgJobs = rec?.bgJobs ?? 0
   const badge = runningBadge(mainRunning, subRunning.length, bgJobs)
@@ -111,7 +111,7 @@ const updateStatusline = (app: App) => {
   const left = escapeStatusline(`${mode} · ${policy} · / ${t('命令')} · ctrl+o ${t('面板')} · ctrl+p ${t('历史')}`)
   // Extension-contributed segments (P1 ext API): sorted by priority,
   // appended after the built-in left block.
-  const extSegs = [...app.extStatusSegments.values()]
+  const extSegs = [...app.slices.ext.extStatusSegments.values()]
     .sort((a, b) => a.priority - b.priority)
     .map((s) => escapeStatusline(s.text))
   const leftFull = extSegs.length > 0 ? `${left}  ${extSegs.join('  ')}` : left
@@ -120,13 +120,13 @@ const updateStatusline = (app: App) => {
   const right = []
   // The fat whale emoji + bubble cycle replaces the braille spinner.
   if (running) {
-    right.push(`${WHALE_EMOJI_FRAMES[app.spinnerIndex]} ${escapeStatusline(badge!)}`)
+    right.push(`${WHALE_EMOJI_FRAMES[app.slices.runtime.spinnerIndex]} ${escapeStatusline(badge!)}`)
   } else right.push(escapeStatusline(rec?.status ?? '○ idle'))
   if (mainRunning && rec?.runningSince) {
     right.push(escapeStatusline(`${((Date.now() - rec.runningSince) / 1000).toFixed(1)}s`))
   }
   if (rec?.model) {
-    const effort = app.currentSelection().reasoningEffort
+    const effort = app.slices.agent.currentSelection().reasoningEffort
     right.push(escapeStatusline(rec.model + (effort ? ` ◎${effort}` : '')))
   }
   const usage = rec?.usage
@@ -174,8 +174,8 @@ const updateStatusline = (app: App) => {
     } catch {}
   }
   // Addressed child session (continuable followup): lineage indicator.
-  if (app.pendingSubagentFollowup !== null) {
-    right.push(escapeStatusline(`⇢ ${app.pendingSubagentFollowup.label}`))
+  if (app.slices.agent.pendingSubagentFollowup !== null) {
+    right.push(escapeStatusline(`⇢ ${app.slices.agent.pendingSubagentFollowup.label}`))
   }
   // Queued messages (inbox projection): the QueueDock counterpart.
   if (rec !== undefined) {
@@ -201,7 +201,7 @@ const updateStatusline = (app: App) => {
     const cost = estimateCost(rec.model, usage)
     if (cost !== undefined) right.push(escapeStatusline(`$${cost.toFixed(2)}`))
   }
-  right.push(escapeStatusline(rec?.provider ?? app.currentSelection().provider))
+  right.push(escapeStatusline(rec?.provider ?? app.slices.agent.currentSelection().provider))
 
   const text = `%#DshTuiStatus# ${leftFull} %= ${right.join(' · ')} `
   // Owned by the Lua side: window events re-apply it so statusline
@@ -216,7 +216,7 @@ const hiddenGlance = new Set<string>()
 /** /density — compact tool cards (title line only). */
 /** /whale [on|off] — blue whale wallpaper/watermark toggle. */
 const whaleCommand = (app: App, a: string | undefined) => {
-  const feed = app.activeFeed()
+  const feed = app.slices.ui.activeFeed()
   if (!feed) return
   const on = a === 'on' ? true : a === 'off' ? false : !feed.whale
   feed.setWhale(on)
@@ -224,7 +224,7 @@ const whaleCommand = (app: App, a: string | undefined) => {
 }
 
 const densityCommand = (app: App) => {
-  const feed = app.activeFeed()
+  const feed = app.slices.ui.activeFeed()
   if (!feed) return
   feed.dense = !feed.dense
   app.notice(`紧凑模式: ${feed.dense ? '开' : '关'}`)
@@ -244,13 +244,13 @@ const glanceCommand = (app: App, a: string | undefined) => {
   }
   if (hiddenGlance.has(seg)) hiddenGlance.delete(seg)
   else hiddenGlance.add(seg)
-  app.updateStatusline()
+  app.slices.ui.updateStatusline()
   app.notice(`glance ${seg}: ${hiddenGlance.has(seg) ? '隐藏' : '显示'}`)
 }
 
 /** /cost — accumulated usage + cost for the active session. */
 const costCommand = (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec?.usage) {
     app.notice(t('本会话暂无用量数据'))
     return
@@ -265,30 +265,30 @@ const costCommand = (app: App) => {
 
 /** Fill the statusline module's App slots and register its commands. */
 export function installStatusline(app: App): void {
-  app.foldEvent = (rec, event) => foldEvent(app, rec, event)
-  app.updateStatusline = () => updateStatusline(app)
-  app.ensureSpinner = () => ensureSpinner(app)
-  app.refreshBgJobs = () => refreshBgJobs(app)
-  app.runningSubagentsOf = (parentId) => runningSubagentsOf(app, parentId)
+  app.slices.ui.foldEvent = (rec, event) => foldEvent(app, rec, event)
+  app.slices.ui.updateStatusline = () => updateStatusline(app)
+  app.slices.ui.ensureSpinner = () => ensureSpinner(app)
+  app.slices.ui.refreshBgJobs = () => refreshBgJobs(app)
+  app.slices.sessions.runningSubagentsOf = (parentId) => runningSubagentsOf(app, parentId)
   // Background jobs keep the statusline honest while the agent is idle:
   // every visible-set change re-reads the active session's live jobs and
   // re-arms the spinner; a settled job notices its label when it belongs
   // to the active session.
   const jobs = app.svc('jobs')
   if (typeof jobs?.onJobsChanged === 'function') {
-    app.hostDisposers.push(jobs.onJobsChanged(() => {
-      app.refreshBgJobs()
-      app.ensureSpinner()
-      app.updateStatusline()
+    app.slices.runtime.hostDisposers.push(jobs.onJobsChanged(() => {
+      app.slices.ui.refreshBgJobs()
+      app.slices.ui.ensureSpinner()
+      app.slices.ui.updateStatusline()
     }))
   }
   if (typeof jobs?.onJobDone === 'function') {
-    app.hostDisposers.push(jobs.onJobDone((snap, owner) => {
-      app.refreshBgJobs()
-      app.ensureSpinner()
-      app.updateStatusline()
+    app.slices.runtime.hostDisposers.push(jobs.onJobDone((snap, owner) => {
+      app.slices.ui.refreshBgJobs()
+      app.slices.ui.ensureSpinner()
+      app.slices.ui.updateStatusline()
       const sid = (owner as { session?: { id?: string } } | undefined)?.session?.id
-      if (sid !== undefined && sid === app.activeId) {
+      if (sid !== undefined && sid === app.slices.sessions.activeId) {
         app.notice(`✓ 后台任务 ${snap?.label ?? '?'} · ${snap?.status ?? '结束'}`)
       }
     }))
@@ -299,5 +299,5 @@ export function installStatusline(app: App): void {
     { name: '/whale', desc: t('蓝鲸背景开关'), usage: t('on|off'), group: t('显示'), fn: (a) => whaleCommand(app, a) },
     { name: '/cost', desc: t('用量与成本'), usage: t('用量成本'), group: t('信息'), fn: () => costCommand(app) },
   ]
-  app.registerCommands(specs)
+  app.slices.agent.registerCommands(specs)
 }

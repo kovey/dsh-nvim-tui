@@ -28,11 +28,11 @@ export async function boot(app: App): Promise<void> {
       onExit: (code, signal) => {
         // A child exit we initiated (teardown/:qa!) must not re-trigger
         // quit(); only a spontaneous nvim death closes the UI.
-        app.exitDiag('nvim-exit', `code=${code}`, `signal=${signal}`, `disposed=${app.disposed}`)
-        if (!app.disposed) void app.quit(0)
+        app.exitDiag('nvim-exit', `code=${code}`, `signal=${signal}`, `disposed=${app.slices.runtime.disposed}`)
+        if (!app.slices.runtime.disposed) void app.quit(0)
       },
     })
-    app.child = spawned.child
+    app.slices.runtime.child = spawned.child
 
     // nvim now owns the terminal; keep our own process silent so DSH
     // logging cannot corrupt the TUI.
@@ -41,9 +41,9 @@ export async function boot(app: App): Promise<void> {
     console.warn = silent
     console.error = silent
 
-    app.nvim = await connectNvim(spawned.sockPath)
-    const channelId = await app.nvim.channelId
-    app.channelIdValue = channelId
+    app.slices.runtime.nvim = await connectNvim(spawned.sockPath)
+    const channelId = await app.slices.runtime.nvim.channelId
+    app.slices.runtime.channelIdValue = channelId
     await app.luaCall('require("dsh_tui").attach(...)', [channelId])
     // Extension handshake: agree on the API major version (a mismatch
     // surfaces as a boot notice).
@@ -57,14 +57,14 @@ export async function boot(app: App): Promise<void> {
       .catch((err: unknown) => app.notice(`⚠ 扩展接口握手失败: ${(err as Error).message}`))
     // Slash-command catalog for the completion menu (name + description);
     // nvim shows it as soon as the input starts with '/'.
-    await app.luaCall('require("dsh_tui").set_commands(...)', [app.commandCatalog()]).catch(() => {})
-    void app.refreshCommandCatalog()
+    await app.luaCall('require("dsh_tui").set_commands(...)', [app.slices.agent.commandCatalog()]).catch(() => {})
+    void app.slices.agent.refreshCommandCatalog()
     // Theme overrides from the runner config (profile cordis.patch.yml).
     if (app.config.theme !== undefined && app.config.theme !== null && typeof app.config.theme === 'object') {
       await app.luaCall('require("dsh_tui").apply_theme(...)', [app.config.theme]).catch(() => {})
     }
 
-    app.nvim!.on('disconnect', () => void app.quit(0))
+    app.slices.runtime.nvim!.on('disconnect', () => void app.quit(0))
     // dsh-ext bus: nvim plugins issue vim.rpcrequest(channel, 'dsh-ext', …)
     // and the runner answers from the extId dispatch table (luaExt.on).
     // EVERY request gets a BOUNDED response: vim.rpcrequest blocks nvim
@@ -74,7 +74,7 @@ export async function boot(app: App): Promise<void> {
     // are discarded (answered flag guards the single-send channel).
     // NOTE: nvim DOES process events while blocked in rpcrequest, so
     // handlers may safely make nested nvim calls (verified empirically).
-    app.nvim!.on('request', (method: string, args: unknown[], resp: { send: (r: unknown) => void }) => {
+    app.slices.runtime.nvim!.on('request', (method: string, args: unknown[], resp: { send: (r: unknown) => void }) => {
       void (async () => {
         let answered = false
         const reply = (r: unknown): void => {
@@ -91,7 +91,7 @@ export async function boot(app: App): Promise<void> {
         const payload = (args?.[0] ?? {}) as { id?: unknown; method?: unknown; args?: unknown }
         const extId = typeof payload.id === 'string' ? payload.id : ''
         const m = typeof payload.method === 'string' ? payload.method : ''
-        const entry = extId === '' ? undefined : app.extNodeHandlers.get(extId)
+        const entry = extId === '' ? undefined : app.slices.ext.extNodeHandlers.get(extId)
         if (entry === undefined) {
           reply({ ok: false, error: `no ext handler: ${extId}.${m || '?'}` })
           return
@@ -109,22 +109,22 @@ export async function boot(app: App): Promise<void> {
         }
       })()
     })
-    app.nvim!.on('notification', async (method, args) => {
-      if (app.disposed) return
+    app.slices.runtime.nvim!.on('notification', async (method, args) => {
+      if (app.slices.runtime.disposed) return
       if (method === 'dsh-input') {
         const raw = String(args?.[0] ?? '')
         // Card INPUT actions claim the next input: it belongs to the card,
         // not the agent (interception sits BEFORE the tui:input broadcast,
         // so ext subscribers never see card inputs as chat input).
-        if (app.pendingCardInput !== null) {
-          const pending = app.pendingCardInput
-          app.pendingCardInput = null
+        if (app.slices.ext.pendingCardInput !== null) {
+          const pending = app.slices.ext.pendingCardInput
+          app.slices.ext.pendingCardInput = null
           const text = raw.trim()
           if (text === '') {
             app.notice('已取消卡片输入')
             return
           }
-          const feed = app.activeFeed()
+          const feed = app.slices.ui.activeFeed()
           const r = feed === undefined ? null : feed.resolveCardAction(pending.mark, pending.actionIdx)
           if (r === null || r.action === undefined) {
             app.notice('⚠ 卡片已失效，输入已取消')
@@ -137,21 +137,21 @@ export async function boot(app: App): Promise<void> {
           }
           return
         }
-        app.extFire('tui:input', { text: raw })
-        try { app.onInput(raw) } catch (err) { app.notice(`⚠ 输入处理失败: ${(err as Error).message}`) }
+        app.slices.ext.extFire('tui:input', { text: raw })
+        try { app.slices.agent.onInput(raw) } catch (err) { app.notice(`⚠ 输入处理失败: ${(err as Error).message}`) }
       } else if (method === 'dsh-command') {
-        try { app.onCommand(String(args?.[0] ?? '')) } catch (err) { app.notice(`⚠ 命令失败: ${(err as Error).message}`) }
+        try { app.slices.agent.onCommand(String(args?.[0] ?? '')) } catch (err) { app.notice(`⚠ 命令失败: ${(err as Error).message}`) }
       } else if (method === 'dsh-abort') {
         // <C-c> in the input box: same path as /stop.
-        app.stopCommand()
+        app.slices.agent.stopCommand()
       }
-      else if (method === 'dsh-session-select') void app.guard('切换会话', app.selectSession)(String(args?.[0] ?? ''))
-      else if (method === 'dsh-session-new') void app.guard('新建会话', app.createSession)()
+      else if (method === 'dsh-session-select') void app.guard('切换会话', app.slices.sessions.selectSession)(String(args?.[0] ?? ''))
+      else if (method === 'dsh-session-new') void app.guard('新建会话', app.slices.sessions.createSession)()
       else if (method === 'dsh-reasoning-toggled') {
-        app.reasoningOpen = args?.[0] === true
-        if (app.reasoningOpen) {
+        app.slices.runtime.reasoningOpen = args?.[0] === true
+        if (app.slices.runtime.reasoningOpen) {
           const ids = await app.luaCall('return require("dsh_tui").ids()', []).catch(() => null)
-          app.reasoningWinId = ids?.reasoningWin ?? null
+          app.slices.runtime.reasoningWinId = ids?.reasoningWin ?? null
         }
       }
       else if (method === 'dsh-approval-decided') {
@@ -162,68 +162,68 @@ export async function boot(app: App): Promise<void> {
           // policy 'never' — stop prompting, auto-decide from now on
           // (the harness fails closed: such requests are auto-rejected).
           // This request is the last one decided interactively.
-          const sid = app.approvalReq?.agent?.session?.id
+          const sid = app.slices.agent.approvalReq?.agent?.session?.id
           if (sid !== undefined) {
-            const rec = app.sessions.get(sid)
+            const rec = app.slices.sessions.live.get(sid)
             if (rec) {
               try {
                 rec.handle.agent.session.append('approval/policy', { policy: 'never' })
                 rec.policy = 'never'
-                app.updateStatusline()
+                app.slices.ui.updateStatusline()
                 rec.feed.appendNotice('已切换自动审批模式（never）：不再弹窗询问，需要审批的操作将自动拒绝（/yolo off 恢复逐项询问）')
               } catch { /* policy switch is best-effort */ }
             }
           }
-          app.approvalSettle?.('allowed-once')
+          app.slices.agent.approvalSettle?.('allowed-once')
         } else {
-          app.approvalSettle?.(raw === 'y' ? 'allowed-once' : 'rejected')
+          app.slices.agent.approvalSettle?.(raw === 'y' ? 'allowed-once' : 'rejected')
         }
-        app.approvalSettle = null
-        app.approvalReq = null
+        app.slices.agent.approvalSettle = null
+        app.slices.agent.approvalReq = null
       }
       else if (method === 'dsh-questions-answered') {
         const answers = args?.[0] ?? []
-        app.questionsResolve?.resolve({ answers })
-        app.questionsResolve = null
+        app.slices.agent.questionsResolve?.resolve({ answers })
+        app.slices.agent.questionsResolve = null
       }
       else if (method === 'dsh-questions-cancelled') {
-        const reject = app.questionsResolve
-        app.questionsResolve = null
+        const reject = app.slices.agent.questionsResolve
+        app.slices.agent.questionsResolve = null
         reject?.reject(new Error('cancelled by user'))
       }
       else if (method === 'dsh-picker-selected') {
-        app.pickerSettle?.(args?.[0])
-        app.pickerSettle = null
+        app.slices.agent.pickerSettle?.(args?.[0])
+        app.slices.agent.pickerSettle = null
       }
       else if (method === 'dsh-picker-cancelled') {
-        app.pickerSettle?.(null)
-        app.pickerSettle = null
+        app.slices.agent.pickerSettle?.(null)
+        app.slices.agent.pickerSettle = null
       }
       else if (method === 'dsh-subagent-view-closed') {
-        app.subagentView = null
+        app.slices.agent.subagentView = null
       }
       else if (method === 'dsh-subagent-chat-closed') {
-        app.subagentChat = null
+        app.slices.agent.subagentChat = null
       }
       else if (method === 'dsh-subagent-send') {
         try {
-          app.sendToSubagent(String(args?.[0] ?? ''))
+          app.slices.agent.sendToSubagent(String(args?.[0] ?? ''))
         } catch (err) {
           app.notice(`⚠ 子代理发送失败: ${(err as Error).message}`)
         }
       }
       else if (method === 'dsh-dir-selected') {
         const picked = args?.[0]
-        app.dirSettle?.(picked ?? null)
-        app.dirSettle = null
+        app.slices.agent.dirSettle?.(picked ?? null)
+        app.slices.agent.dirSettle = null
       }
       else if (method === 'dsh-at-query') {
         const query = String(args?.[0]?.query ?? '')
         const start = Number(args?.[0]?.start ?? 0)
-        void app.guard('文件引用补全', app.atQuery)(query, start)
+        void app.guard('文件引用补全', app.slices.agent.atQuery)(query, start)
       }
       else if (method === 'dsh-quit') void app.quit(0)
-      else if (method === 'dsh-paste-image') app.pasteClipboardImage()
+      else if (method === 'dsh-paste-image') app.slices.agent.pasteClipboardImage()
       else if (method === 'dsh-ext-register') {
         // A Lua-side extension registered (api.register): mirror its
         // session-event subscription so the Node side knows what to route.
@@ -232,10 +232,10 @@ export async function boot(app: App): Promise<void> {
         if (id === '') return
         const raw = Array.isArray(spec.events) ? spec.events.filter((e): e is string => typeof e === 'string') : undefined
         const wantsAll = raw === undefined || raw.length === 0 || raw.includes('all')
-        app.extLuaSubs.set(id, wantsAll ? 'all' : new Set(raw))
+        app.slices.ext.extLuaSubs.set(id, wantsAll ? 'all' : new Set(raw))
       } else if (method === 'dsh-ext-unregister') {
         const id = typeof args?.[0] === 'string' ? args[0] : ''
-        if (id !== '') app.extLuaSubs.delete(id)
+        if (id !== '') app.slices.ext.extLuaSubs.delete(id)
       } else if (method === 'dsh-ext-notice') {
         // Lua-side extensions surface transient notices through the runner.
         const text = String((args?.[0] as { text?: unknown } | undefined)?.text ?? args?.[0] ?? '')
@@ -248,12 +248,12 @@ export async function boot(app: App): Promise<void> {
         const payload = (args?.[0] ?? {}) as { mark?: unknown; action?: unknown }
         const mark = Number(payload.mark)
         if (!Number.isInteger(mark)) return
-        const feed = app.activeFeed()
+        const feed = app.slices.ui.activeFeed()
         if (feed === undefined) return
         const dispatch = (feed2: typeof feed, idx: number): void => {
           // Any new card activation supersedes a pending input-mode prompt
           // (the input branch below re-arms it when needed).
-          app.pendingCardInput = null
+          app.slices.ext.pendingCardInput = null
           const r = feed2.resolveCardAction(mark, idx)
           if (r === null || r.action === undefined) {
             app.notice('⚠ 卡片已失效')
@@ -286,7 +286,7 @@ export async function boot(app: App): Promise<void> {
                 return
               }
               const prompt = String(act.inputPrompt ?? `输入「${act.label}」的参数`)
-              app.pendingCardInput = { mark, actionIdx: idx, prompt }
+              app.slices.ext.pendingCardInput = { mark, actionIdx: idx, prompt }
               if (typeof act.inputDefault === 'string' && act.inputDefault !== '') {
                 void app.luaCall('require("dsh_tui").fill_input(...)', [act.inputDefault]).catch(() => {})
               }
@@ -327,11 +327,11 @@ export async function boot(app: App): Promise<void> {
 
     // Session elapsed / stats tick slowly while idle (the spinner interval
     // already covers the running state at 180ms).
-    app.idleRefreshTimer = setInterval(() => {
-      if (!app.disposed) {
-        app.refreshBgJobs()
-        app.ensureSpinner()
-        app.updateStatusline()
+    app.slices.runtime.idleRefreshTimer = setInterval(() => {
+      if (!app.slices.runtime.disposed) {
+        app.slices.ui.refreshBgJobs()
+        app.slices.ui.ensureSpinner()
+        app.slices.ui.updateStatusline()
       }
     }, 30000)
 
@@ -353,55 +353,55 @@ export async function boot(app: App): Promise<void> {
       const p = args?.file_path ?? args?.path
       return typeof p === 'string' && p !== '' ? p : null
     }
-    app.feedDisposer = app.runtimeCtx.on('session/event', (owner, event) => {
-      if (app.disposed) return
+    app.slices.runtime.feedDisposer = app.runtimeCtx.on('session/event', (owner, event) => {
+      if (app.slices.runtime.disposed) return
       // Extension mirror: opt-in session-event subscribers (Node-side
       // onSessionEvent; the Lua-side routing lands with P3).
-      app.extDispatchSessionEvent(owner.id, event)
+      app.slices.ext.extDispatchSessionEvent(owner.id, event)
       // Open subagent CHAT window: route the child's live events into its
       // feed (reasoning/text/tools keep streaming in place). The harness's
       // replay of our own optimistic user echo is skipped (FIFO dedupe).
-      if (app.subagentChat !== null && owner.id === app.subagentChat.childId) {
+      if (app.slices.agent.subagentChat !== null && owner.id === app.slices.agent.subagentChat.childId) {
         if (event.type === 'tool/call' && typeof event.data?.name === 'string') {
           const p = producedPathFromCall(event.data.name, event.data.arguments)
           if (p !== null && typeof event.data.callId === 'string' && event.data.callId !== '') {
             const cid = event.data.callId
-            void app.readFileSnapshot(p).then((before) => {
-              app.pendingFileSnaps.set(cid, { display: p, before })
+            void app.slices.ui.readFileSnapshot(p).then((before) => {
+              app.slices.ui.pendingFileSnaps.set(cid, { display: p, before })
             })
           }
         }
         if (event.type === 'user/message') {
-          const q = app.pendingEchoes.get(owner.id)
+          const q = app.slices.ui.pendingEchoes.get(owner.id)
           if (q !== undefined && q.length > 0) {
             const data = event.data as { message?: ChatMessage } | ChatMessage | undefined
             const msg = (data as { message?: ChatMessage } | undefined)?.message ??
               (data as ChatMessage | undefined)
             if (FeedRenderer.messageText(msg) === q[0]) {
               q.shift()
-              app.pendingEchoes.set(owner.id, q)
+              app.slices.ui.pendingEchoes.set(owner.id, q)
               return // already rendered optimistically — no double bubble
             }
           }
         }
-        app.subagentChat.feed.applyEvent(event)
-        app.maybePushFileDiff(app.subagentChat.feed, event)
+        app.slices.agent.subagentChat.feed.applyEvent(event)
+        app.slices.ui.maybePushFileDiff(app.slices.agent.subagentChat.feed, event)
         return
       }
       // Open subagent transcript view: route the child's live events into
       // its read-only feed (reasoning/text/tools keep streaming in place).
-      if (app.subagentView !== null && owner.id === app.subagentView.childId) {
+      if (app.slices.agent.subagentView !== null && owner.id === app.slices.agent.subagentView.childId) {
         if (event.type === 'tool/call' && typeof event.data?.name === 'string') {
           const p = producedPathFromCall(event.data.name, event.data.arguments)
           if (p !== null && typeof event.data.callId === 'string' && event.data.callId !== '') {
             const cid = event.data.callId
-            void app.readFileSnapshot(p).then((before) => {
-              app.pendingFileSnaps.set(cid, { display: p, before })
+            void app.slices.ui.readFileSnapshot(p).then((before) => {
+              app.slices.ui.pendingFileSnaps.set(cid, { display: p, before })
             })
           }
         }
-        app.subagentView.feed.applyEvent(event)
-        app.maybePushFileDiff(app.subagentView.feed, event)
+        app.slices.agent.subagentView.feed.applyEvent(event)
+        app.slices.ui.maybePushFileDiff(app.slices.agent.subagentView.feed, event)
         return
       }
       // Child→parent modification sync (alpha.4): the child's file-change
@@ -409,39 +409,39 @@ export async function boot(app: App): Promise<void> {
       // cards — the parent shares the workspace, so the child's edits are
       // the parent's edits (the harness forwards no child transcript, but
       // this runner sees every child session event).
-      const childLink = app.childParent.get(owner.id)
+      const childLink = app.slices.sessions.childParent.get(owner.id)
       if (childLink !== undefined) {
         if (event.type === 'tool/call' && typeof event.data?.name === 'string') {
           const p = producedPathFromCall(event.data.name, event.data.arguments)
           if (p !== null && typeof event.data.callId === 'string' && event.data.callId !== '') {
             const cid = event.data.callId
-            void app.readFileSnapshot(p).then((before) => {
-              app.pendingFileSnaps.set(cid, { display: p, before })
+            void app.slices.ui.readFileSnapshot(p).then((before) => {
+              app.slices.ui.pendingFileSnaps.set(cid, { display: p, before })
             })
           }
         }
         if (event.type === 'tool/result') {
-          const prec = app.sessions.get(childLink.parentId)
+          const prec = app.slices.sessions.live.get(childLink.parentId)
           if (prec !== undefined) {
-            app.maybePushFileDiff(prec.feed, event, `${t('子代理')} ${childLink.label} `)
+            app.slices.ui.maybePushFileDiff(prec.feed, event, `${t('子代理')} ${childLink.label} `)
           }
         }
         return
       }
-      const rec = app.sessions.get(owner.id)
+      const rec = app.slices.sessions.live.get(owner.id)
       if (!rec) return
       // Skip the host's user/message when this exact text was already
       // rendered optimistically at submit time (no double bubble).
       let echoed = false
       if (event.type === 'user/message') {
-        const q = app.pendingEchoes.get(owner.id)
+        const q = app.slices.ui.pendingEchoes.get(owner.id)
         if (q !== undefined && q.length > 0) {
           const data = event.data as { message?: ChatMessage } | ChatMessage | undefined
           const msg = (data as { message?: ChatMessage } | undefined)?.message ??
             (data as ChatMessage | undefined)
           if (FeedRenderer.messageText(msg) === q[0]) {
             q.shift()
-            app.pendingEchoes.set(owner.id, q)
+            app.slices.ui.pendingEchoes.set(owner.id, q)
             echoed = true
           }
         }
@@ -463,8 +463,8 @@ export async function boot(app: App): Promise<void> {
           }
           if (typeof event.data.callId === 'string' && event.data.callId !== '') {
             const cid = event.data.callId
-            void app.readFileSnapshot(p).then((before) => {
-              app.pendingFileSnaps.set(cid, { display: p, before })
+            void app.slices.ui.readFileSnapshot(p).then((before) => {
+              app.slices.ui.pendingFileSnaps.set(cid, { display: p, before })
             })
           }
         }
@@ -483,7 +483,7 @@ export async function boot(app: App): Promise<void> {
       }
       // Turn finished on the ACTIVE session → terminal bell (toggle /bell).
       if (event.type === 'turn/end') {
-        app.pendingFileSnaps.clear()
+        app.slices.ui.pendingFileSnaps.clear()
         if (rec.pendingToolCalls.size > 0) {
           // The turn ended while tool calls were still pending: the tool
           // scheduler crashed after committing tool/call events and no
@@ -499,22 +499,22 @@ export async function boot(app: App): Promise<void> {
           const prepareCrash = typeof reason?.error?.message === 'string' &&
             reason.error.message.includes("reading 'prepare'")
           setTimeout(() => {
-            if (app.disposed || !app.sessions.has(rec.id)) return
+            if (app.slices.runtime.disposed || !app.slices.sessions.live.has(rec.id)) return
             let healed = 0
             for (const [callId, call] of orphaned) {
               try {
-                app.synthesizeToolResult(rec, callId, call.seq >= 0 ? call.seq : undefined, call.turn, call.step)
+                app.slices.trans.synthesizeToolResult(rec, callId, call.seq >= 0 ? call.seq : undefined, call.turn, call.step)
                 healed++
               } catch {}
             }
-            if (healed > 0 && owner.id === app.activeId) {
+            if (healed > 0 && owner.id === app.slices.sessions.activeId) {
               app.notice(prepareCrash
                 ? t(`⚠ 工具调度器崩溃（profile 里存在第二份 @deepseek-ai/dsh-tools 拷贝）——已补写 ${healed} 个悬空工具结果，本会话可继续使用；根治：在 profile 目录执行 pnpm why @deepseek-ai/dsh-tools 后 pnpm dedupe（或将 dsh-nvim-tui 升级到 0.2.8+）`)
                 : t(`⚠ 回合结束时仍有 ${healed} 个工具调用未产生结果——已补写错误结果，会话历史已修复`))
             }
           }, 0)
         }
-        if (owner.id === app.activeId && app.bellOn) {
+        if (owner.id === app.slices.sessions.activeId && app.slices.agent.bellOn) {
           void app.luaCall('require("dsh_tui").bell()', []).catch(() => {})
         }
         // 识图临时切换恢复：图片回合（在切换之后启动的回合）结束 → 切回
@@ -524,18 +524,18 @@ export async function boot(app: App): Promise<void> {
           rec.visionTmp = null
           rec.modelRef.current = prev
           rec.model = prev.model
-          if (owner.id === app.activeId) {
+          if (owner.id === app.slices.sessions.activeId) {
             app.notice(`已切回模型 ${prev.provider}/${prev.model}`)
-            app.updateStatusline()
+            app.slices.ui.updateStatusline()
           }
         }
       }
       if (event.type === 'session/title' && typeof event.data?.title === 'string') {
         rec.title = event.data.title
-        app.refreshList()
-        if (owner.id === app.activeId) {
-          app.updateStatusline()
-          app.updateTitle()
+        app.slices.sessions.refreshList()
+        if (owner.id === app.slices.sessions.activeId) {
+          app.slices.ui.updateStatusline()
+          app.slices.sessions.updateTitle()
         }
         return
       }
@@ -548,7 +548,7 @@ export async function boot(app: App): Promise<void> {
         event.data.message.content.some((b: MessageContent) => b?.type === 'image')) {
         if (!rec.imagePoisonWarned) {
           rec.imagePoisonWarned = true
-          if (owner.id === app.activeId) {
+          if (owner.id === app.slices.sessions.activeId) {
             app.notice(t('⚠ 检测到历史带图消息（text-only 模型回放会失败）。用 /rewind 回退到该消息之前，或确认目录中已声明官方识图模型即可修复'))
           }
         }
@@ -559,8 +559,8 @@ export async function boot(app: App): Promise<void> {
         rec.lastAssistantMessageId = event.data.message.id
       } else if (event.type === 'plan/mode') {
         rec.planActive = event.data?.active === true
-        if (owner.id === app.activeId) {
-          app.updateStatusline()
+        if (owner.id === app.slices.sessions.activeId) {
+          app.slices.ui.updateStatusline()
           app.notice(`计划模式已${rec.planActive ? '开启' : '关闭'}`)
         }
       } else if (event.type === 'goal/change') {
@@ -573,15 +573,15 @@ export async function boot(app: App): Promise<void> {
           const roundsStarted = (event.data as { roundsStarted?: number } | undefined)?.roundsStarted
           rec.goal = roundsStarted === undefined ? goal : { ...goal, roundsStarted }
         }
-        if (owner.id === app.activeId) app.updateStatusline()
+        if (owner.id === app.slices.sessions.activeId) app.slices.ui.updateStatusline()
       }
       if (!echoed) {
-        app.foldEvent(rec, event)
+        app.slices.ui.foldEvent(rec, event)
         rec.feed.applyEvent(event)
-        app.maybePushFileDiff(rec.feed, event)
+        app.slices.ui.maybePushFileDiff(rec.feed, event)
       }
       // Headless e2e: first completed turn of the initial session ends the test.
-      if (app.headless && event.type === 'turn/end' && owner.id === app.activeId) {
+      if (app.headless && event.type === 'turn/end' && owner.id === app.slices.sessions.activeId) {
         rec.feed.commitTail()
         void rec.feed.flush().then(() => dumpAndQuit())
       }
@@ -589,10 +589,10 @@ export async function boot(app: App): Promise<void> {
 
     // Host events: agent lifecycle status → statusline, subagent/workflow
     // cards → the owning session's feed.
-    app.hostDisposers.push(app.runtimeCtx.on('agent/status', (payload) => {
-      if (app.disposed) return
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('agent/status', (payload) => {
+      if (app.slices.runtime.disposed) return
       const { agent, status } = payload ?? {}
-      const rec = app.sessions.get(agent?.session?.id)
+      const rec = app.slices.sessions.live.get(agent?.session?.id)
       if (!rec) return
       if (status === 'running') {
         rec.status = '● running'
@@ -601,93 +601,93 @@ export async function boot(app: App): Promise<void> {
         rec.status = '○ idle'
         rec.runningSince = null
       }
-      if (rec.id === app.activeId) {
-        app.ensureSpinner()
-        app.updateStatusline()
+      if (rec.id === app.slices.sessions.activeId) {
+        app.slices.ui.ensureSpinner()
+        app.slices.ui.updateStatusline()
       }
     }))
-    app.hostDisposers.push(app.runtimeCtx.on('subagent/start', (info) => {
-      if (app.disposed) return
-      const parent = app.feedForSubagent(info)
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('subagent/start', (info) => {
+      if (app.slices.runtime.disposed) return
+      const parent = app.slices.ui.feedForSubagent(info)
       parent?.feed.subagentStart(info)
       const key = info?.id ?? info?.runId
       if (parent && key) {
         const label = `${info?.provider ?? 'subagent'} ${FeedRenderer.truncate(String(info?.id ?? ''), 8)}`
-        app.runningSubagents.set(String(key), {
+        app.slices.sessions.runningSubagents.set(String(key), {
           parentId: parent.id,
           label,
           startedAt: Date.now(),
         })
         // Durable routing for the child's own session events (tool diffs,
         // late messages) — kept after subagent/end, pruned with the parent.
-        app.childParent.set(String(key), { parentId: parent.id, label })
+        app.slices.sessions.childParent.set(String(key), { parentId: parent.id, label })
         // Bounded memory: long-running hosts spawn unbounded children;
         // evict the oldest routing entry past the cap.
-        if (app.childParent.size > 400) {
-          const oldest = app.childParent.keys().next()
-          if (oldest.done !== true) app.childParent.delete(oldest.value)
+        if (app.slices.sessions.childParent.size > 400) {
+          const oldest = app.slices.sessions.childParent.keys().next()
+          if (oldest.done !== true) app.slices.sessions.childParent.delete(oldest.value)
         }
-        app.ensureSpinner()
-        app.updateStatusline()
+        app.slices.ui.ensureSpinner()
+        app.slices.ui.updateStatusline()
       }
     }))
-    app.hostDisposers.push(app.runtimeCtx.on('subagent/end', (info) => {
-      if (app.disposed) return
-      app.feedForSubagent(info)?.feed.subagentEnd(info)
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('subagent/end', (info) => {
+      if (app.slices.runtime.disposed) return
+      app.slices.ui.feedForSubagent(info)?.feed.subagentEnd(info)
       const key = info?.id ?? info?.runId
-      if (key && app.runningSubagents.delete(String(key))) {
-        app.ensureSpinner()
-        app.updateStatusline()
+      if (key && app.slices.sessions.runningSubagents.delete(String(key))) {
+        app.slices.ui.ensureSpinner()
+        app.slices.ui.updateStatusline()
       }
     }))
-    app.hostDisposers.push(app.runtimeCtx.on('workflow/start', (info) => {
-      if (app.disposed) return
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('workflow/start', (info) => {
+      if (app.slices.runtime.disposed) return
       const runId = info?.id ?? '?'
-      const run = app.workflowRuns.get(runId) ?? { id: runId, name: info?.meta?.name ?? runId, startedAt: Date.now(), phases: [], agents: [], logs: [], running: true, stopReason: undefined }
+      const run = app.slices.trans.workflowRuns.get(runId) ?? { id: runId, name: info?.meta?.name ?? runId, startedAt: Date.now(), phases: [], agents: [], logs: [], running: true, stopReason: undefined }
       run.startedAt = Date.now()
       run.running = true
-      app.workflowRuns.set(runId, run)
-      app.activeFeed()?.workflowStart(info)
+      app.slices.trans.workflowRuns.set(runId, run)
+      app.slices.ui.activeFeed()?.workflowStart(info)
     }))
-    app.hostDisposers.push(app.runtimeCtx.on('workflow/phase', (info, title) => {
-      if (app.disposed) return
-      const run = app.workflowRuns.get(info?.id)
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('workflow/phase', (info, title) => {
+      if (app.slices.runtime.disposed) return
+      const run = app.slices.trans.workflowRuns.get(info?.id)
       if (run) {
         run.phases.push({ title, startedAt: Date.now() })
       }
-      app.activeFeed()?.workflowPhase(info, title)
+      app.slices.ui.activeFeed()?.workflowPhase(info, title)
     }))
-    app.hostDisposers.push(app.runtimeCtx.on('workflow/log', (info, message) => {
-      if (app.disposed) return
-      const run = app.workflowRuns.get(info?.id)
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('workflow/log', (info, message) => {
+      if (app.slices.runtime.disposed) return
+      const run = app.slices.trans.workflowRuns.get(info?.id)
       if (run) run.logs.push(message)
     }))
-    app.hostDisposers.push(app.runtimeCtx.on('workflow/agent-start', (info, agent) => {
-      if (app.disposed) return
-      const run = app.workflowRuns.get(info?.id)
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('workflow/agent-start', (info, agent) => {
+      if (app.slices.runtime.disposed) return
+      const run = app.slices.trans.workflowRuns.get(info?.id)
       if (run) run.agents.push({ seq: agent?.seq ?? 0, label: agent?.label ?? '', outcome: undefined })
     }))
-    app.hostDisposers.push(app.runtimeCtx.on('workflow/agent-end', (info, agent) => {
-      if (app.disposed) return
-      const run = app.workflowRuns.get(info?.id)
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('workflow/agent-end', (info, agent) => {
+      if (app.slices.runtime.disposed) return
+      const run = app.slices.trans.workflowRuns.get(info?.id)
       if (run) {
         const entry = run.agents.find((e) => e.seq === agent?.seq)
         if (entry) entry.outcome = agent?.outcome ?? 'settled'
       }
     }))
-    app.hostDisposers.push(app.runtimeCtx.on('workflow/end', (info, result) => {
-      if (app.disposed) return
-      const run = app.workflowRuns.get(info?.id)
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('workflow/end', (info, result) => {
+      if (app.slices.runtime.disposed) return
+      const run = app.slices.trans.workflowRuns.get(info?.id)
       if (run) {
         run.running = false
         run.stopReason = result?.stopReason
       }
-      app.activeFeed()?.workflowEnd(info, result)
+      app.slices.ui.activeFeed()?.workflowEnd(info, result)
     }))
 
     // Approval requests: show the floating window and decide.
-    app.hostDisposers.push(app.runtimeCtx.on('approval/request', (req, next) => {
-      if (app.disposed) return next()
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('approval/request', (req, next) => {
+      if (app.slices.runtime.disposed) return next()
       return new Promise((resolve) => {
         let settled = false
         const cleanup = () => {
@@ -697,20 +697,20 @@ export async function boot(app: App): Promise<void> {
           if (settled) return
           settled = true
           cleanup()
-          app.approvalSettle = null
-          app.approvalReq = null
+          app.slices.agent.approvalSettle = null
+          app.slices.agent.approvalReq = null
           resolve('cancelled')
         }
         req.signal?.addEventListener('abort', onAbort, { once: true })
-        app.approvalReq = req
-        app.approvalSettle = (outcome) => {
+        app.slices.agent.approvalReq = req
+        app.slices.agent.approvalSettle = (outcome) => {
           if (settled) return
           settled = true
           cleanup()
-          app.approvalReq = null
+          app.slices.agent.approvalReq = null
           resolve(outcome)
         }
-        const rec = app.sessions.get(req.agent?.session?.id)
+        const rec = app.slices.sessions.live.get(req.agent?.session?.id)
         rec?.feed.appendNotice(`⚠ 审批请求: ${req.toolName ?? '?'}${req.reason ? ` — ${req.reason}` : ''}`)
         // Approvals always ring — attention is required, bell toggle or not.
         void app.luaCall('require("dsh_tui").bell()', []).catch(() => {})
@@ -721,8 +721,8 @@ export async function boot(app: App): Promise<void> {
           if (!settled) {
             settled = true
             cleanup()
-            app.approvalSettle = null
-            app.approvalReq = null
+            app.slices.agent.approvalSettle = null
+            app.slices.agent.approvalReq = null
             resolve('rejected')
           }
         })
@@ -732,22 +732,22 @@ export async function boot(app: App): Promise<void> {
     // User questions: claim the host's `user-questions/request` waterfall
     // as the interactive answerer (dsh 0.1.2-alpha.2: registerProvider was
     // removed in favor of the scoped cordis waterfall).
-    app.hostDisposers.push(app.runtimeCtx.on('user-questions/request', (request, next) => {
-      if (app.disposed) return next()
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('user-questions/request', (request, next) => {
+      if (app.slices.runtime.disposed) return next()
       return new Promise((resolve, reject) => {
-        app.questionsResolve = { resolve, reject }
+        app.slices.agent.questionsResolve = { resolve, reject }
         request.signal?.addEventListener('abort', () => {
-          if (app.questionsResolve) {
-            const r = app.questionsResolve
-            app.questionsResolve = null
+          if (app.slices.agent.questionsResolve) {
+            const r = app.slices.agent.questionsResolve
+            app.slices.agent.questionsResolve = null
             r.reject(new Error('cancelled by caller'))
           }
         }, { once: true })
         void app.luaCall('require("dsh_tui").show_questions(...)', [request.questions ?? []])
           .catch(() => {
-            if (app.questionsResolve) {
-              const r = app.questionsResolve
-              app.questionsResolve = null
+            if (app.slices.agent.questionsResolve) {
+              const r = app.slices.agent.questionsResolve
+              app.slices.agent.questionsResolve = null
               r.reject(new Error('no UI'))
             }
           })
@@ -757,7 +757,7 @@ export async function boot(app: App): Promise<void> {
     // History list for resume: only THIS project's project-level sessions.
     // Subagent children are bare-UUID ids (no `session-` prefix) — excluded,
     // as are sessions created in other working directories.
-    await app.refreshHistory()
+    await app.slices.sessions.refreshHistory()
 
     // Boot: explicit resume id (env/config) wins; otherwise auto-resume the
     // LAST active session of this project (claude --continue behaviour),
@@ -771,7 +771,7 @@ export async function boot(app: App): Promise<void> {
     const autoResume = app.config.resumeLatest !== false && process.env.DSH_NVIM_TUI_RESUME_LATEST !== '0'
     const resumeOrFresh = async (targetId: string): Promise<boolean> => {
       try {
-        await app.resumeSession(targetId)
+        await app.slices.sessions.resumeSession(targetId)
         return true
       } catch (err) {
         const message = err instanceof Error ? (err.message || String(err)) : String(err)
@@ -781,31 +781,31 @@ export async function boot(app: App): Promise<void> {
         } catch {}
         // Fall back to a fresh session — the UI stays up; the failure is
         // shown in the new session's chat window instead of killing dsh.
-        await app.createSession()
+        await app.slices.sessions.createSession()
         app.notice(`⚠ ${t('恢复会话失败')} ${targetId}${message ? ` — ${message}` : ''}（${t('已新建会话')}）`)
         return false
       }
     }
     if (resumeId) {
       await resumeOrFresh(resumeId)
-    } else if (autoResume && app.historyHeaders.length > 0) {
-      const state = app.readState() as { sessionId?: unknown; cwd?: unknown } | null
+    } else if (autoResume && app.slices.sessions.historyHeaders.length > 0) {
+      const state = app.slices.sessions.readState() as { sessionId?: unknown; cwd?: unknown } | null
       const fromState = state?.sessionId && state.cwd === process.cwd() &&
-        app.historyHeaders.some((h) => h.id === state.sessionId)
+        app.slices.sessions.historyHeaders.some((h) => h.id === state.sessionId)
         ? (state.sessionId as string)
         : null
-      const newest = [...app.historyHeaders]
+      const newest = [...app.slices.sessions.historyHeaders]
         .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0]?.id
       const target = fromState ?? newest
       if (target) {
         if (await resumeOrFresh(target)) app.notice(t('已自动恢复上次会话（/new 新建）'))
       } else {
-        await app.createSession()
+        await app.slices.sessions.createSession()
       }
     } else {
-      await app.createSession()
+      await app.slices.sessions.createSession()
     }
-    app.refreshList()
+    app.slices.sessions.refreshList()
 
     const watchdog = setTimeout(() => {
       if (app.headless) dumpAndQuit()
@@ -813,13 +813,13 @@ export async function boot(app: App): Promise<void> {
 
     const dumpAndQuit = async () => {
       clearTimeout(watchdog)
-      if (app.disposed) return
+      if (app.slices.runtime.disposed) return
       if (app.headless) {
         try {
-          const feed = app.activeFeed()!
-          const lines = await app.nvim!.request('nvim_buf_get_lines', [feed.bufId, 0, -1, false])
-          const listLines = app.sessionEntries.map((s) =>
-            `[ ${s.id === app.activeId ? '▸' : ' '} ${s.title || '（无标题）'} · ${s.id} · ${s.kind}`)
+          const feed = app.slices.ui.activeFeed()!
+          const lines = await app.slices.runtime.nvim!.request('nvim_buf_get_lines', [feed.bufId, 0, -1, false])
+          const listLines = app.slices.sessions.sessionEntries.map((s) =>
+            `[ ${s.id === app.slices.sessions.activeId ? '▸' : ' '} ${s.title || '（无标题）'} · ${s.id} · ${s.kind}`)
           writeFileSync(app.dumpPath, `# dsh-nvim-tui e2e dump (${new Date().toISOString()})\n` +
             '## session list\n' +
             listLines.join('\n') + '\n' +
@@ -833,27 +833,27 @@ export async function boot(app: App): Promise<void> {
     }
 
     // Drain input that arrived before the first agent was ready.
-    if (app.pendingInput.length > 0) {
-      const queued = app.pendingInput.splice(0)
-      for (const text of queued) app.send(text)
+    if (app.slices.agent.pendingInput.length > 0) {
+      const queued = app.slices.agent.pendingInput.splice(0)
+      for (const text of queued) app.slices.agent.send(text)
     }
 
-    app.exitDiag('boot-complete', `active=${app.activeId}`)
+    app.exitDiag('boot-complete', `active=${app.slices.sessions.activeId}`)
 
     // Extension surface: resolve readiness, notify Node subscribers, and
     // fire the nvim-side User DshTuiReady autocmd.
-    app.extReadyResolve?.()
-    app.extReadyResolve = null
-    app.extFire('tui:ready', { active: app.activeId })
-    void app.luaCall('require("dsh_tui.api").emit(...)', ['Ready', { active: app.activeId }]).catch(() => {})
+    app.slices.ext.extReadyResolve?.()
+    app.slices.ext.extReadyResolve = null
+    app.slices.ext.extFire('tui:ready', { active: app.slices.sessions.activeId })
+    void app.luaCall('require("dsh_tui.api").emit(...)', ['Ready', { active: app.slices.sessions.activeId }]).catch(() => {})
 
     // Headless e2e: kick one real agent turn with the configured prompt.
     const headlessPrompt = app.config.prompt ?? process.env.DSH_NVIM_TUI_PROMPT
-    if (app.headless && headlessPrompt) app.send(headlessPrompt)
+    if (app.headless && headlessPrompt) app.slices.agent.send(headlessPrompt)
   } catch (err: unknown) {
     // After teardown started, in-flight RPC writes can fail with EPIPE —
     // that is the shutdown race, not a product failure.
-    if (app.disposed) return
+    if (app.slices.runtime.disposed) return
     app.exitDiag('fatal', err instanceof Error ? (err.stack ?? err.message) : String(err))
     console.error('[dsh-nvim-tui] fatal:', err)
     void app.quit(1)

@@ -8,7 +8,7 @@
  * Composition contract:
  *  - `createApp(ctx, config)` builds the state + core services + no-op slots.
  *  - Each module's `install(app)` fills the slots it owns and registers its
- *    slash commands via `app.registerCommands([...])` (late binding: install
+ *    slash commands via `app.slices.agent.registerCommands([...])` (late binding: install
  *    order never matters, runtime calls always see the real implementations).
  *  - `boot(app)` (boot.ts) runs the main body LAST, after every install.
  *
@@ -158,7 +158,7 @@ export interface AppSlices {
   }
   /** Sessions, history, active-session state + subagent registry. */
   sessions: {
-    sessions: Map<string, SessionRec>
+    live: Map<string, SessionRec>
     activeId: string | null
     historyHeaders: Array<{ id: string; cwd?: string; createdAt?: number; title?: string; origin?: string; inheritedEventCount?: number }>
     historyById: Map<string, { id: string; cwd?: string; createdAt?: number; title?: string; origin?: string; inheritedEventCount?: number }>
@@ -287,110 +287,6 @@ export interface App {
   closeNvimWindow: () => Promise<void>
   /** The domain slices (the physical state home). */
   slices: AppSlices
-
-  // -- legacy flat members (P0 accessor-forwarded into slices) ----------------
-  nvim: NeovimClient | null
-  child: ReturnType<typeof import('node:child_process')['spawn']> | null
-  channelIdValue: number | null
-  disposed: boolean
-  quitting: boolean
-  chatWinId: number | null
-  reasoningOpen: boolean
-  reasoningWinId: number | null
-  feedDisposer: (() => void) | null
-  hostDisposers: Array<() => void>
-  spinnerTimer: ReturnType<typeof setInterval> | null
-  spinnerIndex: number
-  idleRefreshTimer: ReturnType<typeof setInterval> | null
-  boot: () => Promise<void>
-
-  sessions: Map<string, SessionRec>
-  activeId: string | null
-  historyHeaders: Array<{ id: string; cwd?: string; createdAt?: number; title?: string; origin?: string; inheritedEventCount?: number }>
-  historyById: Map<string, { id: string; cwd?: string; createdAt?: number; title?: string; origin?: string; inheritedEventCount?: number }>
-  sessionEntries: Array<{ id: string; title: string; active: boolean; kind: string }>
-  runningSubagents: Map<string, { parentId: string; label: string; startedAt: number }>
-  childParent: Map<string, { parentId: string; label: string }>
-  refreshHistory: () => Promise<void>
-  refreshList: () => void
-  readState: () => unknown
-  recordState: (id: string) => void
-  createSession: (cwdPath?: string) => Promise<void>
-  resumeSession: (id: string) => Promise<void>
-  updateTitle: () => void
-  switchTo: (id: string) => Promise<void>
-  selectSession: (id: string) => Promise<void>
-  forkSession: (directive: string | undefined) => Promise<string | undefined>
-  attachSession: (handle: AgentHandle, modelRef: ModelRef) => Promise<void>
-  listSubagentChildren: (parentId: string) => Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number }>>
-  seedRunningSubagents: (parentId: string) => Promise<void>
-  cleanSubagentChain: (parentId: string, childId: string) => Promise<boolean>
-  runningSubagentsOf: (parentId: string | null) => Array<{ parentId: string; label: string; startedAt: number }>
-
-  activeFeed: () => FeedRenderer | undefined
-  feedForSubagent: (info: SubagentInfo) => SessionRec | undefined
-  welcomeLines: () => { above: Array<{ text: string; group?: string }>; below: Array<{ text: string; group?: string }> }
-  ensureSpinner: () => void
-  updateStatusline: () => void
-  refreshBgJobs: () => void
-  foldEvent: (rec: SessionRec, event: SessionEvent) => void
-  maybePushFileDiff: (feed: FeedRenderer, event: SessionEvent, labelPrefix?: string) => void
-  readFileSnapshot: (p: string) => Promise<string | null>
-  pendingFileSnaps: Map<string, { display: string; before: string | null }>
-  renderedDiffCalls: WeakMap<FeedRenderer, Set<string>>
-  pendingEchoes: Map<string, string[]>
-
-  extApi: TuiExtApi
-  extReadyResolve: (() => void) | null
-  extFire: (event: ExtEventName, payload: unknown) => void
-  extSessionSubs: Array<{ filter: ExtSessionEventFilter; cb: (sid: string, ev: SessionEvent) => void }>
-  extDispatchSessionEvent: (sessionId: string, event: SessionEvent) => void
-  extLuaSubs: Map<string, Set<string> | 'all'>
-  extNodeCleanup: (() => void | Promise<void>) | null
-  pendingCardInput: { mark: number; actionIdx: number; prompt: string } | null
-  extNodeHandlers: Map<string, { handler: (method: string, args: unknown[]) => unknown | Promise<unknown>; timeoutMs: number }>
-  extStatusSegments: Map<string, { text: string; priority: number }>
-
-  sessionEvents: (session: HarnessSession) => SessionEvent[]
-  synthesizeToolResult: (rec: SessionRec, callId: string, seq: number | undefined, turn: unknown, step: unknown) => void
-  surfaceReplace: (session: HarnessSession, type: string, seq: number, data: unknown) => void
-  repairOrphanToolCalls: (rec: SessionRec) => number
-  workflowRuns: Map<string, WorkflowRun>
-
-  followup: (rec: SessionRec, text: string, images?: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }> | string>) => Promise<void>
-  queueSubagentPrompt: (parentAgent: unknown, childId: string, text: string) => Promise<void>
-  send: (text: string) => void
-  pasteClipboardImage: () => void
-  applyModelSelection: (next: ModelRef['current']) => Promise<void>
-  pickModel: (arg: string | undefined) => Promise<void>
-  stopCommand: () => void
-  onInput: (text: string) => void
-  onCommand: (line: string) => void
-  helpCommand: () => Promise<void>
-  restartCommand: () => void
-  openDirPicker: (startPath: string) => Promise<string | null>
-  atQuery: (query: string, start?: number) => Promise<void>
-  currentSelection: () => ReturnType<ModelSelection['currentSelection']>
-  commandSpecs: CommandSpec[]
-  registerCommands: (specs: CommandSpec[]) => void
-  commandCatalog: () => Array<{ name: string; desc: string }>
-  refreshCommandCatalog: () => Promise<void>
-  pendingInput: string[]
-  pendingImages: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }>>
-  pendingRename: { kind: 'workspace'; id: string } | { kind: 'session'; id: string } | null
-  pendingQueueEdit: { list: 'nextTurn' | 'nextStep'; messageId: string } | null
-  approvalSettle: ((outcome: string) => void) | null
-  approvalReq: ApprovalRequest | null
-  questionsResolve: { resolve: (v: { answers: unknown[] }) => void; reject: (e: Error) => void } | null
-  pickerSettle: ((value: string | null) => void) | null
-  dirSettle: ((picked: string | null) => void) | null
-  bellOn: boolean
-  subagentView: { childId: string; feed: FeedRenderer } | null
-  subagentChat: { childId: string; parentId: string; label: string; feed: FeedRenderer } | null
-  pendingSubagentFollowup: { childId: string; label: string } | null
-  openSubagentView: (childId: string, label: string) => Promise<void>
-  openSubagentChat: (childId: string, label: string) => Promise<void>
-  sendToSubagent: (text: string) => void
 }
 
 /** Build the App object. All state and core services live here; module-owned
@@ -403,8 +299,8 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
 
   /** msgpack-RPC boundary: nvim.lua results are structurally unknown. */
   const luaCall = (code: string, args: unknown[] = []): Promise<any> => {
-    return app.nvim === null ? Promise.reject(new Error('nvim not connected')) :
-      app.nvim.lua(code, args as never[])
+    return app.slices.runtime.nvim === null ? Promise.reject(new Error('nvim not connected')) :
+      app.slices.runtime.nvim.lua(code, args as never[])
   }
 
   const headless = config.headless === true || process.env.DSH_NVIM_TUI_HEADLESS === '1'
@@ -431,7 +327,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
       boot: async () => {},
     },
     sessions: {
-      sessions: new Map(),
+      live: new Map(),
       activeId: null,
       historyHeaders: [],
       historyById: new Map(),
@@ -577,50 +473,6 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     slices,
   } as unknown as App
 
-  /** Which slice each legacy flat member lives in (the accessor map). */
-  const FLAT_FIELDS: Record<string, keyof AppSlices> = {
-    nvim: 'runtime', child: 'runtime', channelIdValue: 'runtime', disposed: 'runtime',
-    quitting: 'runtime', chatWinId: 'runtime', reasoningOpen: 'runtime', reasoningWinId: 'runtime',
-    feedDisposer: 'runtime', hostDisposers: 'runtime', spinnerTimer: 'runtime',
-    spinnerIndex: 'runtime', idleRefreshTimer: 'runtime', boot: 'runtime',
-    sessions: 'sessions', activeId: 'sessions', historyHeaders: 'sessions',
-    historyById: 'sessions', sessionEntries: 'sessions', runningSubagents: 'sessions',
-    childParent: 'sessions', refreshHistory: 'sessions', refreshList: 'sessions',
-    readState: 'sessions', recordState: 'sessions', createSession: 'sessions',
-    resumeSession: 'sessions', updateTitle: 'sessions', switchTo: 'sessions',
-    selectSession: 'sessions', forkSession: 'sessions', attachSession: 'sessions',
-    listSubagentChildren: 'sessions', seedRunningSubagents: 'sessions',
-    cleanSubagentChain: 'sessions', runningSubagentsOf: 'sessions',
-    activeFeed: 'ui', feedForSubagent: 'ui', welcomeLines: 'ui', ensureSpinner: 'ui',
-    updateStatusline: 'ui', refreshBgJobs: 'ui', foldEvent: 'ui', maybePushFileDiff: 'ui',
-    readFileSnapshot: 'ui', pendingFileSnaps: 'ui', renderedDiffCalls: 'ui', pendingEchoes: 'ui',
-    extApi: 'ext', extReadyResolve: 'ext', extFire: 'ext', extSessionSubs: 'ext',
-    extDispatchSessionEvent: 'ext', extLuaSubs: 'ext', extNodeCleanup: 'ext',
-    pendingCardInput: 'ext', extNodeHandlers: 'ext', extStatusSegments: 'ext',
-    sessionEvents: 'trans', synthesizeToolResult: 'trans', surfaceReplace: 'trans',
-    repairOrphanToolCalls: 'trans', workflowRuns: 'trans',
-    followup: 'agent', queueSubagentPrompt: 'agent', send: 'agent', pasteClipboardImage: 'agent',
-    applyModelSelection: 'agent', pickModel: 'agent', stopCommand: 'agent', onInput: 'agent',
-    onCommand: 'agent', helpCommand: 'agent', restartCommand: 'agent', openDirPicker: 'agent',
-    atQuery: 'agent', currentSelection: 'agent', commandSpecs: 'agent',
-    registerCommands: 'agent', commandCatalog: 'agent', refreshCommandCatalog: 'agent',
-    pendingInput: 'agent', pendingImages: 'agent', pendingRename: 'agent',
-    pendingQueueEdit: 'agent', approvalSettle: 'agent', approvalReq: 'agent',
-    questionsResolve: 'agent', pickerSettle: 'agent', dirSettle: 'agent', bellOn: 'agent',
-    subagentView: 'agent', subagentChat: 'agent', pendingSubagentFollowup: 'agent',
-    openSubagentView: 'agent', openSubagentChat: 'agent', sendToSubagent: 'agent',
-  }
-  for (const [name, slice] of Object.entries(FLAT_FIELDS)) {
-    Object.defineProperty(app, name, {
-      get: () => (slices[slice] as unknown as Record<string, unknown>)[name],
-      set: (v: unknown) => {
-        ;(slices[slice] as unknown as Record<string, unknown>)[name] = v
-      },
-      enumerable: true,
-      configurable: true,
-    })
-  }
-
   // -- process exit plumbing ---------------------------------------------------
   const appExitService = svc('appExit')
   app.requestExit = (code = 0) => {
@@ -630,34 +482,34 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
 
   if (headless) appendFileSync(`${dumpPath}.applies`, `apply ${new Date().toISOString()}\n`)
 
-  app.activeFeed = () => {
-    const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  app.slices.ui.activeFeed = () => {
+    const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
     return rec?.feed
   }
-  app.notice = (text: unknown): void => { app.activeFeed()?.appendNotice(text) }
+  app.notice = (text: unknown): void => { app.slices.ui.activeFeed()?.appendNotice(text) }
 
   app.openPicker = (title: string, items: Array<{ label: string; value: string; active?: boolean }>) =>
     new Promise<string | null>((resolve) => {
-      app.pickerSettle = resolve
+      app.slices.agent.pickerSettle = resolve
       void luaCall('require("dsh_tui").show_picker(...)', [title, items])
-        .catch(() => { app.pickerSettle = null; resolve(null) })
+        .catch(() => { app.slices.agent.pickerSettle = null; resolve(null) })
     })
 
   // -- last-active-session state (claude --continue behaviour) -------------------
   const statePath = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'dsh-nvim-tui-state.json')
-  app.readState = () => {
+  app.slices.sessions.readState = () => {
     try {
       return JSON.parse(readFileSync(statePath, 'utf8'))
     } catch {
       return null
     }
   }
-  app.recordState = (id: string) => {
+  app.slices.sessions.recordState = (id: string) => {
     try {
       // Record the SESSION's own cwd, not the shell's: an old session opened
       // from another directory should resume from ITS project dir on the next
       // launch (claude --continue per-project semantics).
-      const hdr = app.sessions.get(id)?.handle.agent.session.header as { cwd?: unknown } | undefined
+      const hdr = app.slices.sessions.live.get(id)?.handle.agent.session.header as { cwd?: unknown } | undefined
       const cwd = typeof hdr?.cwd === 'string' ? hdr.cwd : process.cwd()
       writeFileSync(statePath, JSON.stringify({ sessionId: id, cwd, at: Date.now() }))
     } catch {}
@@ -666,7 +518,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
   /** (Re)load the persisted session directory. `historyHeaders` keeps the
    *  current-cwd slice (boot auto-resume); `historyById` holds everything
    *  openable via /sessions. */
-  app.refreshHistory = async (): Promise<void> => {
+  app.slices.sessions.refreshHistory = async (): Promise<void> => {
     const persistence = svc('sessionPersistence')
     if (typeof persistence?.list !== 'function') return
     try {
@@ -688,13 +540,13 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
           return undefined
         }
       }
-      app.historyHeaders = all
+      app.slices.sessions.historyHeaders = all
         .filter((h) => h.cwd === cwd && /^session-/.test(h.id) && h.origin !== 'subagent')
         .map((h) => ({ ...h, title: cachedTitle(h) ?? h.title }))
-      app.historyById.clear()
+      app.slices.sessions.historyById.clear()
       for (const h of all) {
         if (/^session-/.test(h.id) && h.origin !== 'subagent') {
-          app.historyById.set(h.id, { ...h, title: cachedTitle(h) ?? h.title })
+          app.slices.sessions.historyById.set(h.id, { ...h, title: cachedTitle(h) ?? h.title })
         }
       }
     } catch {}
@@ -702,7 +554,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
 
   /** Read a file as a diff snapshot (null when absent/unreadable/binary/
    *  oversized — those cases render no diff block). */
-  app.readFileSnapshot = async (p: string): Promise<string | null> => {
+  app.slices.ui.readFileSnapshot = async (p: string): Promise<string | null> => {
     try {
       const abs = resolve(p)
       const st = await stat(abs)
@@ -720,19 +572,19 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
    *  falls back to the pre-call file snapshot for flows the meta misses
    *  (creates, deletes). Also runs during history REPLAYS: the persisted
    *  events carry the same meta, so diff blocks survive restarts. */
-  app.maybePushFileDiff = (feed: FeedRenderer, event: SessionEvent, labelPrefix = ''): void => {
+  app.slices.ui.maybePushFileDiff = (feed: FeedRenderer, event: SessionEvent, labelPrefix = ''): void => {
     if (event.type !== 'tool/result') return
     const callId = event.data?.message?.source?.callId
     // One diff render per tool call per feed: replay loops and live event
     // re-emission must never stack the same ✎ block twice.
-    const seenCalls = app.renderedDiffCalls.get(feed) ?? new Set<string>()
+    const seenCalls = app.slices.ui.renderedDiffCalls.get(feed) ?? new Set<string>()
     const callKey = typeof callId === 'string' ? callId : ''
     if (callKey !== '' && seenCalls.has(callKey)) return
     if (callKey !== '') seenCalls.add(callKey)
-    app.renderedDiffCalls.set(feed, seenCalls)
+    app.slices.ui.renderedDiffCalls.set(feed, seenCalls)
     const metaDiffs = fileDiffsFromMeta((event.data as { meta?: unknown } | undefined)?.meta)
     if (metaDiffs !== null) {
-      if (callKey !== '') app.pendingFileSnaps.delete(callKey)
+      if (callKey !== '') app.slices.ui.pendingFileSnaps.delete(callKey)
       for (const d of metaDiffs.slice(0, 4)) {
         const block = diffTexts(d.oldText ?? null, d.newText ?? null)
         if (block.stats.added === 0 && block.stats.removed === 0) continue
@@ -746,11 +598,11 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
       return
     }
     if (typeof callId !== 'string' || callId === '') return
-    const snap = app.pendingFileSnaps.get(callId)
+    const snap = app.slices.ui.pendingFileSnaps.get(callId)
     if (snap === undefined) return
-    app.pendingFileSnaps.delete(callId)
-    void app.readFileSnapshot(snap.display).then((after) => {
-      if (app.disposed) return
+    app.slices.ui.pendingFileSnaps.delete(callId)
+    void app.slices.ui.readFileSnapshot(snap.display).then((after) => {
+      if (app.slices.runtime.disposed) return
       const block = diffTexts(snap.before, after)
       if (block.stats.added === 0 && block.stats.removed === 0) return
       const action = snap.before === null ? t('新增') : after === null ? t('删除') : t('修改')
@@ -759,37 +611,37 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
   }
 
   /** Route a subagent lifecycle event to its PARENT session's feed. */
-  app.feedForSubagent = (info: SubagentInfo) => {
+  app.slices.ui.feedForSubagent = (info: SubagentInfo) => {
     if (!info?.id) return undefined
     const child = runtimeCtx.sessions.get(info.id)
     const parentId = child?.header?.parentSession
-    const rec = parentId !== undefined ? app.sessions.get(parentId) : undefined
+    const rec = parentId !== undefined ? app.slices.sessions.live.get(parentId) : undefined
     if (rec) return rec
     // Fallback: subagents usually spawn while their parent is the active session.
-    return app.activeId === null ? undefined : app.sessions.get(app.activeId)
+    return app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   }
 
-  app.refreshList = () => {
-    const entries = [...app.sessions.values()].map((s) => ({
+  app.slices.sessions.refreshList = () => {
+    const entries = [...app.slices.sessions.live.values()].map((s) => ({
       id: s.id,
       title: s.title ?? '', // never undefined — msgpack turns it into vim.NIL
-      active: s.id === app.activeId,
+      active: s.id === app.slices.sessions.activeId,
       kind: 'live',
     }))
-    for (const h of app.historyHeaders) {
-      if (!app.sessions.has(h.id)) {
+    for (const h of app.slices.sessions.historyHeaders) {
+      if (!app.slices.sessions.live.has(h.id)) {
         entries.push({ id: h.id, title: h.title ?? '', active: false, kind: 'history' })
       }
     }
-    app.sessionEntries = entries
+    app.slices.sessions.sessionEntries = entries
   }
 
   /** Refresh the `/` completion catalog: built-in commands plus skill
    *  entries (the official client's slash trigger merges command and skill
    *  sources; `/skills:<name>` shows the skill detail float). */
-  app.refreshCommandCatalog = async (): Promise<void> => {
-    const entries = app.commandSpecs.map(({ name, desc }) => ({ name, desc }))
-    const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  app.slices.agent.refreshCommandCatalog = async (): Promise<void> => {
+    const entries = app.slices.agent.commandSpecs.map(({ name, desc }) => ({ name, desc }))
+    const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
     const skills = svc('skills')
     if (rec !== undefined && skills !== undefined) {
       try {
@@ -819,13 +671,13 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
    *  is registered BEFORE the qa! — nvim can exit before the RPC roundtrip
    *  ends and the event would otherwise be missed. */
   app.closeNvimWindow = async () => {
-    const exited = app.child === null || app.child.exitCode !== null || app.child.signalCode !== null
+    const exited = app.slices.runtime.child === null || app.slices.runtime.child.exitCode !== null || app.slices.runtime.child.signalCode !== null
       ? Promise.resolve()
-      : new Promise((resolve) => app.child!.once('exit', resolve))
+      : new Promise((resolve) => app.slices.runtime.child!.once('exit', resolve))
     try {
-      if (app.nvim !== null) {
+      if (app.slices.runtime.nvim !== null) {
         await Promise.race([
-          app.nvim!.command('qa!').catch(() => {}),
+          app.slices.runtime.nvim!.command('qa!').catch(() => {}),
           app.sleep(250),
         ])
       }
@@ -833,8 +685,8 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     // Give the graceful exit a moment, then force-kill whatever remains.
     await Promise.race([exited, app.sleep(400)])
     try {
-      if (app.child !== null && app.child.exitCode === null && app.child.signalCode === null) {
-        app.child.kill()
+      if (app.slices.runtime.child !== null && app.slices.runtime.child.exitCode === null && app.slices.runtime.child.signalCode === null) {
+        app.slices.runtime.child.kill()
       }
     } catch {}
   }
@@ -842,36 +694,36 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
   /** UI teardown only — must NOT exit the process: the runner row can be
    *  reloaded (hmr) while dsh keeps running; the next apply spawns a fresh nvim. */
   app.teardown = async () => {
-    if (app.disposed) return
-    app.disposed = true
+    if (app.slices.runtime.disposed) return
+    app.slices.runtime.disposed = true
     try {
-      app.feedDisposer?.()
+      app.slices.runtime.feedDisposer?.()
     } catch {}
-    for (const dispose of app.hostDisposers) {
+    for (const dispose of app.slices.runtime.hostDisposers) {
       try {
         dispose()
       } catch {}
     }
-    app.hostDisposers.length = 0
-    if (app.spinnerTimer !== null) {
-      clearInterval(app.spinnerTimer)
-      app.spinnerTimer = null
+    app.slices.runtime.hostDisposers.length = 0
+    if (app.slices.runtime.spinnerTimer !== null) {
+      clearInterval(app.slices.runtime.spinnerTimer)
+      app.slices.runtime.spinnerTimer = null
     }
-    if (app.idleRefreshTimer !== null) {
-      clearInterval(app.idleRefreshTimer)
-      app.idleRefreshTimer = null
+    if (app.slices.runtime.idleRefreshTimer !== null) {
+      clearInterval(app.slices.runtime.idleRefreshTimer)
+      app.slices.runtime.idleRefreshTimer = null
     }
     // Unblock pending interactions so the host can drain.
-    app.approvalSettle?.('cancelled')
-    app.approvalSettle = null
-    if (app.questionsResolve) {
-      const r = app.questionsResolve
-      app.questionsResolve = null
+    app.slices.agent.approvalSettle?.('cancelled')
+    app.slices.agent.approvalSettle = null
+    if (app.slices.agent.questionsResolve) {
+      const r = app.slices.agent.questionsResolve
+      app.slices.agent.questionsResolve = null
       r.reject(new Error('UI torn down'))
     }
-    app.pickerSettle?.(null)
-    app.pickerSettle = null
-    if (app.activeId !== null) app.recordState(app.activeId)
+    app.slices.agent.pickerSettle?.(null)
+    app.slices.agent.pickerSettle = null
+    if (app.slices.sessions.activeId !== null) app.slices.sessions.recordState(app.slices.sessions.activeId)
     // Persist every live session before disposing its agent. Bounded: an
     // active turn holds the session's append boundary open, and the flush /
     // handle disposal would wait for LLM retries (minutes). The QUIT path
@@ -883,27 +735,27 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
         } catch {}
       }
     } catch {}
-    for (const rec of app.sessions.values()) {
+    for (const rec of app.slices.sessions.live.values()) {
       try {
         await rec.handle.dispose()
       } catch (err) {
         console.error('[dsh-nvim-tui] dispose failed:', err)
       }
     }
-    app.sessions.clear()
-    app.childParent.clear()
+    app.slices.sessions.live.clear()
+    app.slices.sessions.childParent.clear()
     // Extension surface: broadcast teardown (Node subscribers + nvim-side
     // User DshTuiShutdown autocmd) so extensions release windows/handles
     // BEFORE the nvim window closes. The QUIT path already fired both
     // pre-close (the window is gone by the time teardown runs) — skip there.
     try {
-      if (!app.quitting) {
-        await app.extNodeCleanup?.()
-        app.extFire('tui:teardown', {})
+      if (!app.slices.runtime.quitting) {
+        await app.slices.ext.extNodeCleanup?.()
+        app.slices.ext.extFire('tui:teardown', {})
         void app.luaCall('require("dsh_tui.api").emit(...)', ['Shutdown', {}]).catch(() => {})
       }
     } catch {}
-    app.extLuaSubs.clear()
+    app.slices.ext.extLuaSubs.clear()
     await app.closeNvimWindow()
   }
 
@@ -911,16 +763,16 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
    *  UI immediately, give graceful persistence a bounded window, then exit —
    *  with a hard fallback in case the launcher's graceful shutdown stalls. */
   app.quit = async (code = 0) => {
-    if (app.quitting) return
-    app.quitting = true
-    app.exitDiag('quit', `code=${code}`, `disposed=${app.disposed}`)
+    if (app.slices.runtime.quitting) return
+    app.slices.runtime.quitting = true
+    app.exitDiag('quit', `code=${code}`, `disposed=${app.slices.runtime.disposed}`)
     try {
       // Tell nvim-side extensions BEFORE the window closes — the teardown
       // path below runs after ':qa!' and can no longer reach them. Node-side
       // panel/region slots release first (they hold Lua registry entries).
       try {
-        await app.extNodeCleanup?.()
-        app.extFire('tui:teardown', {})
+        await app.slices.ext.extNodeCleanup?.()
+        app.slices.ext.extFire('tui:teardown', {})
         void app.luaCall('require("dsh_tui.api").emit(...)', ['Shutdown', {}]).catch(() => {})
       } catch {}
       await app.closeNvimWindow() // the window closes right away, no waiting on the agent

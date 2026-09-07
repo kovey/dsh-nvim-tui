@@ -70,15 +70,15 @@ const seedRunningSubagents = async (app: App, parentId: string) => {
     const children = await listSubagentChildren(app, parentId)
     let changed = false
     for (const c of children) {
-      if (!c.running || app.runningSubagents.has(c.id)) continue
-      app.runningSubagents.set(c.id, {
+      if (!c.running || app.slices.sessions.runningSubagents.has(c.id)) continue
+      app.slices.sessions.runningSubagents.set(c.id, {
         parentId,
         label: c.label,
         startedAt: c.createdAt ?? Date.now(),
       })
       changed = true
     }
-    if (changed) { app.ensureSpinner(); app.updateStatusline() }
+    if (changed) { app.slices.ui.ensureSpinner(); app.slices.ui.updateStatusline() }
   } catch { /* best-effort */ }
 }
 
@@ -144,9 +144,9 @@ const cleanSubagentChain = async (app: App, parentId: string, childId: string): 
 const openSubagentView = async (app: App, childId: string, label: string) => {
   // One float family at a time: the chat window closes (its close handler
   // drops the routing state).
-  if (app.subagentChat !== null) {
+  if (app.slices.agent.subagentChat !== null) {
     await app.luaCall('require("dsh_tui").close_subagent_chat()', []).catch(() => {})
-    app.subagentChat = null
+    app.slices.agent.subagentChat = null
   }
   // Gather the event log: live children stream from the in-memory store
   // (new events keep arriving via session/event routing); settled children
@@ -154,7 +154,7 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
   const live = app.runtimeCtx.sessions.get(childId)
   let events: SessionEvent[] = []
   if (live) {
-    events = [...app.sessionEvents(live)]
+    events = [...app.slices.trans.sessionEvents(live)]
   } else {
     try {
       const persistence = app.svc('sessionPersistence')
@@ -174,7 +174,7 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
     app.notice(t('子代理视图打开失败（nvim 浮窗未创建）'))
     return
   }
-  const feed = new FeedRenderer(app.nvim!, ids.buf, ids.win, {
+  const feed = new FeedRenderer(app.slices.runtime.nvim!, ids.buf, ids.win, {
     idsProvider: () => app.luaCall('return require("dsh_tui").subagent_view_ids()', []),
     activeChecker: () => true,
     // No separate reasoning panel: reasoning blocks render inline, dim.
@@ -182,17 +182,17 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
     reasoningView: () => null,
     inlineReasoning: true,
   })
-  app.subagentView = { childId, feed }
+  app.slices.agent.subagentView = { childId, feed }
   for (const e of events) {
     feed.applyEvent(e, { history: true })
-    app.maybePushFileDiff(feed, e)
+    app.slices.ui.maybePushFileDiff(feed, e)
   }
   // Close the snapshot/live gap: events appended while the view opened.
   if (live) {
-    const liveEvents = app.sessionEvents(live)
+    const liveEvents = app.slices.trans.sessionEvents(live)
     for (let i = events.length; i < liveEvents.length; i++) {
       feed.applyEvent(liveEvents[i], { history: true })
-      app.maybePushFileDiff(feed, liveEvents[i])
+      app.slices.ui.maybePushFileDiff(feed, liveEvents[i])
     }
   }
   await feed.flush()
@@ -215,20 +215,20 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
  * it after the current turn converges).
  */
 const openSubagentChat = async (app: App, childId: string, label: string) => {
-  if (app.activeId === null) {
+  if (app.slices.sessions.activeId === null) {
     app.notice(t('无活跃会话'))
     return
   }
   // One float family at a time: the read-only view closes (its close
   // handler drops the routing state).
-  if (app.subagentView !== null) {
+  if (app.slices.agent.subagentView !== null) {
     await app.luaCall('require("dsh_tui").close_subagent_view()', []).catch(() => {})
-    app.subagentView = null
+    app.slices.agent.subagentView = null
   }
   const live = app.runtimeCtx.sessions.get(childId)
   let events: SessionEvent[] = []
   if (live) {
-    events = [...app.sessionEvents(live)]
+    events = [...app.slices.trans.sessionEvents(live)]
   } else {
     try {
       const persistence = app.svc('sessionPersistence')
@@ -250,8 +250,8 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
     return
   }
   // The window takes over the "next input goes to the child" quick path.
-  app.pendingSubagentFollowup = null
-  const feed = new FeedRenderer(app.nvim!, ids.buf, ids.win, {
+  app.slices.agent.pendingSubagentFollowup = null
+  const feed = new FeedRenderer(app.slices.runtime.nvim!, ids.buf, ids.win, {
     idsProvider: () => app.luaCall('return require("dsh_tui").subagent_chat_ids()', []),
     activeChecker: () => true,
     // No separate reasoning panel: reasoning blocks render inline, dim.
@@ -259,17 +259,17 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
     reasoningView: () => null,
     inlineReasoning: true,
   })
-  app.subagentChat = { childId, parentId: app.activeId, label, feed }
+  app.slices.agent.subagentChat = { childId, parentId: app.slices.sessions.activeId, label, feed }
   for (const e of events) {
     feed.applyEvent(e, { history: true })
-    app.maybePushFileDiff(feed, e)
+    app.slices.ui.maybePushFileDiff(feed, e)
   }
   // Close the snapshot/live gap: events appended while the window opened.
   if (live) {
-    const liveEvents = app.sessionEvents(live)
+    const liveEvents = app.slices.trans.sessionEvents(live)
     for (let i = events.length; i < liveEvents.length; i++) {
       feed.applyEvent(liveEvents[i], { history: true })
-      app.maybePushFileDiff(feed, liveEvents[i])
+      app.slices.ui.maybePushFileDiff(feed, liveEvents[i])
     }
   }
   await feed.flush()
@@ -286,11 +286,11 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
  * queued through `subagents.followup` with user provenance.
  */
 const sendToSubagent = (app: App, text: string) => {
-  const chat = app.subagentChat
-  if (chat === null || app.disposed) return
+  const chat = app.slices.agent.subagentChat
+  if (chat === null || app.slices.runtime.disposed) return
   const clean = text.trim()
   if (clean === '') return
-  const parentRec = app.sessions.get(chat.parentId)
+  const parentRec = app.slices.sessions.live.get(chat.parentId)
   if (parentRec === undefined) {
     chat.feed.pushError(t('父会话已不存在，无法发送'))
     return
@@ -298,21 +298,21 @@ const sendToSubagent = (app: App, text: string) => {
   // Optimistic echo: render the bubble now; the matching user/message
   // replay is skipped in the session/event routing (FIFO per session).
   chat.feed.pushUser(clean, [])
-  const q = app.pendingEchoes.get(chat.childId) ?? []
+  const q = app.slices.ui.pendingEchoes.get(chat.childId) ?? []
   q.push(clean)
   if (q.length > 4) q.shift()
-  app.pendingEchoes.set(chat.childId, q)
+  app.slices.ui.pendingEchoes.set(chat.childId, q)
   const subagentsSvc = app.svc('subagents')
   if (typeof subagentsSvc?.[queueSubagentPromptKey] !== 'function') {
     chat.feed.pushError(t('子代理续聊不可用（subagents 服务未装配）'))
     return
   }
-  if (app.runningSubagents.has(chat.childId)) {
+  if (app.slices.sessions.runningSubagents.has(chat.childId)) {
     chat.feed.appendNotice(t('⏳ 已排队：子代理当前回合结束后处理'))
   }
   void (async () => {
     try {
-      await app.queueSubagentPrompt(parentRec.handle.agent, chat.childId, clean)
+      await app.slices.agent.queueSubagentPrompt(parentRec.handle.agent, chat.childId, clean)
       parentRec.feed?.appendNotice(`➤ 已发给子代理 ${chat.label}: ${FeedRenderer.truncate(clean, 60)}`)
     } catch (err) {
       chat.feed.pushError(`${t('发送失败')}: ${(err as Error).message}`)
@@ -322,13 +322,13 @@ const sendToSubagent = (app: App, text: string) => {
 
 /** /subagents — child-agent directory; pick one to view its thinking. */
 const subagentsCommand = async (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
-  if (!rec || app.activeId === null) {
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
+  if (!rec || app.slices.sessions.activeId === null) {
     app.notice(t('无活跃会话'))
     return
   }
   try {
-    let children = await listSubagentChildren(app, app.activeId)
+    let children = await listSubagentChildren(app, app.slices.sessions.activeId)
     // TTL cleanup: settled chains past the retention window are truncated
     // (only the first event survives) and hidden from the list.
     const ttlHours = Number(app.config.subagentTtlHours ?? 72)
@@ -336,11 +336,11 @@ const subagentsCommand = async (app: App) => {
     if (expired.length > 0) {
       let cleaned = 0
       for (const c of expired) {
-        if (await cleanSubagentChain(app, app.activeId, c.id)) cleaned++
+        if (await cleanSubagentChain(app, app.slices.sessions.activeId, c.id)) cleaned++
       }
       if (cleaned > 0) {
         app.notice(`🧹 已清理 ${cleaned} 条过期子代理思考链（>${ttlHours}h），列表不再显示`)
-        children = await listSubagentChildren(app, app.activeId)
+        children = await listSubagentChildren(app, app.slices.sessions.activeId)
       }
     }
     if (children.length === 0) {
@@ -374,7 +374,7 @@ const subagentsCommand = async (app: App) => {
       if (ok !== 'yes') return
       let done = 0
       for (const c of children) {
-        if (!c.running && await cleanSubagentChain(app, app.activeId, c.id)) done++
+        if (!c.running && await cleanSubagentChain(app, app.slices.sessions.activeId, c.id)) done++
       }
       app.notice(`🧹 已清理 ${done} 条思考链`)
       return
@@ -388,8 +388,8 @@ const subagentsCommand = async (app: App) => {
         ])
       : 'view'
     if (action === 'continue') {
-      app.pendingSubagentFollowup = { childId: sel, label: child?.label ?? sel.slice(0, 8) }
-      app.notice(`下一条输入将发给子代理 ${app.pendingSubagentFollowup.label}（/subagents 可取消，直接输入即发送）`)
+      app.slices.agent.pendingSubagentFollowup = { childId: sel, label: child?.label ?? sel.slice(0, 8) }
+      app.notice(`下一条输入将发给子代理 ${app.slices.agent.pendingSubagentFollowup.label}（/subagents 可取消，直接输入即发送）`)
       return
     }
     if (action === null) return
@@ -405,14 +405,14 @@ const subagentsCommand = async (app: App) => {
 
 /** Fill the subagents module's App slots and register its commands. */
 export function installSubagents(app: App): void {
-  app.listSubagentChildren = (parentId) => listSubagentChildren(app, parentId)
-  app.seedRunningSubagents = (parentId) => seedRunningSubagents(app, parentId)
-  app.cleanSubagentChain = (parentId, childId) => cleanSubagentChain(app, parentId, childId)
-  app.openSubagentView = (childId, label) => openSubagentView(app, childId, label)
-  app.openSubagentChat = (childId, label) => openSubagentChat(app, childId, label)
-  app.sendToSubagent = (text) => sendToSubagent(app, text)
+  app.slices.sessions.listSubagentChildren = (parentId) => listSubagentChildren(app, parentId)
+  app.slices.sessions.seedRunningSubagents = (parentId) => seedRunningSubagents(app, parentId)
+  app.slices.sessions.cleanSubagentChain = (parentId, childId) => cleanSubagentChain(app, parentId, childId)
+  app.slices.agent.openSubagentView = (childId, label) => openSubagentView(app, childId, label)
+  app.slices.agent.openSubagentChat = (childId, label) => openSubagentChat(app, childId, label)
+  app.slices.agent.sendToSubagent = (text) => sendToSubagent(app, text)
   const specs: CommandSpec[] = [
     { name: '/subagents', desc: t('子代理目录（回放/续聊思考链）'), usage: t(''), group: t('会话'), fn: () => subagentsCommand(app) },
   ]
-  app.registerCommands(specs)
+  app.slices.agent.registerCommands(specs)
 }

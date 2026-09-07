@@ -17,7 +17,7 @@ import {
   isNpmName, latestVersion, depMatchesEntry,
   profileDir, classifyPnpmError, firstErrorLine, repoRoot,
 } from './market.js'
-import type { App, CommandSpec } from './app.js'
+import type { App, AppSlices, CommandSpec } from './app.js'
 
 /** /market [关键词 | refresh] — plugin marketplace: curated
  *  awesome-dsh-plugin catalog sorted by GitHub stars (desc), with
@@ -401,9 +401,9 @@ const marketCommand = async (app: App, a: string | undefined): Promise<void> => 
 }
 
 /** Fill the market-install module's command registry. */
-export function installMarketInstall(app: App): void {
+export function installMarketInstall(app: App, s: AppSlices['agent']): void {
   const specs: CommandSpec[] = [
     { name: '/market', desc: '插件市场（GitHub ★ 倒序 · 安装/更新/卸载）', usage: '[关键词 | refresh]', group: '信息', fn: (a) => marketCommand(app, a) },
   ]
-  app.registerCommands(specs)
+  s.registerCommands(specs)
 }

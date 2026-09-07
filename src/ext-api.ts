@@ -340,7 +340,7 @@ export function installExtApi(app: App): void {
     if (entry.claims.size === 0) nodeSlots.delete(slot)
   }
   /** Teardown hook (app.ts calls it before the window closes). */
-  app.extNodeCleanup = async () => {
+  app.slices.ext.extNodeCleanup = async () => {
     for (const slot of [...nodeSlots.keys()]) {
       await releaseSlot(slot)
     }
@@ -370,8 +370,8 @@ export function installExtApi(app: App): void {
 
   const nvimLayer: ExtNvimLayer = {
     request: (method, args = [], opts) => {
-      if (app.nvim === null) return Promise.reject(new Error('nvim not connected'))
-      const p = app.nvim.request(method, args as never[]) as Promise<unknown>
+      if (app.slices.runtime.nvim === null) return Promise.reject(new Error('nvim not connected'))
+      const p = app.slices.runtime.nvim.request(method, args as never[]) as Promise<unknown>
       if (opts?.timeoutMs === undefined) return p
       return Promise.race([
         p,
@@ -380,22 +380,22 @@ export function installExtApi(app: App): void {
       ])
     },
     call: (fn, args = []) => {
-      if (app.nvim === null) return Promise.reject(new Error('nvim not connected'))
-      return app.nvim.call(fn, args as never[]) as Promise<unknown>
+      if (app.slices.runtime.nvim === null) return Promise.reject(new Error('nvim not connected'))
+      return app.slices.runtime.nvim.call(fn, args as never[]) as Promise<unknown>
     },
     lua: (code, args = []) => {
       return app.luaCall(code, args)
     },
     ex: async (cmd) => {
-      if (app.nvim === null) throw new Error('nvim not connected')
-      await app.nvim.command(cmd)
+      if (app.slices.runtime.nvim === null) throw new Error('nvim not connected')
+      await app.slices.runtime.nvim.command(cmd)
     },
   }
 
   const api: TuiExtApi = {
     version: EXT_API_VERSION,
     ready: new Promise<void>((resolve) => {
-      app.extReadyResolve = resolve
+      app.slices.ext.extReadyResolve = resolve
     }),
     capabilities: () => ({
       headless: app.headless,
@@ -441,8 +441,8 @@ export function installExtApi(app: App): void {
         if (i >= 0) sessionSubs.splice(i, 1)
       }
     },
-    getActiveSessionId: () => app.activeId,
-    submit: (text) => app.send(text),
+    getActiveSessionId: () => app.slices.sessions.activeId,
+    submit: (text) => app.slices.agent.send(text),
     insertInput: (text) => {
       void app.luaCall('require("dsh_tui").fill_input(...)', [text]).catch(() => {})
     },
@@ -450,8 +450,8 @@ export function installExtApi(app: App): void {
     ui: {
       card: (opts) => {
         const feed = (opts.sessionId !== undefined
-          ? app.sessions.get(opts.sessionId)?.feed
-          : undefined) ?? app.activeFeed()
+          ? app.slices.sessions.live.get(opts.sessionId)?.feed
+          : undefined) ?? app.slices.ui.activeFeed()
         if (feed === undefined) {
           // No feed yet (pre-boot) / headless without a session: an inert
           // handle so callers never null-check.
@@ -475,7 +475,7 @@ export function installExtApi(app: App): void {
         return handle
       },
       float: async (opts) => {
-        if (app.nvim === null) throw new Error('nvim not connected')
+        if (app.slices.runtime.nvim === null) throw new Error('nvim not connected')
         const id = `f${++floatSeq}`
         const res = await app.luaCall('return require("dsh_tui.api").float_open(...)', [
           '__node__', { lines: opts.lines, title: opts.title, relative: opts.relative,
@@ -499,12 +499,12 @@ export function installExtApi(app: App): void {
       notice: (text) => app.notice(text),
       statuslineSegment: (id, text, priority = 100) => {
         const clean = String(text)
-        if (clean === '') app.extStatusSegments.delete(id)
-        else app.extStatusSegments.set(id, { text: clean, priority })
-        app.updateStatusline()
+        if (clean === '') app.slices.ext.extStatusSegments.delete(id)
+        else app.slices.ext.extStatusSegments.set(id, { text: clean, priority })
+        app.slices.ui.updateStatusline()
       },
       panel: async (opts) => {
-        if (app.nvim === null || app.headless) return null
+        if (app.slices.runtime.nvim === null || app.headless) return null
         const slot = opts.slot ?? 'default'
         const side = opts.side ?? 'right'
         const entry = slotEntry(slot)
@@ -527,7 +527,7 @@ export function installExtApi(app: App): void {
         }
       },
       panelRelease: async (slot = 'default') => {
-        if (app.nvim === null) return
+        if (app.slices.runtime.nvim === null) return
         await releaseSlot(slot)
       },
       panels: () => {
@@ -540,7 +540,7 @@ export function installExtApi(app: App): void {
         return out
       },
       region: async (opts) => {
-        if (app.nvim === null || app.headless) return null
+        if (app.slices.runtime.nvim === null || app.headless) return null
         const slot = opts.slot ?? 'default'
         const side = opts.side ?? 'right'
         const entry = slotEntry(slot)
@@ -562,7 +562,7 @@ export function installExtApi(app: App): void {
         }
       },
       regionRelease: async (slot = 'default') => {
-        if (app.nvim === null) return
+        if (app.slices.runtime.nvim === null) return
         await releaseSlot(slot)
       },
     },
@@ -575,12 +575,12 @@ export function installExtApi(app: App): void {
         group: c.group ?? '扩展',
         fn: c.fn,
       }))
-      app.registerCommands(specs)
-      void app.refreshCommandCatalog().catch(() => {})
+      app.slices.agent.registerCommands(specs)
+      void app.slices.agent.refreshCommandCatalog().catch(() => {})
       return () => {
         const names = new Set(specs.map((s) => s.name))
-        app.commandSpecs = app.commandSpecs.filter((s) => !names.has(s.name))
-        void app.refreshCommandCatalog().catch(() => {})
+        app.slices.agent.commandSpecs = app.slices.agent.commandSpecs.filter((s) => !names.has(s.name))
+        void app.slices.agent.refreshCommandCatalog().catch(() => {})
       }
     },
 
@@ -610,25 +610,25 @@ export function installExtApi(app: App): void {
         void app.luaCall('require("dsh_tui.api").rpc_event(...)', [extId, event, payload ?? null]).catch(() => {})
       },
       on: (extId, handler, opts) => {
-        app.extNodeHandlers.set(extId, {
+        app.slices.ext.extNodeHandlers.set(extId, {
           handler,
           timeoutMs: opts?.timeoutMs ?? EXT_HANDLER_TIMEOUT_MS,
         })
         return () => {
-          app.extNodeHandlers.delete(extId)
+          app.slices.ext.extNodeHandlers.delete(extId)
         }
       },
     },
   }
 
-  app.extApi = api
-  app.extFire = fire
-  app.extSessionSubs = sessionSubs
+  app.slices.ext.extApi = api
+  app.slices.ext.extFire = fire
+  app.slices.ext.extSessionSubs = sessionSubs
 
   /** session/event mirror dispatch: Node-side subscribers (filtered here)
    *  plus the Lua-side routing (extLuaSubs, fed by dsh-ext-register).
    *  Called by boot.ts's session/event handler AFTER the TUI's own routing. */
-  app.extDispatchSessionEvent = (sessionId, event) => {
+  app.slices.ext.extDispatchSessionEvent = (sessionId, event) => {
     if (sessionSubs.length > 0) {
       for (const { filter, cb } of sessionSubs) {
         if (!matchSessionEventFilter(filter, sessionId, event.type)) continue
@@ -640,9 +640,9 @@ export function installExtApi(app: App): void {
       }
     }
     // Lua-side mirror: registered extensions with matching event kinds.
-    if (app.extLuaSubs.size > 0) {
+    if (app.slices.ext.extLuaSubs.size > 0) {
       const targets: string[] = []
-      for (const [id, kinds] of app.extLuaSubs) {
+      for (const [id, kinds] of app.slices.ext.extLuaSubs) {
         if (kinds === 'all' || kinds.has(event.type)) targets.push(id)
       }
       if (targets.length > 0) {

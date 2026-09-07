@@ -193,7 +193,7 @@ const repairOrphanToolCalls = (rec: SessionRec): number => {
 
 /** /trajectory — structured steps of the active session's last turn. */
 const trajectoryCommand = (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -232,10 +232,10 @@ const trajectoryCommand = (app: App) => {
 
 /** /export — write the rendered transcript to a markdown file. */
 const exportCommand = async (app: App) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) return
   try {
-    const lines = await app.nvim!.request('nvim_buf_get_lines', [rec.feed.bufId, 0, -1, false])
+    const lines = await app.slices.runtime.nvim!.request('nvim_buf_get_lines', [rec.feed.bufId, 0, -1, false])
     const path = join(process.cwd(), `dsh-export-${new Date().toISOString().replace(/[:.]/g, '-')}.md`)
     writeFileSync(path, `# ${rec.title ?? rec.id}\n\n` + lines.join('\n') + '\n')
     app.notice(`已导出: ${path}`)
@@ -247,7 +247,7 @@ const exportCommand = async (app: App) => {
 /** /rewind — pick a user-message boundary, truncate the session after
  *  it, and rebuild the chat from the remaining events. */
 const rewindCommand = async (app: App, a: string | undefined) => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -294,9 +294,9 @@ const rewindCommand = async (app: App, a: string | undefined) => {
     // in place and emits no events).
     rec.feed.clear()
     for (const e of sessionEvents(session)) {
-      app.foldEvent(rec, e)
+      app.slices.ui.foldEvent(rec, e)
       rec.feed.applyEvent(e, { history: true })
-      app.maybePushFileDiff(rec.feed, e)
+      app.slices.ui.maybePushFileDiff(rec.feed, e)
     }
     void rec.feed.flush()
     app.notice(`已回退到 #${target.seq}（其后内容已截断）`)
@@ -308,7 +308,7 @@ const rewindCommand = async (app: App, a: string | undefined) => {
 /** /queue — pending-message queue (official QueueDock counterpart):
  *  view queued turns and next-step input, edit / remove rows, clear all. */
 const queueCommand = async (app: App): Promise<void> => {
-  const rec = app.activeId === null ? undefined : app.sessions.get(app.activeId)
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
@@ -358,22 +358,22 @@ const queueCommand = async (app: App): Promise<void> => {
       app.notice(ok === true ? '已从队列移除' : '该消息已被处理')
     } catch (err) { app.notice(`移除失败: ${(err as Error).message}`) }
   } else if (act === 'edit') {
-    app.pendingQueueEdit = { list: picked.list, messageId: picked.id }
+    app.slices.agent.pendingQueueEdit = { list: picked.list, messageId: picked.id }
     app.notice(t('下一条输入将替换该排队消息'))
   }
 }
 
 /** Fill the transcript module's App slots and register its commands. */
 export function installTranscript(app: App): void {
-  app.sessionEvents = (session) => sessionEvents(session)
-  app.synthesizeToolResult = (rec, callId, seq, turn, step) => synthesizeToolResult(rec, callId, seq, turn, step)
-  app.surfaceReplace = (session, type, seq, data) => surfaceReplace(session, type, seq, data)
-  app.repairOrphanToolCalls = (rec) => repairOrphanToolCalls(rec)
+  app.slices.trans.sessionEvents = (session) => sessionEvents(session)
+  app.slices.trans.synthesizeToolResult = (rec, callId, seq, turn, step) => synthesizeToolResult(rec, callId, seq, turn, step)
+  app.slices.trans.surfaceReplace = (session, type, seq, data) => surfaceReplace(session, type, seq, data)
+  app.slices.trans.repairOrphanToolCalls = (rec) => repairOrphanToolCalls(rec)
   const specs: CommandSpec[] = [
     { name: '/trajectory', desc: t('回合步骤轨迹'), usage: t(''), group: t('信息'), fn: () => trajectoryCommand(app) },
     { name: '/export', desc: t('导出转录 md'), usage: t('导出转录'), group: t('信息'), fn: () => exportCommand(app) },
     { name: '/rewind', desc: t('回退到某条消息'), usage: t('[第N条]'), group: t('会话'), fn: (a) => rewindCommand(app, a) },
     { name: '/queue', desc: t('消息队列（编辑/删除/清空）'), usage: t('消息队列'), group: t('会话'), fn: () => queueCommand(app) },
   ]
-  app.registerCommands(specs)
+  app.slices.agent.registerCommands(specs)
 }

@@ -13,7 +13,7 @@ import { appendFileSync, existsSync, readFileSync, readdirSync, realpathSync } f
 import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { App } from './app.js'
+import type { App, AppSlices } from './app.js'
 
 /** One assembly row: package identity + the exact YAML appended to the patch. */
 interface RowTemplate {
@@ -161,7 +161,7 @@ export function packageExists(pkg: string, file: string): boolean {
 
 const svcOk = (app: App, key: string): boolean => app.runtimeCtx.get(key) !== undefined
 
-async function checkAll(app: App, patchPath: string | null): Promise<DepReport[]> {
+async function checkAll(app: App, s: AppSlices['agent'], patchPath: string | null): Promise<DepReport[]> {
   const patchIds = patchPath === null ? new Set<string>() : readPatchRowIds(patchPath)
   const reports: DepReport[] = []
 
@@ -203,7 +203,7 @@ async function checkAll(app: App, patchPath: string | null): Promise<DepReport[]
   // deepseek-v4-flash-vision-exp）时，图片消息会自动切换该模型处理。
   let visionModel: string | undefined
   try {
-    const sel = app.currentSelection()
+    const sel = s.currentSelection()
     const llm = app.runtimeCtx.get('llm') as unknown as {
       resolveModelInfo?: (p: string, m: string) => Promise<{ inputModalities?: string[] } | undefined>
     }
@@ -251,10 +251,10 @@ async function checkAll(app: App, patchPath: string | null): Promise<DepReport[]
 // commands
 // ---------------------------------------------------------------------------
 
-const depsCommand = async (app: App, a: string | undefined): Promise<void> => {
+const depsCommand = async (app: App, s: AppSlices['agent'], a: string | undefined): Promise<void> => {
   const arg = (a ?? '').trim()
   if (arg === 'install') {
-    await installCommand(app)
+    await installCommand(app, s)
     return
   }
   if (arg !== '') {
@@ -262,7 +262,7 @@ const depsCommand = async (app: App, a: string | undefined): Promise<void> => {
     return
   }
   const patchPath = findProfilePatchPath()
-  const reports = await checkAll(app, patchPath)
+  const reports = await checkAll(app, s, patchPath)
   const lines = [
     `依赖体检 · ${reports.length} 项（profile patch: ${patchPath === null ? '未定位（仅报告模式）' : patchPath.replace(dshHome(), '~')}）`,
     '',
@@ -292,13 +292,13 @@ const depsCommand = async (app: App, a: string | undefined): Promise<void> => {
   await app.luaCall('require("dsh_tui").show_lines_float(...)', ['依赖体检', lines]).catch(() => {})
 }
 
-const installCommand = async (app: App): Promise<void> => {
+const installCommand = async (app: App, s: AppSlices['agent']): Promise<void> => {
   const patchPath = findProfilePatchPath()
   if (patchPath === null) {
     app.notice('未定位 profile 的 cordis.patch.yml（DSH_HOME/profiles 下没有包含 dsh-nvim-tui bundle 的 profile），无法自动装配')
     return
   }
-  const reports = (await checkAll(app, patchPath)).filter((r) => r.fixId !== undefined)
+  const reports = (await checkAll(app, s, patchPath)).filter((r) => r.fixId !== undefined)
   if (reports.length === 0) {
     app.notice('没有可一键装配的缺失项（/deps 查看完整报告）')
     return
@@ -349,9 +349,9 @@ const installCommand = async (app: App): Promise<void> => {
   }
 }
 
-export function installDeps(app: App): void {
+export function installDeps(app: App, s: AppSlices['agent']): void {
   const specs = [
-    { name: '/deps', desc: '依赖体检（缺什么/一键装配）', usage: '[install]', group: '系统', fn: (a: string) => depsCommand(app, a) },
+    { name: '/deps', desc: '依赖体检（缺什么/一键装配）', usage: '[install]', group: '系统', fn: (a: string) => depsCommand(app, s, a) },
   ]
-  app.registerCommands(specs)
+  s.registerCommands(specs)
 }

@@ -72,13 +72,13 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     installSubagents(app)
     installTranscript(app)
     installCommands(app)
-    installMarketInstall(app)
-    installDeps(app)
+    installMarketInstall(app, app.slices.agent)
+    installDeps(app, app.slices.agent)
     // Publish the extension surface: other dsh plugins consume it via
     // `ctx.get('nvim-tui')` (the name freezes on first release). The
     // service value lives as long as this runner — it is NOT disposed here.
-    ctx.provide('nvim-tui', app.extApi)
-    app.boot = () => boot(app)
-    void app.boot()
+    ctx.provide('nvim-tui', app.slices.ext.extApi)
+    app.slices.runtime.boot = () => boot(app)
+    void app.slices.runtime.boot()
   })
 }
