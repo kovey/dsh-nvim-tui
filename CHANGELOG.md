@@ -32,7 +32,7 @@
 - **app.ts 瘦身 I1/I2（ARCHITECTURE.md 第五节）**：createApp 的 13 个
   核心服务实现外移（state IO/历史刷新→sessions、文件快照/diff→transcript、
   feedForSubagent→subagents、生命周期→boot）＋ slice 初始状态由各 owner
-  模块 install 时注入——app.ts 806 → 407 行（kernel + 接口 + 壳）；实施
+  模块 install 时注入——app.ts 806 → 443 行（kernel + 接口 + 壳）；实施
   中确认命令注册设施与 commandSpecs 存储属 kernel 引导设施、runtime 域
   默认值经 installRuntime 最先注入；check-arch 增 MOVED_SERVICES/
   MOVED_STATE 哨兵；行为零变化，smoke 全绿。

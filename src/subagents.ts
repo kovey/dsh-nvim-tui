@@ -5,10 +5,9 @@
  *
  * @module dsh-nvim-tui/subagents
  */
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { FeedRenderer } from './feed.js'
 import { t } from './i18n.js'
-import { ageLabel, encodeHeaderOnlyLog, isExpired, orderSubagentChildren, readCleanedIds, writeCleanedIds } from './subagent-clean.js'
+import { ageLabel, isExpired, orderSubagentChildren } from './subagent-clean.js'
 import { queueSubagentPromptKey } from './types.js'
 import type { SessionEvent, SubagentInfo } from './types.js'
 import type { App, CommandSpec } from './app.js'
@@ -17,129 +16,6 @@ import type { App, CommandSpec } from './app.js'
  *  Preferred path: the official `subagents.listChildren` directory.
  *  Fallback: scan the live session store + sessionPersistence.list() for
  *  headers with parentSession === parentId and origin 'subagent'. */
-const listSubagentChildren = async (app: App, parentId: string): Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number }>> => {
-  const persistence = app.svc('sessionPersistence')
-  let histMap = new Map<string, { createdAt?: number; origin?: string; parentSession?: string }>()
-  if (typeof persistence?.list === 'function') {
-    try {
-      for (const h of await persistence.list()) histMap.set(h.id, h)
-    } catch {}
-  }
-  const cleaned = readCleanedIds()[parentId] ?? []
-  const hidden = new Set(cleaned) // TTL-cleaned chains stay hidden
-  const createdAtOf = (id: string): number | undefined => histMap.get(id)?.createdAt
-  const subagentsSvc = app.svc('subagents')
-  if (typeof subagentsSvc?.listChildren === 'function') {
-    try {
-      const entries = await subagentsSvc.listChildren(parentId)
-      const children = entries.filter((e) => e?.kind === 'child').map((e) => ({
-        id: e.id,
-        label: e.label ?? e.id.slice(0, 8),
-        running: e.activity === 'running',
-        mode: e.mode,
-        createdAt: createdAtOf(e.id),
-      })).filter((c) => c.running || !hidden.has(c.id))
-      if (children.length > 0 || entries.some((e) => e?.kind === 'child')) return children
-    } catch {}
-  }
-  const seen = new Set<string>()
-  const children: Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number }> = []
-  const add = (id: string, label: string | undefined, running: boolean, mode: string | undefined) => {
-    if (seen.has(id) || (!running && hidden.has(id))) return
-    seen.add(id)
-    children.push({ id, label: label ?? id.slice(0, 8), running, mode, createdAt: createdAtOf(id) })
-  }
-  for (const s of app.runtimeCtx.sessions.list?.() ?? []) {
-    if (s?.header?.parentSession === parentId && s.header.origin === 'subagent') {
-      add(s.id, undefined, true, undefined)
-    }
-  }
-  for (const [id, h] of histMap) {
-    if (h?.parentSession === parentId && h.origin === 'subagent') {
-      add(id, undefined, false, undefined)
-    }
-  }
-  return children
-}
-
-/** Seed the running-subagents registry from the host: a session may have
- *  children started before the TUI attached (workflow kicked off from
- *  elsewhere, or a resume mid-run). Best-effort. */
-const seedRunningSubagents = async (app: App, parentId: string) => {
-  try {
-    const children = await listSubagentChildren(app, parentId)
-    let changed = false
-    for (const c of children) {
-      if (!c.running || app.slices.sessions.runningSubagents.has(c.id)) continue
-      app.slices.sessions.runningSubagents.set(c.id, {
-        parentId,
-        label: c.label,
-        startedAt: c.createdAt ?? Date.now(),
-      })
-      changed = true
-    }
-    if (changed) { app.slices.ui.ensureSpinner(); app.slices.ui.updateStatusline() }
-  } catch { /* best-effort */ }
-}
-
-/** Zstandard frame magic (0xFD2FB528 little-endian) — the backend's default
- *  physical encoding; anything else is left untouched. */
-const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
-const isZstdArtifact = (path: string): boolean => {
-  try {
-    const head = readFileSync(path).subarray(0, 4)
-    return head.length === 4 && head.every((b, i) => b === ZSTD_MAGIC[i])
-  } catch { return false }
-}
-
-/** Clean one settled chain: hide it from the /subagents list (ledger +
- *  official workspace archive) and free the stored bulk. The host exposes no
- *  truncate API (rc.1 is append-only), so the bulk is freed through the
- *  OFFICIAL raw-artifact surface: `locate()` gives the physical path,
- *  `readRaw()` gives the decoded records — the log is rewritten as a
- *  header-only artifact in the backend's own frame-per-record zstd encoding
- *  (atomic tmp+rename, mirroring the backend's writer). Only settled chains
- *  are touched (never live sessions), and only artifacts that really are
- *  zstd frames; anything unusual skips the rewrite. */
-const cleanSubagentChain = async (app: App, parentId: string, childId: string): Promise<boolean> => {
-  const persistence = app.svc('sessionPersistence')
-  let truncated = false
-  try {
-    if (persistence?.supportsRawArtifacts === true &&
-      app.runtimeCtx.sessions.get(childId) === undefined) {
-      const inspection = await persistence.inspect?.(childId)
-      const meta = inspection?.meta
-      if (meta?.id === childId) {
-        const loc = persistence.locate?.(meta)
-        const path = typeof loc?.path === 'string' ? loc.path : undefined
-        const raw = await persistence.readRaw?.(childId)
-        const headerLine = (raw?.content ?? '').split('\n', 1)[0] ?? ''
-        if (path !== undefined && headerLine !== '' && isZstdArtifact(path)) {
-          writeFileSync(path + '.tmp', encodeHeaderOnlyLog(headerLine))
-          renameSync(path + '.tmp', path)
-          truncated = true
-        }
-      }
-    }
-  } catch {}
-  if (truncated) {
-    // Official hiding: the workspace registry archive set (durable, survives
-    // DSH_HOME moves). The local ledger stays as the /subagents filter.
-    const ws = app.svc('workspaceRegistry')
-    if (typeof ws?.archiveSession === 'function') {
-      try { await ws.archiveSession(childId) } catch {}
-    }
-  }
-  const cleaned = readCleanedIds()
-  const arr = cleaned[parentId] ?? []
-  if (!arr.includes(childId)) {
-    arr.push(childId)
-    cleaned[parentId] = arr
-    writeCleanedIds(cleaned)
-  }
-  return true
-}
-
 /** Open a read-only replay of one subagent's session log in a float. */
 const openSubagentView = async (app: App, childId: string, label: string) => {
   // One float family at a time: the chat window closes (its close handler
@@ -328,7 +204,7 @@ const subagentsCommand = async (app: App) => {
     return
   }
   try {
-    let children = await listSubagentChildren(app, app.slices.sessions.activeId)
+    let children = await app.slices.sessions.listSubagentChildren(app.slices.sessions.activeId)
     // TTL cleanup: settled chains past the retention window are truncated
     // (only the first event survives) and hidden from the list.
     const ttlHours = Number(app.config.subagentTtlHours ?? 72)
@@ -336,11 +212,11 @@ const subagentsCommand = async (app: App) => {
     if (expired.length > 0) {
       let cleaned = 0
       for (const c of expired) {
-        if (await cleanSubagentChain(app, app.slices.sessions.activeId, c.id)) cleaned++
+        if (await app.slices.sessions.cleanSubagentChain(app.slices.sessions.activeId, c.id)) cleaned++
       }
       if (cleaned > 0) {
         app.notice(`🧹 已清理 ${cleaned} 条过期子代理思考链（>${ttlHours}h），列表不再显示`)
-        children = await listSubagentChildren(app, app.slices.sessions.activeId)
+        children = await app.slices.sessions.listSubagentChildren(app.slices.sessions.activeId)
       }
     }
     if (children.length === 0) {
@@ -374,7 +250,7 @@ const subagentsCommand = async (app: App) => {
       if (ok !== 'yes') return
       let done = 0
       for (const c of children) {
-        if (!c.running && await cleanSubagentChain(app, app.slices.sessions.activeId, c.id)) done++
+        if (!c.running && await app.slices.sessions.cleanSubagentChain(app.slices.sessions.activeId, c.id)) done++
       }
       app.notice(`🧹 已清理 ${done} 条思考链`)
       return
@@ -429,9 +305,6 @@ export function installSubagents(app: App): void {
   }
 
 
-  app.slices.sessions.listSubagentChildren = (parentId) => listSubagentChildren(app, parentId)
-  app.slices.sessions.seedRunningSubagents = (parentId) => seedRunningSubagents(app, parentId)
-  app.slices.sessions.cleanSubagentChain = (parentId, childId) => cleanSubagentChain(app, parentId, childId)
   app.slices.agent.openSubagentView = (childId, label) => openSubagentView(app, childId, label)
   app.slices.agent.openSubagentChat = (childId, label) => openSubagentChat(app, childId, label)
   app.slices.agent.sendToSubagent = (text) => sendToSubagent(app, text)

@@ -146,7 +146,7 @@ app.ts 预期：806 → ~300 行（kernel + 壳 + 注入辅助）。
 
 ### 5.3 分阶段
 
-> **实施状态（2026-09）**：I1 ✅（`096195b`）I2 ✅。app.ts 806 → **407 行**。
+> **实施状态（2026-09）**：I1 ✅（`096195b`）I2 ✅。app.ts 806 → **443 行**。
 > 实施中确认的架构修正（已固化）：
 > 1. **命令注册设施（registerCommands/commandCatalog/refreshCommandCatalog
 >    + commandSpecs 存储）属于 kernel 引导设施**，不回 owner 模块——每个

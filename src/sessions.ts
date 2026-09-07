@@ -6,12 +6,13 @@
  * @module dsh-nvim-tui/sessions
  */
 import { randomUUID } from 'node:crypto'
-import { readFileSync, statSync, writeFileSync } from 'node:fs'
+import { readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { FeedRenderer } from './feed.js'
 import { t } from './i18n.js'
+import { encodeHeaderOnlyLog, readCleanedIds, writeCleanedIds } from './subagent-clean.js'
 import type { AgentHandle, SessionEvent } from './types.js'
 import { BUILD_STAMP, BUILD_VERSION } from './app.js'
 import type { App, CommandSpec, ModelRef } from './app.js'
@@ -577,6 +578,120 @@ const renameCommand = (app: App, a: string | undefined) => {
 }
 
 /** Fill the sessions module's App slots and register its commands. */
+/** Children of one parent session (live + history, TTL-cleaned chains
+ *  hidden) — the /subagents directory source. */
+const listSubagentChildren = async (app: App, parentId: string): Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number }>> => {
+  const persistence = app.svc('sessionPersistence')
+  let histMap = new Map<string, { createdAt?: number; origin?: string; parentSession?: string }>()
+  if (typeof persistence?.list === 'function') {
+    try {
+      for (const h of await persistence.list()) histMap.set(h.id, h)
+    } catch {}
+  }
+  const cleaned = readCleanedIds()[parentId] ?? []
+  const hidden = new Set(cleaned) // TTL-cleaned chains stay hidden
+  const createdAtOf = (id: string): number | undefined => histMap.get(id)?.createdAt
+  const subagentsSvc = app.svc('subagents')
+  if (typeof subagentsSvc?.listChildren === 'function') {
+    try {
+      const entries = await subagentsSvc.listChildren(parentId)
+      const children = entries.filter((e) => e?.kind === 'child').map((e) => ({
+        id: e.id,
+        label: e.label ?? e.id.slice(0, 8),
+        running: e.activity === 'running',
+        mode: e.mode,
+        createdAt: createdAtOf(e.id),
+      })).filter((c) => c.running || !hidden.has(c.id))
+      if (children.length > 0 || entries.some((e) => e?.kind === 'child')) return children
+    } catch {}
+  }
+  const seen = new Set<string>()
+  const children: Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number }> = []
+  const add = (id: string, label: string | undefined, running: boolean, mode: string | undefined) => {
+    if (seen.has(id) || (!running && hidden.has(id))) return
+    seen.add(id)
+    children.push({ id, label: label ?? id.slice(0, 8), running, mode, createdAt: createdAtOf(id) })
+  }
+  for (const s of app.runtimeCtx.sessions.list?.() ?? []) {
+    if (s?.header?.parentSession === parentId && s.header.origin === 'subagent') {
+      add(s.id, undefined, true, undefined)
+    }
+  }
+  for (const [id, h] of histMap) {
+    if (h?.parentSession === parentId && h.origin === 'subagent') {
+      add(id, undefined, false, undefined)
+    }
+  }
+  return children
+}
+
+/** Seed the running-subagents registry from the host (children may have
+ *  started before the TUI attached). Best-effort. */
+const seedRunningSubagents = async (app: App, parentId: string) => {
+  try {
+    const children = await listSubagentChildren(app, parentId)
+    let changed = false
+    for (const c of children) {
+      if (!c.running || app.slices.sessions.runningSubagents.has(c.id)) continue
+      app.slices.sessions.runningSubagents.set(c.id, {
+        parentId,
+        label: c.label,
+        startedAt: c.createdAt ?? Date.now(),
+      })
+      changed = true
+    }
+    if (changed) { app.slices.ui.ensureSpinner(); app.slices.ui.updateStatusline() }
+  } catch { /* best-effort */ }
+}
+
+/** Zstandard frame magic (0xFD2FB528 little-endian). */
+const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
+const isZstdArtifact = (path: string): boolean => {
+  try {
+    const head = readFileSync(path).subarray(0, 4)
+    return head.length === 4 && head.every((b, i) => b === ZSTD_MAGIC[i])
+  } catch { return false }
+}
+
+/** Clean one settled chain: hide it (ledger + workspace archive) and free
+ *  the stored bulk via the official raw-artifact rewrite. */
+const cleanSubagentChain = async (app: App, parentId: string, childId: string): Promise<boolean> => {
+  const persistence = app.svc('sessionPersistence')
+  let truncated = false
+  try {
+    if (persistence?.supportsRawArtifacts === true &&
+      app.runtimeCtx.sessions.get(childId) === undefined) {
+      const inspection = await persistence.inspect?.(childId)
+      const meta = inspection?.meta
+      if (meta?.id === childId) {
+        const loc = persistence.locate?.(meta)
+        const path = typeof loc?.path === 'string' ? loc.path : undefined
+        const raw = await persistence.readRaw?.(childId)
+        const headerLine = (raw?.content ?? '').split('\n', 1)[0] ?? ''
+        if (path !== undefined && headerLine !== '' && isZstdArtifact(path)) {
+          writeFileSync(path + '.tmp', encodeHeaderOnlyLog(headerLine))
+          renameSync(path + '.tmp', path)
+          truncated = true
+        }
+      }
+    }
+  } catch {}
+  if (truncated) {
+    const ws = app.svc('workspaceRegistry')
+    if (typeof ws?.archiveSession === 'function') {
+      try { await ws.archiveSession(childId) } catch {}
+    }
+  }
+  const cleaned = readCleanedIds()
+  const arr = cleaned[parentId] ?? []
+  if (!arr.includes(childId)) {
+    arr.push(childId)
+    cleaned[parentId] = arr
+    writeCleanedIds(cleaned)
+  }
+  return true
+}
+
 export function installSessions(app: App): void {
   // -- sessions + ui.activeFeed domain defaults (I2) --
   Object.assign(app.slices.sessions, {
@@ -603,6 +718,12 @@ export function installSessions(app: App): void {
     cleanSubagentChain: async () => false,
     runningSubagentsOf: () => [],
   })
+  /** Running subagents of one parent (pure sessions-domain projection). */
+  app.slices.sessions.runningSubagentsOf = (parentId: string | null): Array<{ parentId: string; label: string; startedAt: number }> =>
+    parentId === null ? [] : [...app.slices.sessions.runningSubagents.values()].filter((s) => s.parentId === parentId)
+  app.slices.sessions.listSubagentChildren = (parentId) => listSubagentChildren(app, parentId)
+  app.slices.sessions.seedRunningSubagents = (parentId) => seedRunningSubagents(app, parentId)
+  app.slices.sessions.cleanSubagentChain = (parentId, childId) => cleanSubagentChain(app, parentId, childId)
   app.slices.ui.activeFeed = () => {
     const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
     return rec?.feed
