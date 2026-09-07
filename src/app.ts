@@ -8,7 +8,7 @@
  * Composition contract:
  *  - `createApp(ctx, config)` builds the state + core services + no-op slots.
  *  - Each module's `install(app)` fills the slots it owns and registers its
- *    slash commands via `app.slices.agent.registerCommands([...])` (late binding: install
+ *    slash commands via `app.registerCommands([...])` (late binding: install
  *    order never matters, runtime calls always see the real implementations).
  *  - `boot(app)` (boot.ts) runs the main body LAST, after every install.
  *
@@ -230,9 +230,6 @@ export interface AppSlices {
     atQuery: (query: string, start?: number) => Promise<void>
     currentSelection: () => ReturnType<ModelSelection['currentSelection']>
     commandSpecs: CommandSpec[]
-    registerCommands: (specs: CommandSpec[]) => void
-    commandCatalog: () => Array<{ name: string; desc: string }>
-    refreshCommandCatalog: () => Promise<void>
     pendingInput: string[]
     pendingImages: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }>>
     pendingRename: { kind: 'workspace'; id: string } | { kind: 'session'; id: string } | null
@@ -279,6 +276,14 @@ export interface App {
   quit: (code?: number) => Promise<void>
   teardown: () => Promise<void>
   closeNvimWindow: () => Promise<void>
+  /** Command registry (kernel bootstrap facility: every module registers
+   *  its specs at install time, so the mechanism exists from t=0). */
+  registerCommands: (specs: CommandSpec[]) => void
+  commandCatalog: () => Array<{ name: string; desc: string }>
+  refreshCommandCatalog: () => Promise<void>
+  /** Registered command specs — the kernel registry's storage (modules
+   *  register at install time, so it must live from t=0). */
+  commandSpecs: CommandSpec[]
   /** The domain slices (the physical state home). */
   slices: AppSlices
 }
@@ -303,118 +308,11 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     `/tmp/dsh-nvim-tui-e2e-${process.pid}.txt`
   const errorLogPath = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'nvim-tui-errors.log')
 
-  const slices: AppSlices = {
-    runtime: {
-      nvim: null,
-      child: null,
-      channelIdValue: null,
-      disposed: false,
-      quitting: false,
-      chatWinId: null,
-      reasoningOpen: false,
-      reasoningWinId: null,
-      feedDisposer: null,
-      hostDisposers: [],
-      spinnerTimer: null,
-      spinnerIndex: 0,
-      idleRefreshTimer: null,
-      boot: async () => {},
-    },
-    sessions: {
-      live: new Map(),
-      activeId: null,
-      historyHeaders: [],
-      historyById: new Map(),
-      sessionEntries: [],
-      runningSubagents: new Map(),
-      childParent: new Map(),
-      refreshHistory: async () => {},
-      refreshList: () => {},
-      readState: () => null,
-      recordState: () => {},
-      createSession: async () => {},
-      resumeSession: async () => {},
-      updateTitle: () => {},
-      switchTo: async () => {},
-      selectSession: async () => {},
-      forkSession: async () => undefined,
-      attachSession: async () => {},
-      listSubagentChildren: async () => [],
-      seedRunningSubagents: async () => {},
-      cleanSubagentChain: async () => false,
-      runningSubagentsOf: () => [],
-    },
-    ui: {
-      activeFeed: () => undefined,
-      feedForSubagent: () => undefined,
-      welcomeLines: () => ({ above: [], below: [] }),
-      ensureSpinner: () => {},
-      updateStatusline: () => {},
-      refreshBgJobs: () => {},
-      foldEvent: () => {},
-      maybePushFileDiff: () => {},
-      readFileSnapshot: async () => null,
-      pendingFileSnaps: new Map(),
-      renderedDiffCalls: new WeakMap(),
-      pendingEchoes: new Map(),
-    },
-    ext: {
-      extApi: null as unknown as TuiExtApi, // installExtApi fills it before boot
-      extReadyResolve: null,
-      extFire: () => {},
-      extSessionSubs: [],
-      extDispatchSessionEvent: () => {},
-      extLuaSubs: new Map(),
-      extNodeCleanup: null,
-      pendingCardInput: null,
-      extNodeHandlers: new Map(),
-      extStatusSegments: new Map(),
-    },
-    trans: {
-      sessionEvents: () => [],
-      synthesizeToolResult: () => {},
-      surfaceReplace: () => {},
-      repairOrphanToolCalls: () => 0,
-      workflowRuns: new Map(),
-    },
-    agent: {
-      followup: async () => {},
-      queueSubagentPrompt: async () => {},
-      send: () => {},
-      pasteClipboardImage: () => {},
-      applyModelSelection: async () => {},
-      pickModel: async () => {},
-      stopCommand: () => {},
-      onInput: () => {},
-      onCommand: () => {},
-      helpCommand: async () => {},
-      restartCommand: () => {},
-      openDirPicker: async () => null,
-      atQuery: async () => {},
-      currentSelection: () => runtimeCtx.agentDefaultModel.currentSelection(),
-      commandSpecs: [],
-      pendingInput: [],
-      pendingImages: [],
-      pendingRename: null,
-      pendingQueueEdit: null,
-      approvalSettle: null,
-      approvalReq: null,
-      questionsResolve: null,
-      pickerSettle: null,
-      dirSettle: null,
-      bellOn: true,
-      subagentView: null,
-      subagentChat: null,
-      pendingSubagentFollowup: null,
-      openSubagentView: async () => {},
-      openSubagentChat: async () => {},
-      sendToSubagent: () => {},
-      registerCommands: () => {},   // real impl injected by installCommands (I1)
-      commandCatalog: () => [],
-      refreshCommandCatalog: async () => {},
-    },
-  }
-
+  // Domain shells: owners inject their defaults + implementations at
+  // install time (I2) — createApp only guarantees the SHAPE, never the
+  // state. Installs all run before boot, and kernel code only reads slices
+  // lazily at call time.
+  const slices = { runtime: {}, sessions: {}, ui: {}, ext: {}, trans: {}, agent: {} } as unknown as AppSlices
   // Kernel primitives live on the root as REAL properties; everything else
   // is domain state in `slices`.
   const app: App = {
@@ -452,6 +350,37 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     quit: async () => {},
     teardown: async () => {},
     closeNvimWindow: async () => {},
+    commandSpecs: [],
+    // Command registry (kernel bootstrap facility: EVERY module registers
+    // its specs at install time, so the mechanism must exist from t=0 —
+    // the owner-module pattern does not apply to cross-module facilities).
+    registerCommands: (specs: CommandSpec[]) => {
+      // Duplicate-name protection (internal modules register first, ext
+      // commands land later at runtime): the second registrant is skipped
+      // with a notice instead of shadowing the first handler.
+      for (const s of specs) {
+        if (app.commandSpecs.some((e) => e.name === s.name)) {
+          app.notice(`⚠ 命令 ${s.name} 已注册，忽略重复`)
+          continue
+        }
+        app.commandSpecs.push(s)
+      }
+    },
+    commandCatalog: () => app.commandSpecs.map(({ name, desc }) => ({ name, desc })),
+    refreshCommandCatalog: async (): Promise<void> => {
+      const entries = app.commandSpecs.map(({ name, desc }) => ({ name, desc }))
+      const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
+      const skills = svc('skills')
+      if (rec !== undefined && skills !== undefined) {
+        try {
+          const list = await skills.list({ scope: rec.handle.agent })
+          for (const sk of list) {
+            entries.push({ name: `/skills:${sk.name}`, desc: String(sk.description ?? '').slice(0, 40) })
+          }
+        } catch {}
+      }
+      await luaCall('require("dsh_tui").set_commands(...)', [entries]).catch(() => {})
+    },
     slices,
   } as unknown as App
 

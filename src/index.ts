@@ -39,7 +39,7 @@ import { installTranscript } from './transcript.js'
 import { installCommands } from './commands.js'
 import { installMarketInstall } from './market-install.js'
 import { installDeps } from './deps.js'
-import { boot } from './boot.js'
+import { boot, installRuntime } from './boot.js'
 import type { RuntimeCtx, RunnerConfig } from './types.js'
 
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
@@ -66,13 +66,14 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     setLocale(localeInit === 'en' ? 'en' : 'zh')
 
     const app = createApp(ctx, runtimeCtx, config)
+    installRuntime(app) // runtime defaults first: installs push hostDisposers
     installExtApi(app)
     installStatusline(app)
     installSessions(app)
     installSubagents(app)
     installTranscript(app)
     installCommands(app)
-    installMarketInstall(app, app.slices.agent)
+    installMarketInstall(app)
     installDeps(app, app.slices.agent)
     // Publish the extension surface: other dsh plugins consume it via
     // `ctx.get('nvim-tui')` (the name freezes on first release). The

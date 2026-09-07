@@ -145,7 +145,7 @@ const createSession = async (app: App, cwdPath?: string) => {
   const id = await attachSession(app, handle, modelRef)
   await switchTo(app, id)
   app.slices.sessions.refreshList()
-  void app.slices.agent.refreshCommandCatalog()
+  void app.refreshCommandCatalog()
   app.notice(`session ${id} (${selection.provider}/${selection.model}${cwdPath ? ` · ${cwd}` : ''})`)
   return id
 }
@@ -578,6 +578,36 @@ const renameCommand = (app: App, a: string | undefined) => {
 
 /** Fill the sessions module's App slots and register its commands. */
 export function installSessions(app: App): void {
+  // -- sessions + ui.activeFeed domain defaults (I2) --
+  Object.assign(app.slices.sessions, {
+    live: new Map(),
+    activeId: null,
+    historyHeaders: [],
+    historyById: new Map(),
+    sessionEntries: [],
+    runningSubagents: new Map(),
+    childParent: new Map(),
+    refreshHistory: async () => {},
+    refreshList: () => {},
+    readState: () => null,
+    recordState: () => {},
+    createSession: async () => {},
+    resumeSession: async () => {},
+    updateTitle: () => {},
+    switchTo: async () => {},
+    selectSession: async () => {},
+    forkSession: async () => undefined,
+    attachSession: async () => {},
+    listSubagentChildren: async () => [],
+    seedRunningSubagents: async () => {},
+    cleanSubagentChain: async () => false,
+    runningSubagentsOf: () => [],
+  })
+  app.slices.ui.activeFeed = () => {
+    const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
+    return rec?.feed
+  }
+
   // -- core services this module owns (moved out of createApp, I1) --
   // -- last-active-session state (claude --continue behaviour) -------------------
   const statePath = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'dsh-nvim-tui-state.json')
@@ -678,5 +708,5 @@ export function installSessions(app: App): void {
     { name: '/rename', desc: t('重命名会话'), usage: t('<新标题>'), group: t('会话'), fn: (a) => renameCommand(app, a) },
     { name: '/layout', desc: t('布局预设'), usage: t('default|panel'), group: t('显示'), fn: (a) => layoutCommand(app, a) },
   ]
-  app.slices.agent.registerCommands(specs)
+  app.registerCommands(specs)
 }

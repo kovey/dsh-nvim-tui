@@ -146,6 +146,17 @@ app.ts 预期：806 → ~300 行（kernel + 壳 + 注入辅助）。
 
 ### 5.3 分阶段
 
+> **实施状态（2026-09）**：I1 ✅（`096195b`）I2 ✅。app.ts 806 → **407 行**。
+> 实施中确认的架构修正（已固化）：
+> 1. **命令注册设施（registerCommands/commandCatalog/refreshCommandCatalog
+>    + commandSpecs 存储）属于 kernel 引导设施**，不回 owner 模块——每个
+>    install 体都会注册命令，机制必须从 t=0 存在（原方案映射表将其归
+>    commands.ts，实测触发 install 期未定义调用）。
+> 2. **runtime 域默认值由 installRuntime(app) 同步注入、index 最先调用**：
+>   install 体会往 runtime.hostDisposers 推 disposer，boot() 注入太晚。
+> 3. 推论规则（写入 5.4）：**install 体只允许「写自己的域 + 调 kernel」**，
+>    install 期读他域 = 架构违规（本次实测抓到 2 处，全部是这类）。
+
 - **I1 实现外移（纯搬移，行为零变化）**：13 个核心服务按表搬到 owner 模块；
   createApp 留壳；check-arch.mjs 增哨兵（createApp 函数体不得再出现业务
   实现——按函数名白名单校验）；smoke 全绿后提交。
@@ -155,8 +166,11 @@ app.ts 预期：806 → ~300 行（kernel + 壳 + 注入辅助）。
 - **I3（不做）**：kernel 再拆（bridge/lifecycle 独立）——kernel 已是稳定面，
   拆分无收益。
 
-### 5.4 风险
+### 5.4 风险（实施后固化为规则）
 
-- I1 为纯搬移，风险低；搬移时禁止顺手改逻辑（diff 只允许代码位移）。
-- I2 注意：install 顺序无关性必须保持（不能出现「A 模块在 install 期读
-  B 模块注入的默认值」——boot 前只允许写槽位、读 kernel）。
+- I1 为纯搬移（已遵守：diff 仅代码位移 + 作用域适配）。
+- **install 体三原则**：只写自己拥有的域；只调 kernel 原语；install 期
+  不得读他域（违反即未定义调用——I2 实测两次踩中：installStatusline 调
+  agent 域 registerCommands、写 runtime 域 hostDisposers，均以
+  TypeError 静默挂掉为代价发现）。check-arch 的 MOVED_SERVICES/MOVED_STATE
+  哨兵持续兜底。

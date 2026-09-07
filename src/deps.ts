@@ -353,5 +353,5 @@ export function installDeps(app: App, s: AppSlices['agent']): void {
   const specs = [
     { name: '/deps', desc: '依赖体检（缺什么/一键装配）', usage: '[install]', group: '系统', fn: (a: string) => depsCommand(app, s, a) },
   ]
-  s.registerCommands(specs)
+  app.registerCommands(specs)
 }

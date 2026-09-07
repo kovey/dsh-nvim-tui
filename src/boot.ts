@@ -18,6 +18,28 @@ import { t } from './i18n.js'
 import type { ChatMessage, GoalState, MessageContent } from './types.js'
 import type { App } from './app.js'
 
+/** Synchronous runtime-domain defaults — MUST run before every other
+ *  install: install bodies push disposers into runtime.hostDisposers
+ *  (statusline/commands/…), so the domain needs its shape from t=0. */
+export function installRuntime(app: App): void {
+  Object.assign(app.slices.runtime, {
+    nvim: null,
+    child: null,
+    channelIdValue: null,
+    disposed: false,
+    quitting: false,
+    chatWinId: null,
+    reasoningOpen: false,
+    reasoningWinId: null,
+    feedDisposer: null,
+    hostDisposers: [],
+    spinnerTimer: null,
+    spinnerIndex: 0,
+    idleRefreshTimer: null,
+    boot: async () => {},
+  })
+}
+
 export async function boot(app: App): Promise<void> {
   // -- lifecycle core services (moved out of createApp, I1). Injected
   //    SYNCHRONOUSLY before any await: quit/teardown/exitDiag must be
@@ -193,8 +215,8 @@ export async function boot(app: App): Promise<void> {
       .catch((err: unknown) => app.notice(`⚠ 扩展接口握手失败: ${(err as Error).message}`))
     // Slash-command catalog for the completion menu (name + description);
     // nvim shows it as soon as the input starts with '/'.
-    await app.luaCall('require("dsh_tui").set_commands(...)', [app.slices.agent.commandCatalog()]).catch(() => {})
-    void app.slices.agent.refreshCommandCatalog()
+    await app.luaCall('require("dsh_tui").set_commands(...)', [app.commandCatalog()]).catch(() => {})
+    void app.refreshCommandCatalog()
     // Theme overrides from the runner config (profile cordis.patch.yml).
     if (app.config.theme !== undefined && app.config.theme !== null && typeof app.config.theme === 'object') {
       await app.luaCall('require("dsh_tui").apply_theme(...)', [app.config.theme]).catch(() => {})

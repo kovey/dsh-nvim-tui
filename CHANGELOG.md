@@ -29,6 +29,14 @@
   plain 动作打断后，下一次输入仍会被路由给已失效的旧动作）；`api.register`
   拒绝 `__node` 保留前缀（防止插件抢注与 Node slot 机制串扰）。
 
+- **app.ts 瘦身 I1/I2（ARCHITECTURE.md 第五节）**：createApp 的 13 个
+  核心服务实现外移（state IO/历史刷新→sessions、文件快照/diff→transcript、
+  feedForSubagent→subagents、生命周期→boot）＋ slice 初始状态由各 owner
+  模块 install 时注入——app.ts 806 → 407 行（kernel + 接口 + 壳）；实施
+  中确认命令注册设施与 commandSpecs 存储属 kernel 引导设施、runtime 域
+  默认值经 installRuntime 最先注入；check-arch 增 MOVED_SERVICES/
+  MOVED_STATE 哨兵；行为零变化，smoke 全绿。
+
 - **架构切片（P0/P1/P2，ARCHITECTURE.md）**：App 平铺字段 116 → kernel
   19 项 + 六个领域 slice（runtime/sessions/ui/ext/trans/agent）；P0 兼容
   访问器过渡（现有模块零改动）、P1 删除平铺成员与访问器、全模块改

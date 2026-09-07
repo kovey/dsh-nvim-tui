@@ -405,6 +405,17 @@ const subagentsCommand = async (app: App) => {
 
 /** Fill the subagents module's App slots and register its commands. */
 export function installSubagents(app: App): void {
+  // -- ui.feedForSubagent + agent subagent-chat domain defaults (I2) --
+  app.slices.ui.feedForSubagent = () => undefined
+  Object.assign(app.slices.agent, {
+    subagentView: null,
+    subagentChat: null,
+    pendingSubagentFollowup: null,
+    openSubagentView: async () => {},
+    openSubagentChat: async () => {},
+    sendToSubagent: () => {},
+  })
+
   // -- core services this module owns (moved out of createApp, I1) --
   /** Route a subagent lifecycle event to its PARENT session's feed. */
   app.slices.ui.feedForSubagent = (info: SubagentInfo) => {
@@ -427,5 +438,5 @@ export function installSubagents(app: App): void {
   const specs: CommandSpec[] = [
     { name: '/subagents', desc: t('子代理目录（回放/续聊思考链）'), usage: t(''), group: t('会话'), fn: () => subagentsCommand(app) },
   ]
-  app.slices.agent.registerCommands(specs)
+  app.registerCommands(specs)
 }

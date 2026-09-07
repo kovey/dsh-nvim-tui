@@ -367,6 +367,22 @@ const queueCommand = async (app: App): Promise<void> => {
 
 /** Fill the transcript module's App slots and register its commands. */
 export function installTranscript(app: App): void {
+  // -- trans + ui.diff domain defaults (I2) --
+  Object.assign(app.slices.trans, {
+    sessionEvents: () => [],
+    synthesizeToolResult: () => {},
+    surfaceReplace: () => {},
+    repairOrphanToolCalls: () => 0,
+    workflowRuns: new Map(),
+  })
+  Object.assign(app.slices.ui, {
+    maybePushFileDiff: () => {},
+    readFileSnapshot: async () => null,
+    pendingFileSnaps: new Map(),
+    renderedDiffCalls: new WeakMap(),
+    pendingEchoes: new Map(),
+  })
+
   // -- core services this module owns (moved out of createApp, I1) --
   /** Read a file as a diff snapshot (null when absent/unreadable/binary/
    *  oversized — those cases render no diff block). */
@@ -437,5 +453,5 @@ export function installTranscript(app: App): void {
     { name: '/rewind', desc: t('回退到某条消息'), usage: t('[第N条]'), group: t('会话'), fn: (a) => rewindCommand(app, a) },
     { name: '/queue', desc: t('消息队列（编辑/删除/清空）'), usage: t('消息队列'), group: t('会话'), fn: () => queueCommand(app) },
   ]
-  app.slices.agent.registerCommands(specs)
+  app.registerCommands(specs)
 }

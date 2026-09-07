@@ -288,6 +288,20 @@ export interface TuiExtApi {
 /** Install the extension API onto the App (runs before boot; index.ts then
  *  publishes the built surface through the cordis registry). */
 export function installExtApi(app: App): void {
+  // -- ext domain defaults (I2: the ext slice lives here) --
+  Object.assign(app.slices.ext, {
+    extApi: null as unknown as TuiExtApi,
+    extReadyResolve: null,
+    extFire: () => {},
+    extSessionSubs: [],
+    extDispatchSessionEvent: () => {},
+    extLuaSubs: new Map(),
+    extNodeCleanup: null,
+    pendingCardInput: null,
+    extNodeHandlers: new Map(),
+    extStatusSegments: new Map(),
+  })
+
   const listeners = new Map<string, Set<(payload: unknown) => void>>()
   const sessionSubs: Array<{
     filter: ExtSessionEventFilter
@@ -575,12 +589,12 @@ export function installExtApi(app: App): void {
         group: c.group ?? '扩展',
         fn: c.fn,
       }))
-      app.slices.agent.registerCommands(specs)
-      void app.slices.agent.refreshCommandCatalog().catch(() => {})
+      app.registerCommands(specs)
+      void app.refreshCommandCatalog().catch(() => {})
       return () => {
         const names = new Set(specs.map((s) => s.name))
-        app.slices.agent.commandSpecs = app.slices.agent.commandSpecs.filter((s) => !names.has(s.name))
-        void app.slices.agent.refreshCommandCatalog().catch(() => {})
+        app.commandSpecs = app.commandSpecs.filter((s) => !names.has(s.name))
+        void app.refreshCommandCatalog().catch(() => {})
       }
     },
 

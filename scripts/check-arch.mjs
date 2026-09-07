@@ -45,12 +45,24 @@ const MOVED_SERVICES = [
   'app.slices.sessions.readState =', 'app.slices.sessions.recordState =',
   'app.slices.sessions.refreshHistory =', 'app.slices.sessions.refreshList =',
   'app.slices.ui.readFileSnapshot =', 'app.slices.ui.maybePushFileDiff =',
-  'app.slices.ui.feedForSubagent =', 'app.slices.agent.refreshCommandCatalog =',
-  'app.slices.agent.registerCommands =', 'app.slices.agent.commandCatalog =',
   'app.exitDiag =', 'app.closeNvimWindow =', 'app.teardown =', 'app.quit =',
 ]
 for (const s of MOVED_SERVICES) {
   if (appSrc.includes(s)) fail(`createApp re-implements a moved service (${s.split(' =')[0]})`)
+}
+
+// 3b) I2: slice STATE defaults also moved into the owner modules —
+//    createApp only provides empty domain shells.
+const MOVED_STATE = [
+  'live: new Map()', 'spinnerIndex: 0', 'pendingInput: []',
+  'workflowRuns: new Map()', 'bellOn: true', 'extNodeHandlers: new Map()',
+  'hostDisposers: []', 'pendingEchoes: new Map()', 'extSessionSubs: []',
+  'historyHeaders: []', 'pendingImages: []',
+  // (registerCommands/commandCatalog/refreshCommandCatalog are KERNEL
+  //  bootstrap facilities — every module registers specs at install time)
+]
+for (const s of MOVED_STATE) {
+  if (appSrc.includes(s)) fail(`createApp still seeds slice state (${s}) — inject it in the owner module`)
 }
 
 // 4) legacy flat access must not reappear (outside app.ts's own internal

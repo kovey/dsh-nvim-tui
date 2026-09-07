@@ -278,12 +278,6 @@ export interface AppSlices {
         atQuery: (query: string, start?: number) => Promise<void>;
         currentSelection: () => ReturnType<ModelSelection['currentSelection']>;
         commandSpecs: CommandSpec[];
-        registerCommands: (specs: CommandSpec[]) => void;
-        commandCatalog: () => Array<{
-            name: string;
-            desc: string;
-        }>;
-        refreshCommandCatalog: () => Promise<void>;
         pendingInput: string[];
         pendingImages: Array<SaveImageAttachment | Extract<MessageContent, {
             type: 'image';
@@ -359,6 +353,17 @@ export interface App {
     quit: (code?: number) => Promise<void>;
     teardown: () => Promise<void>;
     closeNvimWindow: () => Promise<void>;
+    /** Command registry (kernel bootstrap facility: every module registers
+     *  its specs at install time, so the mechanism exists from t=0). */
+    registerCommands: (specs: CommandSpec[]) => void;
+    commandCatalog: () => Array<{
+        name: string;
+        desc: string;
+    }>;
+    refreshCommandCatalog: () => Promise<void>;
+    /** Registered command specs — the kernel registry's storage (modules
+     *  register at install time, so it must live from t=0). */
+    commandSpecs: CommandSpec[];
     /** The domain slices (the physical state home). */
     slices: AppSlices;
 }

@@ -265,6 +265,15 @@ const costCommand = (app: App) => {
 
 /** Fill the statusline module's App slots and register its commands. */
 export function installStatusline(app: App): void {
+  // -- ui surface domain defaults (I2; transcript owns the diff part) --
+  Object.assign(app.slices.ui, {
+    welcomeLines: () => ({ above: [], below: [] }),
+    ensureSpinner: () => {},
+    updateStatusline: () => {},
+    refreshBgJobs: () => {},
+    foldEvent: () => {},
+  })
+
   app.slices.ui.foldEvent = (rec, event) => foldEvent(app, rec, event)
   app.slices.ui.updateStatusline = () => updateStatusline(app)
   app.slices.ui.ensureSpinner = () => ensureSpinner(app)
@@ -299,5 +308,5 @@ export function installStatusline(app: App): void {
     { name: '/whale', desc: t('蓝鲸背景开关'), usage: t('on|off'), group: t('显示'), fn: (a) => whaleCommand(app, a) },
     { name: '/cost', desc: t('用量与成本'), usage: t('用量成本'), group: t('信息'), fn: () => costCommand(app) },
   ]
-  app.slices.agent.registerCommands(specs)
+  app.registerCommands(specs)
 }
