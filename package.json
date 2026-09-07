@@ -26,7 +26,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && node scripts/check-arch.mjs",
+    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && node scripts/check-arch.mjs && node scripts/app-ops-check.mjs",
     "smoke": "node scripts/smoke.ts",
     "prepublishOnly": "npm run check && npm run build && node scripts/smoke.ts",
     "e2e": "node scripts/e2e.ts"

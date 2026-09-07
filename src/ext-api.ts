@@ -293,6 +293,8 @@ export function installExtApi(app: App): void {
   Object.assign(app.slices.ext, {
     extApi: null as unknown as TuiExtApi,
     extReadyResolve: null,
+    setPendingCardInput: (v: { mark: number; actionIdx: number; prompt: string } | null) => { WE.pendingCardInput = v },
+    fireExtReady: () => { const fn = WE.extReadyResolve; WE.extReadyResolve = null; fn?.() },
     extFire: () => {},
     extSessionSubs: [],
     extDispatchSessionEvent: () => {},

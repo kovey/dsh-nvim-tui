@@ -140,7 +140,7 @@ export interface AppSlices {
         setChatWin: (id: number | null) => void;
         setReasoning: (open: boolean, win: number | null) => void;
         spinnerSet: (timer: ReturnType<typeof setInterval> | null) => void;
-        spinnerStep: () => void;
+        spinnerStep: (mod: number) => void;
     };
     /** Sessions, history, active-session state + subagent registry. */
     sessions: {

@@ -54,7 +54,7 @@ const ensureSpinner = (app: App) => {
     (rec?.bgJobs ?? 0) > 0
   if (running && app.slices.runtime.spinnerTimer === null) {
     app.slices.runtime.spinnerSet(setInterval(() => {
-      app.slices.runtime.spinnerStep()
+      app.slices.runtime.spinnerStep(WHALE_EMOJI_FRAMES.length)
       app.slices.ui.updateStatusline()
     }, 450))
   } else if (!running && app.slices.runtime.spinnerTimer !== null) {

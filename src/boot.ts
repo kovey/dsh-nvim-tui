@@ -28,7 +28,7 @@ export function installRuntime(app: App): void {
   R.setChatWin = (id) => { R.chatWinId = id }
   R.setReasoning = (open, win) => { R.reasoningOpen = open; R.reasoningWinId = win }
   R.spinnerSet = (timer) => { R.spinnerTimer = timer }
-  R.spinnerStep = () => { R.spinnerIndex = R.spinnerIndex + 1 }
+  R.spinnerStep = (mod) => { R.spinnerIndex = (R.spinnerIndex + 1) % mod }
   Object.assign(app.slices.runtime, {
     nvim: null,
     child: null,

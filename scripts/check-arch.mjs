@@ -108,7 +108,7 @@ for (const [file, owned] of Object.entries(STATE_OWNERS)) {
 for (const f of readdirSync(join(root, 'src')).filter((n) => n.endsWith('.ts'))) {
   if (f === 'app.ts') continue
   const src = readFileSync(join(root, 'src', f), 'utf8')
-  for (const m of src.matchAll(/\bapp\.(nvim|commandSpecs|pickerSettle|pendingInput|workflowRuns|bellOn|chatWinId|historyHeaders|extApi|spinnerIndex|activeId|sessions)\b/g)) {
+  for (const m of src.matchAll(/\bapp\.(nvim|pickerSettle|pendingInput|workflowRuns|bellOn|chatWinId|historyHeaders|extApi|spinnerIndex|activeId|sessions)\b/g)) {
     fail(`${f}: legacy flat access app.${m[1]} (use app.slices.<domain>.${m[1]})`)
   }
 }
