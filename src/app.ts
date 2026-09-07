@@ -275,6 +275,8 @@ export interface AppSlices {
     setPendingQueueEdit: (v: { list: 'nextTurn' | 'nextStep'; messageId: string } | null) => void
     setSubagentView: (v: { childId: string; feed: FeedRenderer } | null) => void
     setSubagentChat: (v: { childId: string; parentId: string; label: string; feed: FeedRenderer } | null) => void
+    readonly livePopup: { kind: 'jobs' | 'todo'; update: (items: Array<{ label: string; value: string }>) => void } | null
+    setLivePopup: (v: { kind: 'jobs' | 'todo'; update: (items: Array<{ label: string; value: string }>) => void } | null) => void
   }
 }
 
@@ -304,6 +306,12 @@ export interface App {
   requestExit: (code?: number) => void
   notice: (text: unknown) => void
   openPicker: (title: string, items: Array<{ label: string; value: string; active?: boolean }>) => Promise<string | null>
+  /** Live picker: same float, but `update` re-renders the OPEN popup in
+   *  place (jobs/todo lists refresh their statuses without closing). */
+  openLivePicker: (title: string, items: Array<{ label: string; value: string }>) => {
+    pick: Promise<string | null>
+    update: (items: Array<{ label: string; value: string }>) => void
+  }
   guard: (label: string, fn: (...args: any[]) => Promise<unknown>) => (...args: any[]) => Promise<void>
   sleep: (ms: number) => Promise<void>
   exitDiag: (kind: string, ...detail: unknown[]) => void
@@ -367,6 +375,12 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     requestExit: () => {},
     notice: () => {},
     openPicker: async () => null,
+    openLivePicker: (title: string, items: Array<{ label: string; value: string }>) => ({
+      pick: app.openPicker(title, items),
+      update: (next: Array<{ label: string; value: string }>) => {
+        void luaCall('require("dsh_tui").update_picker(...)', [next]).catch(() => {})
+      },
+    }),
     guard: (label: string, fn: (...args: any[]) => Promise<unknown>) => async (...args: any[]) => {
       try {
         await fn(...args)
@@ -439,6 +453,13 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
       void luaCall('require("dsh_tui").show_picker(...)', [title, items])
         .catch(() => { app.slices.agent.settlePicker(null) })
     })
+
+  app.openLivePicker = (title: string, items: Array<{ label: string; value: string }>) => ({
+    pick: app.openPicker(title, items),
+    update: (next: Array<{ label: string; value: string }>) => {
+      void luaCall('require("dsh_tui").update_picker(...)', [next]).catch(() => {})
+    },
+  })
 
   // -- process-level error/signal hooks ------------------------------------------
   // alpha.4 host fail-loud: ANY unhandled rejection/uncaught exception in

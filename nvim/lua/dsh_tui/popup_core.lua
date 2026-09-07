@@ -479,6 +479,39 @@ function P.picker_confirm()
   end
 end
 
+--- Re-render the OPEN picker in place (live lists: /tasks, /todo — the
+--- statuses refresh while the float stays open). No-op when no picker is
+--- open or the float closed meanwhile.
+function P.update_picker(items)
+  local st = S.float.state
+  if st == nil or S.float.kind ~= 'picker' then return end
+  local win = S.float.win
+  local buf = S.float.buf
+  if not (win and vim.api.nvim_win_is_valid(win)) then return end
+  local values = {}
+  local lines = {}
+  for _, it in ipairs(items or {}) do
+    if type(it) == 'table' and type(it.label) == 'string' then
+      lines[#lines + 1] = it.label
+      values[#values + 1] = it.value
+    end
+  end
+  if #lines == 0 then lines = { '（无选项）' } end
+  st.values = values
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+  local cap = math.min(22, math.max(4, vim.o.lines - 8))
+  local height = math.min(cap, #lines)
+  if vim.api.nvim_win_get_height(win) ~= height then
+    vim.api.nvim_win_set_height(win, height)
+  end
+  local row = vim.api.nvim_win_get_cursor(win)[1]
+  if row > #lines then
+    vim.api.nvim_win_set_cursor(win, { math.max(1, #lines), 0 })
+  end
+end
+
 function P.picker_cancel()
   P.close_float()
   if S.channel then

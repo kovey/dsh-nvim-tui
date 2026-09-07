@@ -380,6 +380,20 @@ export interface AppSlices {
             label: string;
             feed: FeedRenderer;
         } | null) => void;
+        readonly livePopup: {
+            kind: 'jobs' | 'todo';
+            update: (items: Array<{
+                label: string;
+                value: string;
+            }>) => void;
+        } | null;
+        setLivePopup: (v: {
+            kind: 'jobs' | 'todo';
+            update: (items: Array<{
+                label: string;
+                value: string;
+            }>) => void;
+        } | null) => void;
     };
 }
 /** Writable view of one slice — owners cast to it inside their own
@@ -412,6 +426,18 @@ export interface App {
         value: string;
         active?: boolean;
     }>) => Promise<string | null>;
+    /** Live picker: same float, but `update` re-renders the OPEN popup in
+     *  place (jobs/todo lists refresh their statuses without closing). */
+    openLivePicker: (title: string, items: Array<{
+        label: string;
+        value: string;
+    }>) => {
+        pick: Promise<string | null>;
+        update: (items: Array<{
+            label: string;
+            value: string;
+        }>) => void;
+    };
     guard: (label: string, fn: (...args: any[]) => Promise<unknown>) => (...args: any[]) => Promise<void>;
     sleep: (ms: number) => Promise<void>;
     exitDiag: (kind: string, ...detail: unknown[]) => void;

@@ -41,6 +41,12 @@ const foldEvent = (app: App, rec: SessionRec, event: SessionEvent) => {
     rec.todos = { completed: count('completed'), inProgress: count('in_progress'), pending: count('pending') }
     rec.todosItems = todos
     if (rec.id === app.slices.sessions.activeId) app.slices.ui.updateStatusline()
+    // LIVE todo popup: re-render the open /todo float in place.
+    const pop = app.slices.agent.livePopup
+    if (pop !== null && pop.kind === 'todo') {
+      const marks: Record<string, string> = { pending: '○', in_progress: '◐', completed: '✓' }
+      pop.update(todos.map((it) => ({ label: `  ${marks[it.status] ?? '·'} ${it.content}`, value: it.content })))
+    }
   }
 }
 
@@ -113,6 +119,13 @@ const refreshBgJobs = (app: App) => {
       const elapsed = c.startedAt !== undefined ? ` · ${((Date.now() - c.startedAt) / 1000).toFixed(0)}s` : ''
       rows.push(`  ${icon(c.status)} ${c.label ?? '?'}${elapsed}`)
     }
+  }
+  const pop = app.slices.agent.livePopup
+  if (pop !== null && pop.kind === 'jobs') {
+    pop.update(entries.map(([id, c]) => {
+      const elapsed = c.startedAt !== undefined ? ` · ${((Date.now() - c.startedAt) / 1000).toFixed(0)}s` : ''
+      return { label: `${icon(c.status)} ${c.label ?? '?'} · ${id}${elapsed}`, value: `kill:${id}` }
+    }))
   }
   if (entries.length > 0 && count === 0) {
     // EVERY job is terminal: the final board commits into the chat flow

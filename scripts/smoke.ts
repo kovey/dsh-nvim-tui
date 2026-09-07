@@ -1289,6 +1289,29 @@ description:
   assert.ok(String(await floatTitle(await lua('return require("dsh_tui")._float.win', []))).includes('选择'), 'picker float carries a function title')
   await assertFooter('[j/k]', 'picker')
   await assertCentered('require("dsh_tui")._float.win', 'picker')
+  // LIVE picker: update_picker re-renders the open float in place
+  await lua(`require("dsh_tui").update_picker({ { label = "m1", value = "model-a" }, { label = "m2", value = "model-b" }, { label = "m3", value = "model-c" } })`, [])
+  const pickerLines2 = await nvim.request('nvim_buf_get_lines', [pickerBuf, 0, -1, false])
+  assert.deepEqual(pickerLines2, ['m1', 'm2', 'm3'], 'update_picker replaces the open picker rows')
+  assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._float.win)', []), 3, 'picker window resizes to the new row count')
+  assert.ok(await lua('return vim.api.nvim_win_is_valid(require("dsh_tui")._float.win)', []), 'float stays open across the update')
+  // shrink below the cursor row → cursor clamps
+  await lua('vim.api.nvim_win_set_cursor(require("dsh_tui")._float.win, { 3, 0 })', [])
+  await lua(`require("dsh_tui").update_picker({ { label = "m1", value = "model-a" } })`, [])
+  assert.equal(await lua('return vim.api.nvim_win_get_cursor(require("dsh_tui")._float.win)[1]', []), 1, 'cursor clamps when the list shrinks')
+  // confirm returns the NEW value mapping (rpcnotify dsh-picker-selected);
+  // consume the note so the later routing assertion sees its own
+  await lua(`require("dsh_tui").picker_confirm()`, [])
+  assert.equal(await lua('return require("dsh_tui")._float.win', []), null, 'confirm closes the live picker')
+  const liveHit = await waitNote('dsh-picker-selected')
+  assert.equal(liveHit?.args?.[0], 'model-a', 'live picker settles with the updated value')
+  // no-op when no picker is open
+  await lua(`require("dsh_tui").update_picker({ { label = "x", value = "y" } })`, [])
+  // reopen the original picker so the following read-only-lock/keymap
+  // assertions still have a live float
+  await lua('require("dsh_tui").show_picker(...)', ['选择', [{ label: 'm1', value: 'model-a' }, { label: 'm2', value: 'model-b' }]])
+  pickerBuf = await lua('return require("dsh_tui")._float.buf', [])
+
   // Read-only lock: i must not enter insert mode, x/dd must not delete.
   const pickerMaps = await lua(`local out = {}
     for _, m in ipairs(vim.api.nvim_buf_get_keymap(require("dsh_tui")._float.buf, "n")) do

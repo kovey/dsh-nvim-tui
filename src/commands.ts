@@ -295,7 +295,7 @@ const compactCommand = async (app: App) => {
  *  tool rejects non-agent callers, the official web UI only renders it),
  *  so adding a task = asking the agent to update its list; with no
  *  argument the current list pops up (read-only, from todo/write folds). */
-const todoCommand = (app: App, a: string | undefined): void => {
+const todoCommand = async (app: App, a: string | undefined): Promise<void> => {
   const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) { app.notice(t('无活跃会话')); return }
   const text = (a ?? '').trim()
@@ -320,8 +320,12 @@ const todoCommand = (app: App, a: string | undefined): void => {
     return
   }
   const marks: Record<string, string> = { pending: '○', in_progress: '◐', completed: '✓' }
-  const lines = items.map((it) => `  ${marks[it.status] ?? '·'} ${it.content}`)
-  void app.luaCall('require("dsh_tui").show_lines_float(...)', [t('📋 待办清单'), lines]).catch(() => {})
+  const pickItems = items.map((it) => ({ label: `  ${marks[it.status] ?? '·'} ${it.content}`, value: it.content }))
+  // LIVE popup: todo/write events re-render the open float in place.
+  const live = app.openLivePicker(t('📋 待办清单'), pickItems)
+  app.slices.agent.setLivePopup({ kind: 'todo', update: live.update })
+  await live.pick
+  app.slices.agent.setLivePopup(null)
 }
 
 /** /goal [show|new <objective>|pause|resume|complete|clear] — the active
@@ -433,11 +437,16 @@ const tasksCommand = async (app: App, a: string | undefined) => {
     app.notice(t('（没有运行中的任务）'))
     return
   }
-  const icon = (s: string): string => s === 'running' ? '⏳' : s === 'completed' ? '✓' : s === 'killed' ? '✗' : s === 'failed' ? '⚠' : '·'
-  const sel = await app.openPicker(t('任务列表（选中取消该任务）'), list.map((j) => {
+  const icon = (st: string): string => st === 'running' ? '⏳' : st === 'completed' ? '✓' : st === 'killed' ? '✗' : st === 'failed' ? '⚠' : '·'
+  const items = list.map((j) => {
     const elapsed = j.startedAt !== undefined ? ` · ${((Date.now() - j.startedAt) / 1000).toFixed(0)}s` : ''
     return { label: `${icon(j.status)} ${j.label ?? j.id} · ${j.id}${elapsed}`, value: `kill:${j.id}` }
-  }))
+  })
+  // LIVE popup: jobs events re-render the open float in place.
+  const live = app.openLivePicker(t('任务列表（选中取消该任务）'), items)
+  app.slices.agent.setLivePopup({ kind: 'jobs', update: live.update })
+  const sel = await live.pick
+  app.slices.agent.setLivePopup(null)
   if (sel === null) return
   if (sel.startsWith('kill:')) {
     const id = sel.slice(5)
@@ -1404,6 +1413,7 @@ export function installCommands(app: App): void {
   A.setDirSettle = (fn) => { A.dirSettle = fn }
   A.resolveDirPicker = (picked) => { const fn = A.dirSettle; A.dirSettle = null; fn?.(picked) }
   A.setPendingRename = (v) => { A.pendingRename = v }
+  A.setLivePopup = (v) => { A.livePopup = v }
   A.setPendingQueueEdit = (v) => { A.pendingQueueEdit = v }
 
   // -- agent domain defaults (I2; subagents owns its chat part) --

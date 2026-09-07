@@ -172,6 +172,7 @@ M.question_advance = PC.question_advance
 M.questions_confirm = PC.questions_confirm
 M.questions_cancel = PC.questions_cancel
 M.show_picker = PC.show_picker
+M.update_picker = PC.update_picker
 M.picker_move = PC.picker_move
 M.picker_jump = PC.picker_jump
 M.picker_confirm = PC.picker_confirm
