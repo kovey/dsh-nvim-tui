@@ -598,8 +598,15 @@ export async function boot(app: App): Promise<void> {
           const data = event.data as { message?: ChatMessage } | ChatMessage | undefined
           const msg = (data as { message?: ChatMessage } | undefined)?.message ??
             (data as ChatMessage | undefined)
-          if (FeedRenderer.messageText(msg) === q[0]) {
-            q.shift()
+          // SELF-HEALING dedupe: search the WHOLE queue instead of q[0]
+          // only — one desync (a non-echoed submit, a text mismatch, a
+          // queue-cap eviction, a reload) used to poison EVERY later input
+          // into double-rendering forever; matching anywhere re-aligns at
+          // the very next message.
+          const text = FeedRenderer.messageText(msg)
+          const at = q.indexOf(text)
+          if (at >= 0) {
+            q.splice(0, at + 1)
             app.slices.ui.pendingEchoes.set(owner.id, q)
             echoed = true
           }

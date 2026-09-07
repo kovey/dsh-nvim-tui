@@ -1020,7 +1020,7 @@ const onInput = (app: App, text: string): void => {
       nlRec.feed.pushUser(hint, [])
       const q = app.slices.ui.pendingEchoes.get(app.slices.sessions.activeId as string) ?? []
       q.push(hint)
-      if (q.length > 4) q.shift()
+      if (q.length > 16) q.shift()
       app.slices.ui.pendingEchoes.set(app.slices.sessions.activeId as string, q)
       void followup(app, nlRec, hint)
       return
@@ -1036,7 +1036,7 @@ const onInput = (app: App, text: string): void => {
     echoRec.feed.pushUser(trimmed, [])
     const q = app.slices.ui.pendingEchoes.get(app.slices.sessions.activeId as string) ?? []
     q.push(trimmed)
-    if (q.length > 4) q.shift()
+    if (q.length > 16) q.shift()
     app.slices.ui.pendingEchoes.set(app.slices.sessions.activeId as string, q)
   }
   send(app, trimmed)
