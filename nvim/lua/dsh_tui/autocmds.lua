@@ -204,8 +204,14 @@ function A.install()
       if closed == nil then return end
       local owners = {}
       for id, reg in pairs(S.extReg) do
-        if reg.windows[closed] ~= nil
-          or (reg.panel ~= nil and reg.panel.win == closed) then
+        local owned = reg.windows[closed] ~= nil
+          or (reg.panel ~= nil and reg.panel.win == closed)
+        if reg.regions ~= nil then
+          for _, r in pairs(reg.regions) do
+            if r.win == closed then owned = true end
+          end
+        end
+        if owned then
           owners[#owners + 1] = id
         end
       end
@@ -261,10 +267,10 @@ function A.install()
   -- the new right edge / height.
   vim.api.nvim_create_autocmd('VimResized', {
     callback = function()
-      -- The panel column (ext panels + the reasoning panel when open) is
-      -- editor-relative — one reflow re-anchors the whole stack to the new
+      -- The region docks (ext regions + the reasoning panel when open) are
+      -- editor-relative — one reflow re-anchors every stack to the new
       -- screen edges / height budget.
-      API.panel_reflow()
+      API.region_reflow()
     end,
   })
   -- A colorscheme (re)applied after start() — lazy setups, mid-session

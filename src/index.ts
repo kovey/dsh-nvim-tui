@@ -52,6 +52,7 @@ export type {
   TuiExtApi, ExtNvimLayer, ExtSessionEventFilter, ExtEventName,
   ExtUiLayer, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult,
   ExtPickerOpts, ExtCommandSpec, ExtPanelOpts, ExtPanelHandles, ExtLuaLayer,
+  ExtRegionOpts, ExtRegionHandles,
 } from './ext-api.js'
 export { EXT_API_VERSION, EXT_HANDLER_TIMEOUT_MS, matchSessionEventFilter } from './ext-api.js'
 

@@ -99,9 +99,9 @@ function SE.toggle_reasoning()
   if S.channel then
     vim.rpcnotify(S.channel, 'dsh-reasoning-toggled', S.reasoningOpen)
   end
-  -- The reasoning panel participates in the panel column (LAST — the
-  -- deliberately claimed ext panels keep the top): re-lay the stack.
-  require('dsh_tui.api').panel_reflow()
+  -- The reasoning panel participates in the region docks (LAST on the
+  -- right — the deliberately claimed ext regions keep the top): re-lay.
+  require('dsh_tui.api').region_reflow()
   return S.reasoningOpen
 end
 

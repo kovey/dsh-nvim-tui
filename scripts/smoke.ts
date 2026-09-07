@@ -2562,6 +2562,62 @@ description:
   assert.equal(await lua(`return require("dsh_tui")._footer.win`, []), null, 'history footer closes with the float')
   await lua(`require("dsh_tui").fill_input(...)`, [''])
 
+  // 13l. region docks: 四边停靠槽（仅浮动窗口，chat/input 几何不变）
+  await lua(`require("dsh_tui.api").register({ id = "smoke-ext", name = "SmokeExt" })`, []) // 13j 注销过
+  const chatGeoBefore = await lua(`local w = require("dsh_tui").ids().chatWin
+    return { h = vim.api.nvim_win_get_height(w), wid = vim.api.nvim_win_get_width(w),
+      ih = vim.api.nvim_win_get_height(require("dsh_tui").ids().inputWin) }`, [])
+  // top: two exts stack left→right (explicit width wins, weighted share)
+  const top1 = await lua(`return require("dsh_tui.api").region_claim("smoke-all", { side = "top", size = 3, width = 30 })`, []) as { win: number; buf: number }
+  const top2 = await lua(`return require("dsh_tui.api").region_claim("smoke-all2", { side = "top", size = 3 })`, []) as { win: number; buf: number }
+  assert.ok(Number.isInteger(top1.win) && Number.isInteger(top2.win), 'top regions claim concurrently')
+  const cfgTop1 = await nvim.request('nvim_win_get_config', [top1.win])
+  const cfgTop2 = await nvim.request('nvim_win_get_config', [top2.win])
+  assert.equal(cfgTop1.row, 0, 'top region hugs the top edge')
+  assert.equal(cfgTop1.height, 3, 'top region honors explicit size rows')
+  assert.equal(cfgTop1.col, 0, 'first top region starts at the left edge')
+  assert.equal(cfgTop2.col, cfgTop1.width, 'second top region stacks right of the first')
+  assert.ok(cfgTop2.width <= Math.floor((await lua(`return vim.o.columns`, [])) * 0.9) + 1, 'top row stays within the width budget')
+  // bottom: anchored at the bottom edge
+  const bot1 = await lua(`return require("dsh_tui.api").region_claim("smoke-ext", { side = "bottom", size = 4, width = 40 })`, []) as { win: number }
+  const cfgBot1 = await nvim.request('nvim_win_get_config', [bot1.win])
+  const linesN = await lua(`return vim.o.lines`, [])
+  assert.equal(cfgBot1.row, linesN - cfgBot1.height, 'bottom region hugs the bottom edge')
+  assert.equal(cfgBot1.anchor, 'SW', 'bottom region anchors SW')
+  // duplicate side rejected; other side fine (per-ext per-side)
+  assert.ok(String((await lua(`return require("dsh_tui.api").region_claim("smoke-ext", { side = "bottom" })`, [])).err).includes('already holds'),
+    'same ext same side rejected')
+  const rightRegion = await lua(`return require("dsh_tui.api").region_claim("smoke-ext", { side = "right", height = 5 })`, []) as { win: number }
+  assert.ok(Number.isInteger(rightRegion.win), 'same ext can hold a DIFFERENT side concurrently')
+  // chat/input geometry untouched
+  const chatGeoAfter = await lua(`local w = require("dsh_tui").ids().chatWin
+    return { h = vim.api.nvim_win_get_height(w), wid = vim.api.nvim_win_get_width(w),
+      ih = vim.api.nvim_win_get_height(require("dsh_tui").ids().inputWin) }`, [])
+  assert.deepEqual(chatGeoAfter, chatGeoBefore, 'chat/input layout unchanged by regions (floats only)')
+  // panel alias: panel_claim IS region_claim('right') — same registry entry
+  assert.equal(await lua(`local r = require("dsh_tui.api").panel_claim("smoke-ext", {}) return r.err`, []), 'smoke-ext already holds a right region',
+    'panel_claim is the right-side alias (duplicate check shared)')
+  // handles().regions
+  const handlesRegions = await lua(`return require("dsh_tui.api").handles().regions`, [])
+  assert.ok(handlesRegions['smoke-ext'] != null && handlesRegions['smoke-ext'].side == 'right', 'handles().regions lists the right region (last claim per ext)')
+  // external close → prune removes the stack entry + reflows
+  await lua(`vim.api.nvim_win_close(${top1.win}, true)`, [])
+  await new Promise((r) => setTimeout(r, 300))
+  assert.equal(await lua(`local n = 0 for _, id in ipairs(require("dsh_tui.state").regionStacks.top) do if id == "smoke-all" then n = n + 1 end end return n`, []), 0,
+    'externally closed region leaves the stack (prune)')
+  const cfgTop2b = await nvim.request('nvim_win_get_config', [top2.win])
+  assert.equal(cfgTop2b.col, 0, 'remaining top region reclaims the left edge after prune')
+  // release everything
+  for (const cmd of [
+    `require("dsh_tui.api").region_release("smoke-all", "top")`,
+    `require("dsh_tui.api").region_release("smoke-all2", "top")`,
+    `require("dsh_tui.api").region_release("smoke-ext", "bottom")`,
+    `require("dsh_tui.api").region_release("smoke-ext", "right")`,
+  ]) {
+    await lua(cmd, [])
+  }
+  assert.equal(await lua(`return #require("dsh_tui.state").regionStacks.top + #require("dsh_tui.state").regionStacks.bottom`, []), 0, 'all regions released')
+
   // 12. require() must survive rtp resets (lazy.nvim rebuilds runtimepath and
   // enables vim.loader — package.preload keeps dsh_tui resolvable).
   await lua(

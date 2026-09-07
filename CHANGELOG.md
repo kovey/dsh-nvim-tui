@@ -23,6 +23,14 @@
 
 ## [v0.3.0（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.0)
 
+- **region 四边停靠槽（路线图落地）**：`api.region_claim/release` 与
+  `tui.ui.region/regionRelease` —— 右/左纵向列栈（panel 同款形态，panel
+  API 保留为 right/left 别名）、上/下横向行栈（显式 width 或权重分摊、
+  90% 屏宽挤压、高度 = size 行）；**仅浮动窗口、无分屏、聊天区/输入框
+  布局永不改变**；每 ext 每边一块、同边按 claim 顺序堆叠；VimResized /
+  claim / release / reasoning toggle / 外力关窗统一走 `region_reflow`；
+  `handles().regions`、`capabilities().region`。
+
 - **补全三个此前仅有占位目录、无处理器的命令**：
   - `/dir [路径]`：目录浏览浮窗（Enter 目录进入 / 文件在新标签页打开，
     gt/gT 切换）；

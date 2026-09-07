@@ -140,6 +140,31 @@ export interface ExtPanelHandles {
   buf: number
 }
 
+/** ui.region options (the four-edge dock slots — floats only, no splits;
+ *  the chat/input layout never changes). */
+export interface ExtRegionOpts {
+  /** Dock side (default 'right'). */
+  side?: 'right' | 'left' | 'top' | 'bottom'
+  /** right/left: column width; top/bottom: explicit cols — omitted =
+   *  weighted share of the dock budget. */
+  width?: number
+  /** right/left: explicit rows; omitted = weighted share. */
+  height?: number
+  /** top/bottom: rows (default 6). */
+  size?: number
+  title?: string
+  /** Hints embedded in the bottom border (nvim >= 0.10). */
+  footer?: string
+  /** Initial content lines. */
+  lines?: string[]
+}
+
+/** Claimed region: write content via api.nvim into `buf`. */
+export interface ExtRegionHandles {
+  win: number
+  buf: number
+}
+
 /** Extension slash command (name WITHOUT the leading '/'). */
 export interface ExtCommandSpec {
   name: string
@@ -184,6 +209,11 @@ export interface ExtUiLayer {
   panel(opts: ExtPanelOpts): Promise<ExtPanelHandles | null>
   /** Release the panel slot claimed via ui.panel. */
   panelRelease(): Promise<void>
+  /** Claim a dock region (four edges; floats only, the chat/input layout
+   *  never changes). null when unavailable/headless. */
+  region(opts: ExtRegionOpts): Promise<ExtRegionHandles | null>
+  /** Release the region claimed via ui.region. */
+  regionRelease(): Promise<void>
 }
 
 /** The stable public surface. Consume via `ctx.get('nvim-tui')`. */
@@ -292,6 +322,7 @@ export function installExtApi(app: App): void {
       float: true,
       picker: true,
       panel: !app.headless,
+      region: !app.headless,
       rpc: true,
     }),
     nvim: nvimLayer,
@@ -405,6 +436,23 @@ export function installExtApi(app: App): void {
       panelRelease: async () => {
         if (app.nvim === null) return
         await app.luaCall('require("dsh_tui.api").panel_release(...)', ['__node__']).catch(() => {})
+      },
+      region: async (opts) => {
+        if (app.nvim === null || app.headless) return null
+        const res = await app.luaCall('return require("dsh_tui.api").region_claim(...)', [
+          '__node__', { side: opts.side, width: opts.width, height: opts.height, size: opts.size,
+            title: opts.title, footer: opts.footer, lines: opts.lines ?? [] },
+        ]) as { win?: unknown; buf?: unknown; err?: unknown } | null | undefined
+        if (res === null || res === undefined || typeof res.err === 'string') {
+          app.notice(`⚠ ui.region: ${String(res?.err ?? '不可用')}`)
+          return null
+        }
+        if (typeof res.win !== 'number' || typeof res.buf !== 'number') return null
+        return { win: res.win, buf: res.buf }
+      },
+      regionRelease: async () => {
+        if (app.nvim === null) return
+        await app.luaCall('require("dsh_tui.api").region_release(...)', ['__node__', null]).catch(() => {})
       },
     },
 

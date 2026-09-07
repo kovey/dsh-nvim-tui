@@ -46,7 +46,12 @@ S.mainTab = nil
 S.extReg = {}
 -- Right/left-edge panel stack (multi-panel): claim-ordered extIds whose
 -- panels occupy the column; api.panel_reflow lays them out top-down.
+-- (Back-compat view of the right/left region stacks.)
 S.panelStack = {}
+-- Region docks (four sides): claim-ordered extIds per side. right/left are
+-- vertical columns, top/bottom horizontal rows — floats overlaying the
+-- chat; the core layout NEVER changes.
+S.regionStacks = { right = {}, left = {}, top = {}, bottom = {} }
 -- Lua-side extension commands: '/name' -> { name, desc, owner, fn }.
 -- Merged into the completion catalog by cmd_menu.entries().
 S.extCommands = {}

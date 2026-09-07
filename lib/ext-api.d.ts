@@ -129,6 +129,29 @@ export interface ExtPanelHandles {
     win: number;
     buf: number;
 }
+/** ui.region options (the four-edge dock slots — floats only, no splits;
+ *  the chat/input layout never changes). */
+export interface ExtRegionOpts {
+    /** Dock side (default 'right'). */
+    side?: 'right' | 'left' | 'top' | 'bottom';
+    /** right/left: column width; top/bottom: explicit cols — omitted =
+     *  weighted share of the dock budget. */
+    width?: number;
+    /** right/left: explicit rows; omitted = weighted share. */
+    height?: number;
+    /** top/bottom: rows (default 6). */
+    size?: number;
+    title?: string;
+    /** Hints embedded in the bottom border (nvim >= 0.10). */
+    footer?: string;
+    /** Initial content lines. */
+    lines?: string[];
+}
+/** Claimed region: write content via api.nvim into `buf`. */
+export interface ExtRegionHandles {
+    win: number;
+    buf: number;
+}
 /** Extension slash command (name WITHOUT the leading '/'). */
 export interface ExtCommandSpec {
     name: string;
@@ -175,6 +198,11 @@ export interface ExtUiLayer {
     panel(opts: ExtPanelOpts): Promise<ExtPanelHandles | null>;
     /** Release the panel slot claimed via ui.panel. */
     panelRelease(): Promise<void>;
+    /** Claim a dock region (four edges; floats only, the chat/input layout
+     *  never changes). null when unavailable/headless. */
+    region(opts: ExtRegionOpts): Promise<ExtRegionHandles | null>;
+    /** Release the region claimed via ui.region. */
+    regionRelease(): Promise<void>;
 }
 /** The stable public surface. Consume via `ctx.get('nvim-tui')`. */
 export interface TuiExtApi {

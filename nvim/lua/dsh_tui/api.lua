@@ -18,6 +18,16 @@ local API = {}
 --- Extension API version (semver; handshakes against the Node EXT_API_VERSION).
 API.version = '0.1.0'
 
+--- The four dock sides. Declared up top: handles() (line ~200) reads this
+--- while the region machinery lives further down.
+local REGION_SIDES = { 'right', 'left', 'top', 'bottom' }
+local function valid_side(side)
+  for _, s in ipairs(REGION_SIDES) do
+    if side == s then return true end
+  end
+  return false
+end
+
 --- Emit a User autocmd event: `User DshTui<event>`. The payload is BOTH
 --- passed as nvim_exec_autocmds `data` and parked in S.lastEvent — the
 --- `data` option does not reach vim.v.event on every nvim version, so
@@ -102,9 +112,10 @@ function API.register(spec)
     id = id,
     name = tostring(spec.name or id),
     version = tostring(spec.version or '0'),
-    windows = {},   -- win -> kind ('float' | 'panel' | 'tab')
+    windows = {},   -- win -> kind ('float' | 'region' | 'tab')
     buffers = {},   -- buf -> true
-    panel = nil,    -- { win, buf, width, title } (P2)
+    panel = nil,    -- right/left 兼容引用（= regions.right 或 regions.left）
+    regions = {},   -- side -> region（right/left/top/bottom，每边一块）
     rpc = {},       -- method -> fn (P3)
     submitHooks = {}, -- before_submit fns (P3)
     eventKinds = events,
@@ -164,6 +175,23 @@ function API.unregister(id)
       break
     end
   end
+  if reg.regions ~= nil then
+    for side, r in pairs(reg.regions) do
+      if r.win ~= nil and vim.api.nvim_win_is_valid(r.win) then
+        pcall(vim.api.nvim_win_close, r.win, true)
+      end
+      local stack = S.regionStacks[side]
+      if stack ~= nil then
+        for i, sid in ipairs(stack) do
+          if sid == id then
+            table.remove(stack, i)
+            break
+          end
+        end
+      end
+    end
+    reg.regions = {}
+  end
   -- Remove this extension's slash commands (a dead owner must not leave
   -- catalog entries behind).
   for name, c in pairs(S.extCommands) do
@@ -172,7 +200,7 @@ function API.unregister(id)
     end
   end
   S.extReg[id] = nil
-  API.panel_reflow()
+  API.region_reflow()
   if S.channel then
     vim.rpcnotify(S.channel, 'dsh-ext-unregister', id)
   end
@@ -200,7 +228,23 @@ function API.handles()
       if first == nil then first = panels[id] end
     end
   end
+  local regions = {}
+  for _, reg in pairs(S.extReg) do
+    if reg.regions ~= nil then
+      -- Fixed side order (right > left > top > bottom): the FIRST valid
+      -- side wins the per-ext map slot — deterministic for consumers
+      -- (pairs() over regions would flip between claims).
+      for _, side in ipairs(REGION_SIDES) do
+        local r = reg.regions[side]
+        if regions[reg.id] == nil and r ~= nil and r.win ~= nil
+          and vim.api.nvim_win_is_valid(r.win) then
+          regions[reg.id] = { side = side, win = r.win, buf = r.buf }
+        end
+      end
+    end
+  end
   ids.panels = panels
+  ids.regions = regions
   ids.panelWin = first ~= nil and first.win or nil
   ids.panelBuf = first ~= nil and first.buf or nil
   return ids
@@ -234,6 +278,11 @@ function API.is_ext_win(win)
   for _, reg in pairs(S.extReg) do
     if reg.windows[win] ~= nil then return true end
     if reg.panel ~= nil and reg.panel.win == win then return true end
+    if reg.regions ~= nil then
+      for _, r in pairs(reg.regions) do
+        if r.win == win then return true end
+      end
+    end
   end
   return false
 end
@@ -243,6 +292,11 @@ function API.is_ext_buf(buf)
   for _, reg in pairs(S.extReg) do
     if reg.buffers[buf] then return true end
     if reg.panel ~= nil and reg.panel.buf == buf then return true end
+    if reg.regions ~= nil then
+      for _, r in pairs(reg.regions) do
+        if r.buf == buf then return true end
+      end
+    end
   end
   return false
 end
@@ -277,9 +331,27 @@ function API.prune_dead_handles()
       end
       changed = true
     end
+    if reg.regions ~= nil then
+      for side, r in pairs(reg.regions) do
+        if r.win ~= nil and not vim.api.nvim_win_is_valid(r.win) then
+          reg.regions[side] = nil
+          if reg.panel == r then reg.panel = nil end
+          local stack = S.regionStacks[side]
+          if stack ~= nil then
+            for i, id in ipairs(stack) do
+              if id == reg.id then
+                table.remove(stack, i)
+                break
+              end
+            end
+          end
+          changed = true
+        end
+      end
+    end
   end
   if changed then
-    API.panel_reflow()
+    API.region_reflow()
   end
   return changed
 end
@@ -300,6 +372,7 @@ function API.ensure_registry(id)
       windows = {},
       buffers = {},
       panel = nil,
+      regions = {},
       rpc = {},
       submitHooks = {},
       eventKinds = nil,
@@ -481,108 +554,203 @@ local function panel_clamped_width(spec)
   return math.max(24, math.min(math.floor(w), math.max(24, math.floor(vim.o.columns * 0.6))))
 end
 
---- Lay out the panel column(s): every claimed ext panel (claim order) plus
---- the reasoning panel (when open, LAST — it is the transient overlay, the
---- deliberately claimed panels keep the top of the column). Heights:
---- explicit `height` rows win, the rest share the remaining budget; the
---- reasoning panel keeps its fixed 75% (squeezed proportionally when the
---- column overflows). Called on claim / release / reasoning toggle /
---- VimResized.
-function API.panel_reflow()
-  local entries = {}
-  for _, id in ipairs(S.panelStack) do
-    local reg = S.extReg[id]
-    if reg ~= nil and reg.panel ~= nil and reg.panel.win ~= nil
-      and vim.api.nvim_win_is_valid(reg.panel.win) then
-      entries[#entries + 1] = reg.panel
+--- Top/bottom region width clamp: 24..90% of the screen (rows run across).
+local function region_clamped_width(spec)
+  local w = tonumber(spec)
+  if w == nil or w <= 0 then
+    return math.max(24, math.floor(vim.o.columns * 0.5))
+  end
+  return math.max(24, math.min(math.floor(w), math.max(24, math.floor(vim.o.columns * 0.9))))
+end
+
+
+--- Lay out the region docks: every claimed ext region (claim order per
+--- side) plus the reasoning panel (when open, LAST on the right — the
+--- transient overlay keeps below the deliberately claimed regions).
+--- right/left = vertical columns (explicit height rows win, the rest share
+--- the remaining 90%-height budget); top/bottom = horizontal rows (explicit
+--- width cols win, the rest share the remaining 90%-width budget; height =
+--- `size` rows). Overflow squeezes proportionally; each side advances its
+--- OWN counter. The chat/input layout is NEVER touched — regions are
+--- editor-relative floats overlaying it (zindex 30).
+--- Called on claim / release / reasoning toggle / VimResized.
+function API.region_reflow()
+  local sides = { right = {}, left = {}, top = {}, bottom = {} }
+  for side, stack in pairs(S.regionStacks or {}) do
+    for _, id in ipairs(stack) do
+      local reg = S.extReg[id]
+      local r = reg ~= nil and reg.regions ~= nil and reg.regions[side]
+      if r ~= nil and r.win ~= nil and vim.api.nvim_win_is_valid(r.win) then
+        sides[side][#sides[side] + 1] = r
+      end
     end
   end
   if S.reasoningOpen and S.reasoningWin ~= nil
     and vim.api.nvim_win_is_valid(S.reasoningWin) then
-    entries[#entries + 1] = { win = S.reasoningWin, widthSpec = 0,
+    sides.right[#sides.right + 1] = { win = S.reasoningWin, widthSpec = 0,
       height = math.max(3, math.floor(vim.o.lines * 0.75)),
-      explicitHeight = true, reasoning = true }
+      explicitHeight = true, side = 'right', reasoning = true }
   end
-  if #entries == 0 then return end
-  local budget = math.max(3, math.floor(vim.o.lines * 0.9))
-  -- Explicit heights first; proportional squeeze on overflow.
-  local explicitTotal = 0
-  local weighted = {}
-  for _, p in ipairs(entries) do
-    if p.explicitHeight then
-      p._h = math.max(1, math.min(tonumber(p.height) or 6, budget))
-      explicitTotal = explicitTotal + p._h
-    else
-      weighted[#weighted + 1] = p
-    end
+  local changed = false
+  for _, side in ipairs(REGION_SIDES) do
+    if #sides[side] > 0 then changed = true end
   end
-  if explicitTotal > budget then
-    local scale = budget / explicitTotal
-    local used = 0
+  if not changed then return end
+
+  -- ---- vertical columns (right / left) --------------------------------
+  local function layout_vertical(entries)
+    local budget = math.max(3, math.floor(vim.o.lines * 0.9))
+    local explicitTotal = 0
+    local weighted = {}
     for _, p in ipairs(entries) do
       if p.explicitHeight then
-        p._h = math.max(1, math.floor(p._h * scale))
-        used = used + p._h
+        p._h = math.max(1, math.min(tonumber(p.height) or 6, budget))
+        explicitTotal = explicitTotal + p._h
+      else
+        weighted[#weighted + 1] = p
       end
     end
-    -- The last explicit entry absorbs rounding residue.
-    for i = #entries, 1, -1 do
-      if entries[i].explicitHeight and used < budget then
-        entries[i]._h = entries[i]._h + (budget - used)
-        break
+    if explicitTotal > budget then
+      local scale = budget / explicitTotal
+      local used = 0
+      for _, p in ipairs(entries) do
+        if p.explicitHeight then
+          p._h = math.max(1, math.floor(p._h * scale))
+          used = used + p._h
+        end
+      end
+      for i = #entries, 1, -1 do
+        if entries[i].explicitHeight and used < budget then
+          entries[i]._h = entries[i]._h + (budget - used)
+          break
+        end
       end
     end
-  end
-  local remaining = math.max(0, budget - explicitTotal)
-  local share = #weighted > 0 and math.max(1, math.floor(remaining / #weighted)) or 0
-  -- Per-side row counters: left and right columns stack INDEPENDENTLY
-  -- (a shared counter would park left panels below the right column).
-  local sideRows = { left = 0, right = 0 }
-  for _, p in ipairs(entries) do
-    local h = p.explicitHeight and p._h or share
-    local side = p.side or 'right'
-    local cfg = {
-      relative = 'editor',
-      anchor = side == 'left' and 'NW' or 'NE',
-      row = sideRows[side],
-      col = side == 'left' and 0 or vim.o.columns - 1,
-      width = panel_clamped_width(p.widthSpec),
-      height = h,
-      border = 'rounded',
-      style = 'minimal',
-      zindex = 30, -- above the chat, below menus/approvals (reasoning tier)
-    }
-    if vim.fn.has('nvim-0.9') == 1 and type(p.title) == 'string' and p.title ~= '' then
-      cfg.title = p.title
-      cfg.title_pos = 'center'
+    local remaining = math.max(0, budget - explicitTotal)
+    local share = #weighted > 0 and math.max(1, math.floor(remaining / #weighted)) or 0
+    local row = 0
+    for _, p in ipairs(entries) do
+      local h = p.explicitHeight and p._h or share
+      local side = p.side or 'right'
+      local cfg = {
+        relative = 'editor',
+        anchor = side == 'left' and 'NW' or 'NE',
+        row = row,
+        col = side == 'left' and 0 or vim.o.columns - 1,
+        width = panel_clamped_width(p.widthSpec),
+        height = h,
+        border = 'rounded',
+        style = 'minimal',
+        zindex = 30, -- above the chat, below menus/approvals (reasoning tier)
+      }
+      if vim.fn.has('nvim-0.9') == 1 and type(p.title) == 'string' and p.title ~= '' then
+        cfg.title = p.title
+        cfg.title_pos = 'center'
+      end
+      if vim.fn.has('nvim-0.10') == 1 and type(p.footer) == 'string' and p.footer ~= '' then
+        cfg.footer = p.footer
+        cfg.footer_pos = 'left'
+      end
+      pcall(vim.api.nvim_win_set_config, p.win, cfg)
+      row = row + h
     end
-    if vim.fn.has('nvim-0.10') == 1 and type(p.footer) == 'string' and p.footer ~= '' then
-      cfg.footer = p.footer
-      cfg.footer_pos = 'left'
-    end
-    pcall(vim.api.nvim_win_set_config, p.win, cfg)
-    sideRows[side] = sideRows[side] + h
   end
+
+  -- ---- horizontal rows (top / bottom) ----------------------------------
+  local function layout_horizontal(entries, side)
+    local budget = math.max(3, math.floor(vim.o.columns * 0.9))
+    local explicitTotal = 0
+    local weighted = {}
+    for _, p in ipairs(entries) do
+      if p.explicitWidth then
+        p._w = math.max(1, math.min(tonumber(p.width) or 40, budget))
+        explicitTotal = explicitTotal + p._w
+      else
+        weighted[#weighted + 1] = p
+      end
+    end
+    if explicitTotal > budget then
+      local scale = budget / explicitTotal
+      local used = 0
+      for _, p in ipairs(entries) do
+        if p.explicitWidth then
+          p._w = math.max(1, math.floor(p._w * scale))
+          used = used + p._w
+        end
+      end
+      for i = #entries, 1, -1 do
+        if entries[i].explicitWidth and used < budget then
+          entries[i]._w = entries[i]._w + (budget - used)
+          break
+        end
+      end
+    end
+    local remaining = math.max(0, budget - explicitTotal)
+    local share = #weighted > 0 and math.max(1, math.floor(remaining / #weighted)) or 0
+    local col = 0
+    for _, p in ipairs(entries) do
+      local w = p.explicitWidth and p._w or share
+      local h = math.max(1, math.min(tonumber(p.height) or 6, math.max(1, vim.o.lines - 2)))
+      p.height = h
+      local cfg = {
+        relative = 'editor',
+        anchor = side == 'bottom' and 'SW' or 'NW',
+        row = side == 'bottom' and vim.o.lines - h or 0,
+        col = col,
+        width = w,
+        height = h,
+        border = 'rounded',
+        style = 'minimal',
+        zindex = 30, -- above the chat, below menus/approvals (reasoning tier)
+      }
+      if vim.fn.has('nvim-0.9') == 1 and type(p.title) == 'string' and p.title ~= '' then
+        cfg.title = p.title
+        cfg.title_pos = 'center'
+      end
+      if vim.fn.has('nvim-0.10') == 1 and type(p.footer) == 'string' and p.footer ~= '' then
+        cfg.footer = p.footer
+        cfg.footer_pos = 'left'
+      end
+      pcall(vim.api.nvim_win_set_config, p.win, cfg)
+      col = col + w
+    end
+  end
+
+  if #sides.right > 0 or #sides.left > 0 then
+    layout_vertical(sides.right)
+    layout_vertical(sides.left)
+  end
+  if #sides.top > 0 then layout_horizontal(sides.top, 'top') end
+  if #sides.bottom > 0 then layout_horizontal(sides.bottom, 'bottom') end
 end
 
---- Claim a right/left-edge panel for a registered extension (ONE panel per
---- extension; multiple extensions stack in the claim-ordered column).
---- Returns { win, buf }, or { err = message } when this extension already
---- holds a panel. Content stays writable through the API; the TUI re-lays
---- the column on claim / release / reasoning toggle / terminal resize.
----   opts = { side? ('right'|'left'), width?, height? (explicit rows —
----           omitted = weighted share of the budget), title?, footer?,
----           lines? }
-function API.panel_claim(id, opts)
+--- Back-compat alias: the right/left columns used to be "the panel slot".
+function API.panel_reflow()
+  return API.region_reflow()
+end
+
+--- Claim one dock region for a registered extension (ONE per side per
+--- extension; same-side extensions stack in claim order). Returns
+--- { win, buf }, or { err = message } when this extension already holds a
+--- region on that side. Content stays writable through the API; the TUI
+--- re-lays the docks on claim / release / reasoning toggle / terminal
+--- resize. THE CHAT/INPUT LAYOUT NEVER CHANGES — regions are floats that
+--- overlay it (no splits, no reflow of core windows).
+---   opts = { side? ('right'|'left'|'top'|'bottom', default 'right'),
+---            width? (right/left: column width; top/bottom: explicit cols —
+---            omitted = weighted share), height? (right/left explicit rows),
+---            size? (top/bottom rows, default 6), title?, footer?, lines? }
+function API.region_claim(id, opts)
   local reg = S.extReg[id]
   if reg == nil then
     return { err = 'not registered: ' .. tostring(id) }
   end
-  if reg.panel ~= nil and reg.panel.win ~= nil
-    and vim.api.nvim_win_is_valid(reg.panel.win) then
-    return { err = id .. ' already holds a panel' }
-  end
   opts = type(opts) == 'table' and opts or {}
+  local side = valid_side(opts.side) and opts.side or 'right'
+  if reg.regions ~= nil and reg.regions[side] ~= nil
+    and reg.regions[side].win ~= nil and vim.api.nvim_win_is_valid(reg.regions[side].win) then
+    return { err = id .. ' already holds a ' .. side .. ' region' }
+  end
   local lines = opts.lines
   if type(lines) ~= 'table' then lines = {} end
   local buf = vim.api.nvim_create_buf(false, true)
@@ -591,16 +759,29 @@ function API.panel_claim(id, opts)
   vim.bo[buf].swapfile = false
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   require('dsh_tui.popup_core').lock_display_keys(buf)
-  -- q/Esc release the panel (a display surface; closing is the one edit
+  -- q/Esc release the region (a display surface; closing is the one edit
   -- the owner does not need to Nop).
   vim.api.nvim_buf_set_keymap(buf, 'n', 'q',
-    string.format('<Cmd>lua require("dsh_tui.api").panel_release(%q)<CR>', id),
+    string.format('<Cmd>lua require("dsh_tui.api").region_release(%q)<CR>', id),
     { noremap = true })
   vim.api.nvim_buf_set_keymap(buf, 'n', '<Esc>',
-    string.format('<Cmd>lua require("dsh_tui.api").panel_release(%q)<CR>', id),
+    string.format('<Cmd>lua require("dsh_tui.api").region_release(%q)<CR>', id),
     { noremap = true })
-  local side = opts.side == 'left' and 'left' or 'right'
-  local cfg = API.panel_geometry(opts.width, opts.title, opts.footer)
+  local vertical = side == 'right' or side == 'left'
+  local cfg
+  if vertical then
+    cfg = API.panel_geometry(opts.width, opts.title, opts.footer)
+  else
+    local h = math.max(1, math.min(tonumber(opts.size) or 6, math.max(1, vim.o.lines - 2)))
+    cfg = {
+      relative = 'editor',
+      anchor = side == 'bottom' and 'SW' or 'NW',
+      row = side == 'bottom' and vim.o.lines - h or 0,
+      col = 0,
+      width = region_clamped_width(opts.width),
+      height = h,
+    }
+  end
   cfg.border = 'rounded'
   cfg.style = 'minimal'
   cfg.zindex = 30 -- above the chat, below menus/approvals (reasoning tier)
@@ -608,54 +789,94 @@ function API.panel_claim(id, opts)
   vim.wo[win].number = false
   vim.wo[win].signcolumn = 'no'
   vim.wo[win].cursorline = false
-  local panel = { id = id, win = win, buf = buf, widthSpec = opts.width,
-    height = tonumber(opts.height), explicitHeight = tonumber(opts.height) ~= nil,
-    side = side, title = opts.title, footer = opts.footer }
-  reg.panel = panel
-  reg.windows[win] = 'panel'
+  local region = { id = id, win = win, buf = buf, side = side,
+    widthSpec = opts.width, title = opts.title, footer = opts.footer }
+  if vertical then
+    region.height = tonumber(opts.height)
+    region.explicitHeight = tonumber(opts.height) ~= nil
+  else
+    region.width = tonumber(opts.width)
+    region.explicitWidth = tonumber(opts.width) ~= nil
+    region.height = tonumber(opts.size) or 6
+  end
+  if reg.regions == nil then reg.regions = {} end
+  reg.regions[side] = region
+  -- Back-compat: right/left regions ARE the old "panel" surface.
+  if vertical then
+    reg.panel = region
+  end
+  reg.windows[win] = 'region'
   reg.buffers[buf] = true
-  -- De-dupe first: a panel closed EXTERNALLY (:q / another plugin) leaves
+  -- De-dupe first: a region closed EXTERNALLY (:q / another plugin) leaves
   -- its stack entry until the scheduled prune runs — re-claiming before
-  -- that would stack the id twice and reflow would lay this panel out
-  -- twice (double-height rows).
-  for i = #S.panelStack, 1, -1 do
-    if S.panelStack[i] == id then
-      table.remove(S.panelStack, i)
+  -- that would stack the id twice and reflow would lay it out twice.
+  local stack = S.regionStacks[side]
+  for i = #stack, 1, -1 do
+    if stack[i] == id then
+      table.remove(stack, i)
     end
   end
-  table.insert(S.panelStack, id)
-  API.panel_reflow()
+  table.insert(stack, id)
+  if vertical then
+    for i = #S.panelStack, 1, -1 do
+      if S.panelStack[i] == id then
+        table.remove(S.panelStack, i)
+      end
+    end
+    table.insert(S.panelStack, id)
+  end
+  API.region_reflow()
   require('dsh_tui.input').focus()
   return { win = win, buf = buf }
 end
 
---- Release this extension's panel (no-op when it holds none); the column
---- re-lays for the remaining panels.
-function API.panel_release(id)
+--- Release this extension's region on a side (no-op when it holds none);
+--- the dock re-lays for the remaining regions.
+function API.region_release(id, side)
   local reg = S.extReg[id]
   if reg == nil then
     return nil, 'not registered: ' .. tostring(id)
   end
-  if reg.panel ~= nil then
-    local p = reg.panel
-    reg.panel = nil
-    for i, sid in ipairs(S.panelStack) do
+  side = valid_side(side) and side or (reg.panel ~= nil and reg.panel.side or 'right')
+  local r = reg.regions ~= nil and reg.regions[side]
+  if r ~= nil then
+    reg.regions[side] = nil
+    if reg.panel == r then reg.panel = nil end
+    local stack = S.regionStacks[side]
+    for i, sid in ipairs(stack) do
       if sid == id then
-        table.remove(S.panelStack, i)
+        table.remove(stack, i)
         break
       end
     end
-    if p.win ~= nil and vim.api.nvim_win_is_valid(p.win) then
-      pcall(vim.api.nvim_win_close, p.win, true)
+    if side == 'right' or side == 'left' then
+      for i, sid in ipairs(S.panelStack) do
+        if sid == id then
+          table.remove(S.panelStack, i)
+          break
+        end
+      end
     end
-    if p.buf ~= nil and vim.api.nvim_buf_is_valid(p.buf) then
-      reg.buffers[p.buf] = nil
-      pcall(vim.api.nvim_buf_delete, p.buf, { force = true })
+    if r.win ~= nil and vim.api.nvim_win_is_valid(r.win) then
+      pcall(vim.api.nvim_win_close, r.win, true)
     end
-    API.panel_reflow()
+    if r.buf ~= nil and vim.api.nvim_buf_is_valid(r.buf) then
+      reg.buffers[r.buf] = nil
+      pcall(vim.api.nvim_buf_delete, r.buf, { force = true })
+    end
+    API.region_reflow()
     require('dsh_tui.input').focus()
   end
   return true
+end
+
+--- Back-compat aliases: the right/left columns used to be "the panel slot".
+function API.panel_claim(id, opts)
+  return API.region_claim(id, opts)
+end
+
+function API.panel_release(id)
+  return API.region_release(id)
 end
 
 -- ===========================================================================
