@@ -304,7 +304,13 @@ export async function boot(app: App): Promise<void> {
           if (res === null) return
           if (Array.isArray(res)) {
             if (res.length === 0) return
-            void app.openPicker('卡片操作', res).then((value) => {
+            // Kind badges: confirm ⚠ / input ✎ — the picker shows what
+            // happens BEFORE anything fires.
+            const items = res.map((a) => ({
+              label: (a.kind === 'confirm' ? '⚠ ' : a.kind === 'input' ? '✎ ' : '') + a.label,
+              value: a.value,
+            }))
+            void app.openPicker('卡片操作', items).then((value) => {
               if (value === null) return
               const idx = res.findIndex((i) => i.value === value) + 1
               if (idx > 0) dispatch(feed, idx)

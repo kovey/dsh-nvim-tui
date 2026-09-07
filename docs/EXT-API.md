@@ -175,7 +175,7 @@ const offRpc = tui.luaExt.on('git-panel', async (method, args) => {
 export interface TuiExtApi {
   version: string
   ready: Promise<void>
-  capabilities(): Record<string, boolean>        // headless/card/float/picker/panel/rpc
+  capabilities(): Record<string, boolean>        // headless/card/float/picker/panel/region/rpc
   nvim: { request; call; lua; ex }
   ui: { card; float; floatClose; picker; notice; statuslineSegment; panel; panelRelease }
   on(event: ExtEventName, cb): () => void
