@@ -114,9 +114,226 @@ export interface WorkflowRun {
     running: boolean;
     stopReason: string | undefined;
 }
-/** The complete cross-module surface. State lives here; functions that
- *  another module needs are members (filled by the owning module's install,
- *  no-op before that — safe because installs run before boot). */
+/** Domain slices (P0 architecture): the flat App members regrouped by
+ *  domain. The root App keeps kernel primitives as REAL properties and
+ *  forwards every legacy flat member through get/set accessors into its
+ *  slice — existing modules compile unchanged while the state physically
+ *  lives in slices. P1 removes the accessors and narrows module signatures.
+ */
+export interface AppSlices {
+    /** nvim process / window lifecycle + boot entry. */
+    runtime: {
+        nvim: NeovimClient | null;
+        child: ReturnType<typeof import('node:child_process')['spawn']> | null;
+        channelIdValue: number | null;
+        disposed: boolean;
+        quitting: boolean;
+        chatWinId: number | null;
+        reasoningOpen: boolean;
+        reasoningWinId: number | null;
+        feedDisposer: (() => void) | null;
+        hostDisposers: Array<() => void>;
+        spinnerTimer: ReturnType<typeof setInterval> | null;
+        spinnerIndex: number;
+        idleRefreshTimer: ReturnType<typeof setInterval> | null;
+        boot: () => Promise<void>;
+    };
+    /** Sessions, history, active-session state + subagent registry. */
+    sessions: {
+        sessions: Map<string, SessionRec>;
+        activeId: string | null;
+        historyHeaders: Array<{
+            id: string;
+            cwd?: string;
+            createdAt?: number;
+            title?: string;
+            origin?: string;
+            inheritedEventCount?: number;
+        }>;
+        historyById: Map<string, {
+            id: string;
+            cwd?: string;
+            createdAt?: number;
+            title?: string;
+            origin?: string;
+            inheritedEventCount?: number;
+        }>;
+        sessionEntries: Array<{
+            id: string;
+            title: string;
+            active: boolean;
+            kind: string;
+        }>;
+        runningSubagents: Map<string, {
+            parentId: string;
+            label: string;
+            startedAt: number;
+        }>;
+        childParent: Map<string, {
+            parentId: string;
+            label: string;
+        }>;
+        refreshHistory: () => Promise<void>;
+        refreshList: () => void;
+        readState: () => unknown;
+        recordState: (id: string) => void;
+        createSession: (cwdPath?: string) => Promise<void>;
+        resumeSession: (id: string) => Promise<void>;
+        updateTitle: () => void;
+        switchTo: (id: string) => Promise<void>;
+        selectSession: (id: string) => Promise<void>;
+        forkSession: (directive: string | undefined) => Promise<string | undefined>;
+        attachSession: (handle: AgentHandle, modelRef: ModelRef) => Promise<void>;
+        listSubagentChildren: (parentId: string) => Promise<Array<{
+            id: string;
+            label: string;
+            running: boolean;
+            mode: string | undefined;
+            createdAt?: number;
+        }>>;
+        seedRunningSubagents: (parentId: string) => Promise<void>;
+        cleanSubagentChain: (parentId: string, childId: string) => Promise<boolean>;
+        runningSubagentsOf: (parentId: string | null) => Array<{
+            parentId: string;
+            label: string;
+            startedAt: number;
+        }>;
+    };
+    /** Feed rendering / window surface helpers. */
+    ui: {
+        activeFeed: () => FeedRenderer | undefined;
+        feedForSubagent: (info: SubagentInfo) => SessionRec | undefined;
+        welcomeLines: () => {
+            above: Array<{
+                text: string;
+                group?: string;
+            }>;
+            below: Array<{
+                text: string;
+                group?: string;
+            }>;
+        };
+        ensureSpinner: () => void;
+        updateStatusline: () => void;
+        refreshBgJobs: () => void;
+        foldEvent: (rec: SessionRec, event: SessionEvent) => void;
+        maybePushFileDiff: (feed: FeedRenderer, event: SessionEvent, labelPrefix?: string) => void;
+        readFileSnapshot: (p: string) => Promise<string | null>;
+        pendingFileSnaps: Map<string, {
+            display: string;
+            before: string | null;
+        }>;
+        renderedDiffCalls: WeakMap<FeedRenderer, Set<string>>;
+        pendingEchoes: Map<string, string[]>;
+    };
+    /** Extension surface (ext-api.ts owns; installs run before boot). */
+    ext: {
+        extApi: TuiExtApi;
+        extReadyResolve: (() => void) | null;
+        extFire: (event: ExtEventName, payload: unknown) => void;
+        extSessionSubs: Array<{
+            filter: ExtSessionEventFilter;
+            cb: (sid: string, ev: SessionEvent) => void;
+        }>;
+        extDispatchSessionEvent: (sessionId: string, event: SessionEvent) => void;
+        extLuaSubs: Map<string, Set<string> | 'all'>;
+        extNodeCleanup: (() => void | Promise<void>) | null;
+        pendingCardInput: {
+            mark: number;
+            actionIdx: number;
+            prompt: string;
+        } | null;
+        extNodeHandlers: Map<string, {
+            handler: (method: string, args: unknown[]) => unknown | Promise<unknown>;
+            timeoutMs: number;
+        }>;
+        extStatusSegments: Map<string, {
+            text: string;
+            priority: number;
+        }>;
+    };
+    /** Transcript / event-stream reconstruction. */
+    trans: {
+        sessionEvents: (session: HarnessSession) => SessionEvent[];
+        synthesizeToolResult: (rec: SessionRec, callId: string, seq: number | undefined, turn: unknown, step: unknown) => void;
+        surfaceReplace: (session: HarnessSession, type: string, seq: number, data: unknown) => void;
+        repairOrphanToolCalls: (rec: SessionRec) => number;
+        workflowRuns: Map<string, WorkflowRun>;
+    };
+    /** Agent interaction: commands, input routing, pending UI, subagent chat. */
+    agent: {
+        followup: (rec: SessionRec, text: string, images?: Array<SaveImageAttachment | Extract<MessageContent, {
+            type: 'image';
+        }> | string>) => Promise<void>;
+        queueSubagentPrompt: (parentAgent: unknown, childId: string, text: string) => Promise<void>;
+        send: (text: string) => void;
+        pasteClipboardImage: () => void;
+        applyModelSelection: (next: ModelRef['current']) => Promise<void>;
+        pickModel: (arg: string | undefined) => Promise<void>;
+        stopCommand: () => void;
+        onInput: (text: string) => void;
+        onCommand: (line: string) => void;
+        helpCommand: () => Promise<void>;
+        restartCommand: () => void;
+        openDirPicker: (startPath: string) => Promise<string | null>;
+        atQuery: (query: string, start?: number) => Promise<void>;
+        currentSelection: () => ReturnType<ModelSelection['currentSelection']>;
+        commandSpecs: CommandSpec[];
+        registerCommands: (specs: CommandSpec[]) => void;
+        commandCatalog: () => Array<{
+            name: string;
+            desc: string;
+        }>;
+        refreshCommandCatalog: () => Promise<void>;
+        pendingInput: string[];
+        pendingImages: Array<SaveImageAttachment | Extract<MessageContent, {
+            type: 'image';
+        }>>;
+        pendingRename: {
+            kind: 'workspace';
+            id: string;
+        } | {
+            kind: 'session';
+            id: string;
+        } | null;
+        pendingQueueEdit: {
+            list: 'nextTurn' | 'nextStep';
+            messageId: string;
+        } | null;
+        approvalSettle: ((outcome: string) => void) | null;
+        approvalReq: ApprovalRequest | null;
+        questionsResolve: {
+            resolve: (v: {
+                answers: unknown[];
+            }) => void;
+            reject: (e: Error) => void;
+        } | null;
+        pickerSettle: ((value: string | null) => void) | null;
+        dirSettle: ((picked: string | null) => void) | null;
+        bellOn: boolean;
+        subagentView: {
+            childId: string;
+            feed: FeedRenderer;
+        } | null;
+        subagentChat: {
+            childId: string;
+            parentId: string;
+            label: string;
+            feed: FeedRenderer;
+        } | null;
+        pendingSubagentFollowup: {
+            childId: string;
+            label: string;
+        } | null;
+        openSubagentView: (childId: string, label: string) => Promise<void>;
+        openSubagentChat: (childId: string, label: string) => Promise<void>;
+        sendToSubagent: (text: string) => void;
+    };
+}
+/** The complete cross-module surface. State lives in `slices` (P0); the flat
+ *  members remain declared here for source compatibility and are forwarded
+ *  through accessor pairs — P1 narrows modules to their slices and drops
+ *  both the accessors and these declarations. */
 export interface App {
     ctx: Context;
     runtimeCtx: RuntimeCtx;
@@ -125,6 +342,28 @@ export interface App {
     watchdogMs: number;
     dumpPath: string;
     errorLogPath: string;
+    svc: <K extends keyof ServiceMap>(name: K) => ServiceMap[K] | undefined;
+    luaCall: (code: string, args?: unknown[]) => Promise<any>;
+    lua: {
+        ensureChat: (id: string) => Promise<any>;
+        ensureReasoning: (id: string) => Promise<any>;
+        setActive: (id: string) => Promise<any>;
+    };
+    requestExit: (code?: number) => void;
+    notice: (text: unknown) => void;
+    openPicker: (title: string, items: Array<{
+        label: string;
+        value: string;
+        active?: boolean;
+    }>) => Promise<string | null>;
+    guard: (label: string, fn: (...args: any[]) => Promise<unknown>) => (...args: any[]) => Promise<void>;
+    sleep: (ms: number) => Promise<void>;
+    exitDiag: (kind: string, ...detail: unknown[]) => void;
+    quit: (code?: number) => Promise<void>;
+    teardown: () => Promise<void>;
+    closeNvimWindow: () => Promise<void>;
+    /** The domain slices (the physical state home). */
+    slices: AppSlices;
     nvim: NeovimClient | null;
     child: ReturnType<typeof import('node:child_process')['spawn']> | null;
     channelIdValue: number | null;
@@ -138,6 +377,7 @@ export interface App {
     spinnerTimer: ReturnType<typeof setInterval> | null;
     spinnerIndex: number;
     idleRefreshTimer: ReturnType<typeof setInterval> | null;
+    boot: () => Promise<void>;
     sessions: Map<string, SessionRec>;
     activeId: string | null;
     historyHeaders: Array<{
@@ -171,14 +411,55 @@ export interface App {
         parentId: string;
         label: string;
     }>;
+    refreshHistory: () => Promise<void>;
+    refreshList: () => void;
+    readState: () => unknown;
+    recordState: (id: string) => void;
+    createSession: (cwdPath?: string) => Promise<void>;
+    resumeSession: (id: string) => Promise<void>;
+    updateTitle: () => void;
+    switchTo: (id: string) => Promise<void>;
+    selectSession: (id: string) => Promise<void>;
+    forkSession: (directive: string | undefined) => Promise<string | undefined>;
+    attachSession: (handle: AgentHandle, modelRef: ModelRef) => Promise<void>;
+    listSubagentChildren: (parentId: string) => Promise<Array<{
+        id: string;
+        label: string;
+        running: boolean;
+        mode: string | undefined;
+        createdAt?: number;
+    }>>;
+    seedRunningSubagents: (parentId: string) => Promise<void>;
+    cleanSubagentChain: (parentId: string, childId: string) => Promise<boolean>;
+    runningSubagentsOf: (parentId: string | null) => Array<{
+        parentId: string;
+        label: string;
+        startedAt: number;
+    }>;
+    activeFeed: () => FeedRenderer | undefined;
+    feedForSubagent: (info: SubagentInfo) => SessionRec | undefined;
+    welcomeLines: () => {
+        above: Array<{
+            text: string;
+            group?: string;
+        }>;
+        below: Array<{
+            text: string;
+            group?: string;
+        }>;
+    };
+    ensureSpinner: () => void;
+    updateStatusline: () => void;
+    refreshBgJobs: () => void;
+    foldEvent: (rec: SessionRec, event: SessionEvent) => void;
+    maybePushFileDiff: (feed: FeedRenderer, event: SessionEvent, labelPrefix?: string) => void;
+    readFileSnapshot: (p: string) => Promise<string | null>;
     pendingFileSnaps: Map<string, {
         display: string;
         before: string | null;
     }>;
     renderedDiffCalls: WeakMap<FeedRenderer, Set<string>>;
     pendingEchoes: Map<string, string[]>;
-    workflowRuns: Map<string, WorkflowRun>;
-    commandSpecs: CommandSpec[];
     extApi: TuiExtApi;
     extReadyResolve: (() => void) | null;
     extFire: (event: ExtEventName, payload: unknown) => void;
@@ -187,50 +468,53 @@ export interface App {
         cb: (sid: string, ev: SessionEvent) => void;
     }>;
     extDispatchSessionEvent: (sessionId: string, event: SessionEvent) => void;
-    /** Lua-side extension registry mirrors: extId → subscribed event kinds
-     *  ('all' = unfiltered), fed by dsh-ext-register notifications (P3 uses
-     *  it to route the session-event mirror). */
     extLuaSubs: Map<string, Set<string> | 'all'>;
-    /** Teardown hook set by ext-api: releases every Node-side panel/region
-     *  slot before the nvim window closes. */
     extNodeCleanup: (() => void | Promise<void>) | null;
-    /** Pending card INPUT action: the next dsh-input belongs to this card
-     *  action instead of the agent (set by boot's card dispatcher; empty
-     *  input cancels). */
     pendingCardInput: {
         mark: number;
         actionIdx: number;
         prompt: string;
     } | null;
-    /** dsh-ext bus: extId → { handler, timeoutMs } registered by a Node-side
-     *  consumer via `luaExt.on` (answered over the shared RPC channel). */
     extNodeHandlers: Map<string, {
         handler: (method: string, args: unknown[]) => unknown | Promise<unknown>;
         timeoutMs: number;
     }>;
-    /** Statusline segments contributed by extensions (id → text+priority). */
     extStatusSegments: Map<string, {
         text: string;
         priority: number;
     }>;
+    sessionEvents: (session: HarnessSession) => SessionEvent[];
+    synthesizeToolResult: (rec: SessionRec, callId: string, seq: number | undefined, turn: unknown, step: unknown) => void;
+    surfaceReplace: (session: HarnessSession, type: string, seq: number, data: unknown) => void;
+    repairOrphanToolCalls: (rec: SessionRec) => number;
+    workflowRuns: Map<string, WorkflowRun>;
+    followup: (rec: SessionRec, text: string, images?: Array<SaveImageAttachment | Extract<MessageContent, {
+        type: 'image';
+    }> | string>) => Promise<void>;
+    queueSubagentPrompt: (parentAgent: unknown, childId: string, text: string) => Promise<void>;
+    send: (text: string) => void;
+    pasteClipboardImage: () => void;
+    applyModelSelection: (next: ModelRef['current']) => Promise<void>;
+    pickModel: (arg: string | undefined) => Promise<void>;
+    stopCommand: () => void;
+    onInput: (text: string) => void;
+    onCommand: (line: string) => void;
+    helpCommand: () => Promise<void>;
+    restartCommand: () => void;
+    openDirPicker: (startPath: string) => Promise<string | null>;
+    atQuery: (query: string, start?: number) => Promise<void>;
+    currentSelection: () => ReturnType<ModelSelection['currentSelection']>;
+    commandSpecs: CommandSpec[];
+    registerCommands: (specs: CommandSpec[]) => void;
+    commandCatalog: () => Array<{
+        name: string;
+        desc: string;
+    }>;
+    refreshCommandCatalog: () => Promise<void>;
     pendingInput: string[];
     pendingImages: Array<SaveImageAttachment | Extract<MessageContent, {
         type: 'image';
     }>>;
-    subagentView: {
-        childId: string;
-        feed: FeedRenderer;
-    } | null;
-    subagentChat: {
-        childId: string;
-        parentId: string;
-        label: string;
-        feed: FeedRenderer;
-    } | null;
-    pendingSubagentFollowup: {
-        childId: string;
-        label: string;
-    } | null;
     pendingRename: {
         kind: 'workspace';
         id: string;
@@ -253,99 +537,23 @@ export interface App {
     pickerSettle: ((value: string | null) => void) | null;
     dirSettle: ((picked: string | null) => void) | null;
     bellOn: boolean;
-    svc: <K extends keyof ServiceMap>(name: K) => ServiceMap[K] | undefined;
-    luaCall: (code: string, args?: unknown[]) => Promise<any>;
-    lua: {
-        ensureChat: (id: string) => Promise<any>;
-        ensureReasoning: (id: string) => Promise<any>;
-        setActive: (id: string) => Promise<any>;
-    };
-    requestExit: (code?: number) => void;
-    currentSelection: () => ReturnType<ModelSelection['currentSelection']>;
-    activeFeed: () => FeedRenderer | undefined;
-    notice: (text: unknown) => void;
-    openPicker: (title: string, items: Array<{
-        label: string;
-        value: string;
-        active?: boolean;
-    }>) => Promise<string | null>;
-    guard: (label: string, fn: (...args: any[]) => Promise<unknown>) => (...args: any[]) => Promise<void>;
-    sleep: (ms: number) => Promise<void>;
-    exitDiag: (kind: string, ...detail: unknown[]) => void;
-    quit: (code?: number) => Promise<void>;
-    readState: () => unknown;
-    recordState: (id: string) => void;
-    refreshHistory: () => Promise<void>;
-    readFileSnapshot: (p: string) => Promise<string | null>;
-    maybePushFileDiff: (feed: FeedRenderer, event: SessionEvent, labelPrefix?: string) => void;
-    feedForSubagent: (info: SubagentInfo) => SessionRec | undefined;
-    refreshList: () => void;
-    registerCommands: (specs: CommandSpec[]) => void;
-    commandCatalog: () => Array<{
-        name: string;
-        desc: string;
-    }>;
-    refreshCommandCatalog: () => Promise<void>;
-    teardown: () => Promise<void>;
-    closeNvimWindow: () => Promise<void>;
-    foldEvent: (rec: SessionRec, event: SessionEvent) => void;
-    updateStatusline: () => void;
-    ensureSpinner: () => void;
-    refreshBgJobs: () => void;
-    runningSubagentsOf: (parentId: string | null) => Array<{
+    subagentView: {
+        childId: string;
+        feed: FeedRenderer;
+    } | null;
+    subagentChat: {
+        childId: string;
         parentId: string;
         label: string;
-        startedAt: number;
-    }>;
-    sessionEvents: (session: HarnessSession) => SessionEvent[];
-    synthesizeToolResult: (rec: SessionRec, callId: string, seq: number | undefined, turn: unknown, step: unknown) => void;
-    surfaceReplace: (session: HarnessSession, type: string, seq: number, data: unknown) => void;
-    repairOrphanToolCalls: (rec: SessionRec) => number;
-    attachSession: (handle: AgentHandle, modelRef: ModelRef) => Promise<void>;
-    welcomeLines: () => {
-        above: Array<{
-            text: string;
-            group?: string;
-        }>;
-        below: Array<{
-            text: string;
-            group?: string;
-        }>;
-    };
-    createSession: (cwdPath?: string) => Promise<void>;
-    resumeSession: (id: string) => Promise<void>;
-    updateTitle: () => void;
-    switchTo: (id: string) => Promise<void>;
-    selectSession: (id: string) => Promise<void>;
-    followup: (rec: SessionRec, text: string, images?: Array<SaveImageAttachment | Extract<MessageContent, {
-        type: 'image';
-    }> | string>) => Promise<void>;
-    queueSubagentPrompt: (parentAgent: unknown, childId: string, text: string) => Promise<void>;
-    send: (text: string) => void;
-    pasteClipboardImage: () => void;
-    applyModelSelection: (next: ModelRef['current']) => Promise<void>;
-    pickModel: (arg: string | undefined) => Promise<void>;
-    stopCommand: () => void;
-    openDirPicker: (startPath: string) => Promise<string | null>;
-    atQuery: (query: string, start?: number) => Promise<void>;
-    forkSession: (directive: string | undefined) => Promise<string | undefined>;
-    listSubagentChildren: (parentId: string) => Promise<Array<{
-        id: string;
+        feed: FeedRenderer;
+    } | null;
+    pendingSubagentFollowup: {
+        childId: string;
         label: string;
-        running: boolean;
-        mode: string | undefined;
-        createdAt?: number;
-    }>>;
-    seedRunningSubagents: (parentId: string) => Promise<void>;
-    cleanSubagentChain: (parentId: string, childId: string) => Promise<boolean>;
+    } | null;
     openSubagentView: (childId: string, label: string) => Promise<void>;
     openSubagentChat: (childId: string, label: string) => Promise<void>;
     sendToSubagent: (text: string) => void;
-    onInput: (text: string) => void;
-    onCommand: (line: string) => void;
-    helpCommand: () => Promise<void>;
-    restartCommand: () => void;
-    boot: () => Promise<void>;
 }
 /** Build the App object. All state and core services live here; module-owned
  *  functions start as no-ops and are installed afterwards. `ctx` is the
