@@ -162,6 +162,9 @@ export declare class FeedRenderer {
      *  block COMMITS into base (ordinary chat content). Incomplete state at
      *  turn/end commits as the turn's final state. */
     todoLiveRows: string[];
+    /** Last COMMITTED all-✓ todo key (per turn): repeated identical
+     *  todo_write re-emissions must not stack duplicate committed blocks. */
+    lastTodoKey: string;
     /** Pinned jobs board (setJobsBoard): same bottom-pinned slot — updates
      *  replace live; commitJobsBoard lands the FINAL state (all jobs
      *  terminal) into base. */

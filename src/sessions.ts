@@ -51,6 +51,7 @@ const attachSession = async (app: App, handle: AgentHandle, modelRef: ModelRef) 
     todos: null,
     todosItems: [],
     jobsCache: new Map(),
+    committedJobsKey: '',
     pendingToolCalls: new Map(),
     visionTmp: null,
     lastTurnStartAt: 0,

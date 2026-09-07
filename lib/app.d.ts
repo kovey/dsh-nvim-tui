@@ -95,6 +95,9 @@ export interface SessionRec {
         status: string;
         startedAt?: number;
     }>;
+    /** Committed batch identity (id:status 排序拼接)：终态板提交一次后，30s
+     *  心跳重新拉到的同一批终态任务不得再次提交。 */
+    committedJobsKey: string;
     runningSince?: number | null;
     /** tool/call events whose tool/result has not arrived yet (live-turn
      *  orphan detection for the duplicate-dsh-tools scheduler crash). */

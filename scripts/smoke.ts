@@ -661,6 +661,16 @@ description:
   assert.equal(tLines.filter((l: string) => l.startsWith('📋 待办')).length, 1, 're-emission replaces the pinned block')
   assert.ok(tLines.some((l: string) => l.includes('✓ 功能实现')), 'pinned status updates in place')
   assert.ok(!tLines.some((l: string) => l.includes('… 功能实现')), 'stale pinned row gone')
+  // all-✓ re-emission dedupe: identical completed list within the turn
+  // commits ONCE (models repeat the whole list).
+  feedB.applyEvent({ type: 'todo/write', time: 7040, data: { todos: [
+    { content: '功能实现', status: 'completed' }, { content: '补测试', status: 'completed' } ] } })
+  feedB.applyEvent({ type: 'todo/write', time: 7041, data: { todos: [
+    { content: '功能实现', status: 'completed' }, { content: '补测试', status: 'completed' } ] } })
+  await new Promise((r) => setTimeout(r, 250))
+  tLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(tLines.filter((l: string) => l.startsWith('📋 待办')).length, 1, 'identical all-✓ re-emission commits once')
+
   // all-✓ → COMMITS into base as ordinary chat content
   feedB.applyEvent({ type: 'todo/write', time: 7040, data: { todos: [
     { content: '功能实现', status: 'completed' }, { content: '补测试', status: 'completed' } ] } })

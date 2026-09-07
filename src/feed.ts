@@ -186,6 +186,9 @@ export class FeedRenderer {
    *  block COMMITS into base (ordinary chat content). Incomplete state at
    *  turn/end commits as the turn's final state. */
   todoLiveRows: string[]
+  /** Last COMMITTED all-✓ todo key (per turn): repeated identical
+   *  todo_write re-emissions must not stack duplicate committed blocks. */
+  lastTodoKey: string
   /** Pinned jobs board (setJobsBoard): same bottom-pinned slot — updates
    *  replace live; commitJobsBoard lands the FINAL state (all jobs
    *  terminal) into base. */
@@ -255,6 +258,7 @@ export class FeedRenderer {
     this.cardHandlers = new Map()
     this.cardRanges = new Map()
     this.todoLiveRows = []
+    this.lastTodoKey = ''
     this.jobsLiveRows = []
     this.jobsLiveKey = ''
     this.cardNs = null
@@ -279,6 +283,7 @@ export class FeedRenderer {
     this.extCards.clear()
     this.cardHandlers.clear()
     this.todoLiveRows = []
+    this.lastTodoKey = ''
     this.jobsLiveRows = []
     this.jobsLiveKey = ''
     if (this.ticker !== null) clearTimeout(this.ticker)
@@ -775,6 +780,7 @@ export class FeedRenderer {
         this.base.push('', '── turn ──')
         this.turnStartedAt = Date.now()
         this.todoLiveRows = []
+        this.lastTodoKey = ''
         this.turnMarkerBase = this.base.length
         if (!history && this.reasoningBuf !== null) {
           // The panel is a per-turn activity log (live turns only).
@@ -820,7 +826,12 @@ export class FeedRenderer {
         }
         const allDone = todos.length > 0 && todos.every((td) => td.status === 'completed')
         if (allDone) {
-          this.base.push(...rows)
+          // One-shot per turn: identical re-emissions skip the duplicate commit.
+          const key = rows.join('\n')
+          if (key !== this.lastTodoKey) {
+            this.base.push(...rows)
+            this.lastTodoKey = key
+          }
           this.todoLiveRows = []
         } else {
           this.todoLiveRows = rows
