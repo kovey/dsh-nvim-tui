@@ -407,7 +407,7 @@ README / UPGRADE）；peer 依赖
 ```
 src/                          TypeScript 源码（strict，唯一手写源）
   index.ts    组合根：build App → install 各模块 → boot（对应 init.lua 门面）
-  app.ts      共享状态 + 服务面（App 对象；对应 state.lua 的角色）
+  app.ts      kernel 原语 + 六域 slices（runtime/sessions/ui/ext/trans/agent；对应 state.lua 的角色）
   boot.ts     nvim 启动 / RPC 通知循环（含 dsh-ext 总线）/ 宿主事件接线 / headless 兜底
   ext-api.ts  扩展 API：ctx.provide('nvim-tui') 稳定面（nvim 执行层 / ui 原语 / 事件 / dsh-ext）
   statusline.ts 状态栏渲染、glance 段显隐、whale 动画、事件折叠统计

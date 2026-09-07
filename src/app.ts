@@ -132,11 +132,10 @@ export interface WorkflowRun {
   stopReason: string | undefined
 }
 
-/** Domain slices (P0 architecture): the flat App members regrouped by
- *  domain. The root App keeps kernel primitives as REAL properties and
- *  forwards every legacy flat member through get/set accessors into its
- *  slice — existing modules compile unchanged while the state physically
- *  lives in slices. P1 removes the accessors and narrows module signatures.
+/** Domain slices: the shared runner state, regrouped by domain. The root
+ *  App keeps ONLY the kernel primitives; every other piece of state lives
+ *  here and modules read/write it through `app.slices.<domain>.<field>`.
+ *  New state MUST land in a slice — scripts/check-arch.mjs enforces it.
  */
 export interface AppSlices {
   /** nvim process / window lifecycle + boot entry. */
@@ -256,10 +255,8 @@ export interface AppSlices {
   }
 }
 
-/** The complete cross-module surface. State lives in `slices` (P0); the flat
- *  members remain declared here for source compatibility and are forwarded
- *  through accessor pairs — P1 narrows modules to their slices and drops
- *  both the accessors and these declarations. */
+/** The complete cross-module surface: kernel primitives + the domain
+ *  slices. Nothing else may live on the root (check-arch.mjs guards). */
 export interface App {
   // -- kernel (REAL properties; the only thing P1 leaves on the root) --------
   ctx: Context
@@ -432,9 +429,8 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     },
   }
 
-  // Kernel primitives live on the root as REAL properties; every other flat
-  // member is an accessor pair forwarding into its slice (P0 — modules keep
-  // reading/writing `app.xxx` unchanged).
+  // Kernel primitives live on the root as REAL properties; everything else
+  // is domain state in `slices`.
   const app: App = {
     ctx,
     runtimeCtx,
