@@ -451,6 +451,7 @@ nvim/lua/dsh_tui/             nvim 侧 UI（按职责拆分的 Lua 模块）
 docs/                         文档（EXT-API.md 插件开放接口参考）
 examples/                     示例插件（examples/nvim/git-panel.lua + examples/dsh-plugin/）
 scripts/smoke.ts              无头冒烟测试（Node ≥23.6 直跑）
+scripts/check-arch.mjs        架构边界守卫（并入 npm run check：App kernel-only / slice 域名白名单）
 scripts/e2e.ts                真模型端到端回归
 tsconfig.json / tsconfig.scripts.json   主构建 / scripts 检查配置
 cordis.patch.yml              bundle patch：insert nvim-tui-runner 行

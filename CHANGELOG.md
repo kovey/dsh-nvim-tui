@@ -29,6 +29,14 @@
   plain 动作打断后，下一次输入仍会被路由给已失效的旧动作）；`api.register`
   拒绝 `__node` 保留前缀（防止插件抢注与 Node slot 机制串扰）。
 
+- **架构切片（P0/P1/P2，ARCHITECTURE.md）**：App 平铺字段 116 → kernel
+  19 项 + 六个领域 slice（runtime/sessions/ui/ext/trans/agent）；P0 兼容
+  访问器过渡（现有模块零改动）、P1 删除平铺成员与访问器、全模块改
+  `app.slices.<域>.<字段>` 访问、sessions 注册表改名 live、单域模块签名
+  收窄试点；P2 落地 `scripts/check-arch.mjs` 边界守卫（并入 npm run check：
+  App kernel-only、slice 域名白名单、遗留平铺访问零容忍）。行为零变化，
+  smoke 全程绿。
+
 - **卡片动作确认/输入型交互**：`actions` 支持 `kind`——`plain`（缺省，
   立即执行）、`confirm`（选择器确认，`confirmText` 提示）、`input`（输入框
   取值，`inputPrompt`/`inputDefault`；`pendingCardInput` 拦截下一条

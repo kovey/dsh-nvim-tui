@@ -30,6 +30,14 @@
 
 ## 三、第一问：模块化（App 拆分）
 
+> **实施状态（2026-09）**：P0 ✅（`1fd8e70`）P1 ✅（`86fec6c`）P2 ✅。
+> 落地偏差说明：签名收窄按「耦合面」取舍——单域模块
+> （market-install、deps）收窄为 `(app, s: AppSlices['agent'])`；
+> 跨 3-6 域的模块（boot/commands/sessions…）保留 `(app)` 签名，依赖面
+> 在每处 `app.slices.<域>.` 引用处显式可见。App 平铺字段 116 → kernel 19。
+> 边界守卫：`scripts/check-arch.mjs` 已并入 `npm run check`——App 接口
+> 必须 kernel-only、slice 域名白名单校验、遗留平铺访问零容忍。
+
 ### 3.1 领域 slice 划分
 
 | slice | 承载字段（示例） | 归属模块 |
