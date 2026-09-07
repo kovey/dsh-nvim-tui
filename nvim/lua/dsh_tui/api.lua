@@ -87,6 +87,12 @@ function API.register(spec)
     return nil, 'api.register: spec.id (string) is required'
   end
   local id = spec.id
+  -- Reserved: the runner's slot machinery maps Node-side ui.panel/region
+  -- claims onto '__node*' pseudo ids — a plugin registering one would
+  -- cross-talk with those claims.
+  if id:match('^__node') then
+    return nil, 'reserved id prefix: __node'
+  end
   if S.extReg[id] ~= nil then
     return nil, 'already registered: ' .. id
   end
@@ -657,6 +663,15 @@ function API.region_reflow()
   end
 
   -- ---- horizontal rows (top / bottom) ----------------------------------
+  -- Bottom rows must sit ABOVE the input box (the input owns the screen's
+  -- bottom rows — overlaying it would hide typing).
+  local inputTop = vim.o.lines
+  if S.input_win ~= nil and vim.api.nvim_win_is_valid(S.input_win) then
+    local ok, pos = pcall(vim.api.nvim_win_get_position, S.input_win)
+    if ok and pos ~= nil and type(pos[1]) == 'number' then
+      inputTop = pos[1]
+    end
+  end
   local function layout_horizontal(entries, side)
     local budget = math.max(3, math.floor(vim.o.columns * 0.9))
     local explicitTotal = 0
@@ -692,10 +707,11 @@ function API.region_reflow()
       local w = p.explicitWidth and p._w or share
       local h = math.max(1, math.min(tonumber(p.height) or 6, math.max(1, vim.o.lines - 2)))
       p.height = h
+      local bottomRow = math.max(0, inputTop - h)
       local cfg = {
         relative = 'editor',
         anchor = side == 'bottom' and 'SW' or 'NW',
-        row = side == 'bottom' and vim.o.lines - h or 0,
+        row = side == 'bottom' and bottomRow or 0,
         col = col,
         width = w,
         height = h,

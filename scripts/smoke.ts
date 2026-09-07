@@ -2228,6 +2228,7 @@ description:
   assert.ok(await lua(`return require("dsh_tui.api").register({ id = "smoke-ext", name = "SmokeExt", events = { "turn/end" } }) ~= nil`, []), 'api.register succeeds')
   assert.equal(await lua('return require("dsh_tui.api").registered("smoke-ext")', []), true, 'registered() true')
   assert.ok(String(await lua(`local ok, err = require("dsh_tui.api").register({ id = "smoke-ext" }); return err`, [])).includes('already registered'), 'duplicate register rejected')
+  assert.ok(String(await lua(`local ok, err = require("dsh_tui.api").register({ id = "__node_x" }); return err`, [])).includes('reserved'), '__node prefix is reserved (slot machinery)')
   // events normalization: omitted / empty / 'all' (string or list member) = every kind
   await lua(`require("dsh_tui.api").register({ id = "smoke-all", events = { "turn/start", "all" } })`, [])
   assert.equal(await lua(`return require("dsh_tui.state").extReg["smoke-all"].eventKinds`, []), null,
@@ -2610,11 +2611,12 @@ description:
   assert.equal(cfgTop1.col, 0, 'first top region starts at the left edge')
   assert.equal(cfgTop2.col, cfgTop1.width, 'second top region stacks right of the first')
   assert.ok(cfgTop2.width <= Math.floor((await lua(`return vim.o.columns`, [])) * 0.9) + 1, 'top row stays within the width budget')
-  // bottom: anchored at the bottom edge
+  // bottom: sits ABOVE the input box (never covers typing)
   const bot1 = await lua(`return require("dsh_tui.api").region_claim("smoke-ext", { side = "bottom", size = 4, width = 40 })`, []) as { win: number }
   const cfgBot1 = await nvim.request('nvim_win_get_config', [bot1.win])
-  const linesN = await lua(`return vim.o.lines`, [])
-  assert.equal(cfgBot1.row, linesN - cfgBot1.height, 'bottom region hugs the bottom edge')
+  const inputTopRow = await lua(`return vim.api.nvim_win_get_position(require("dsh_tui").ids().inputWin)[1]`, [])
+  assert.equal(cfgBot1.row, inputTopRow - cfgBot1.height, 'bottom region sits directly above the input box')
+  assert.ok(cfgBot1.row + cfgBot1.height <= inputTopRow, 'bottom region never overlaps the input box')
   assert.equal(cfgBot1.anchor, 'SW', 'bottom region anchors SW')
   // duplicate side rejected; other side fine (per-ext per-side)
   assert.ok(String((await lua(`return require("dsh_tui.api").region_claim("smoke-ext", { side = "bottom" })`, [])).err).includes('already holds'),

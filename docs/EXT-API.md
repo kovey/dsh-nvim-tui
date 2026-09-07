@@ -196,7 +196,8 @@ TUI 默认加载用户配置（`loadUserConfig !== false`），因此用户自�
 ```lua
 local api = require('dsh_tui').api
 local ok, err = api.register {
-  id = 'git-panel',            -- 必填，^[%w_%.-]+$；重复注册被拒
+  id = 'git-panel',            -- 必填，^[%w_%.-]+$；重复注册被拒；
+                               -- '__node' 前缀保留（runner slot 机制占用）
   name = 'Git 面板',
   version = '1.0.0',
   events = { 'turn/end' },     -- 订阅镜像会话事件（省略 / {} / 'all' / 含 'all' = 全部）
@@ -224,7 +225,8 @@ api.panel_release('git-panel')
 
 -- 四边停靠槽（region）：仅浮动窗口、聊天区/输入框布局永不改变、无分屏。
 -- 右/左纵向列栈（显式 height 或权重分摊，90% 屏高预算挤压）；
--- 上/下横向行栈（显式 width 或权重分摊，90% 屏宽预算挤压，高度 = size 行）。
+-- 上/下横向行栈（显式 width 或权重分摊，90% 屏宽预算挤压，高度 = size 行）；
+-- bottom 行锚定在输入框上方，永不遮挡输入。
 local t, err = api.region_claim('git-panel', { side = 'top', size = 3, width = 40 })
 local b, err = api.region_claim('git-panel', { side = 'bottom', size = 4 }) -- 每 ext 每边一块
 api.region_release('git-panel', 'top')

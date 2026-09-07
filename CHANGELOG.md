@@ -23,6 +23,12 @@
 
 ## [v0.3.0（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.0)
 
+- **修复：卡片交互与 region 三个审查发现**：bottom 区域原锚定在屏幕底缘
+  会盖住输入框——改为锚定在输入框上方（按输入窗实时位置计算）；卡片动作
+  分派入口统一清空 pendingCardInput（原实现下 pending 输入被另一张卡的
+  plain 动作打断后，下一次输入仍会被路由给已失效的旧动作）；`api.register`
+  拒绝 `__node` 保留前缀（防止插件抢注与 Node slot 机制串扰）。
+
 - **卡片动作确认/输入型交互**：`actions` 支持 `kind`——`plain`（缺省，
   立即执行）、`confirm`（选择器确认，`confirmText` 提示）、`input`（输入框
   取值，`inputPrompt`/`inputDefault`；`pendingCardInput` 拦截下一条

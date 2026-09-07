@@ -251,6 +251,9 @@ export async function boot(app: App): Promise<void> {
         const feed = app.activeFeed()
         if (feed === undefined) return
         const dispatch = (feed2: typeof feed, idx: number): void => {
+          // Any new card activation supersedes a pending input-mode prompt
+          // (the input branch below re-arms it when needed).
+          app.pendingCardInput = null
           const r = feed2.resolveCardAction(mark, idx)
           if (r === null || r.action === undefined) {
             app.notice('⚠ 卡片已失效')
