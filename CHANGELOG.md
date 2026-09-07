@@ -6,9 +6,13 @@
 ## [v0.3.1（2026-09-05）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.1)
 
 覆盖提交：
+[`cb2ba38`](https://github.com/kovey/dsh-nvim-tui/commit/cb2ba38) ·
+[`a64a736`](https://github.com/kovey/dsh-nvim-tui/commit/a64a736) ·
+[`b955980`](https://github.com/kovey/dsh-nvim-tui/commit/b955980) ·
+[`1af0d92`](https://github.com/kovey/dsh-nvim-tui/commit/1af0d92) ·
 [`7cb811e`](https://github.com/kovey/dsh-nvim-tui/commit/7cb811e)
 
-PLACEHOLDER_31
+- **修复：启动时旧会话恢复失败导致整个 dsh 进程闪退**。
   （issue [#5](https://github.com/kovey/dsh-nvim-tui/issues/5)：0.3.0 安装后
   `dsh --profile nvim` 闪一下就退出——旧会话恢复失败直通 boot 外层 catch →
   `quit(1)`，整个 dsh 进程随 TUI 一起退出）。
@@ -28,6 +32,140 @@ PLACEHOLDER_31
   - `/history`：输入历史浏览（最新在前，多行条目以 ↵ 折叠展示、Enter 回填
     原文，q/Esc 关闭）。
 
+## [v0.3.2（2026-09-07）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.2)
+
+覆盖提交：
+[`de24a5e`](https://github.com/kovey/dsh-nvim-tui/commit/de24a5e) ·
+[`1b1864b`](https://github.com/kovey/dsh-nvim-tui/commit/1b1864b) ·
+[`2d46e9c`](https://github.com/kovey/dsh-nvim-tui/commit/2d46e9c) ·
+[`656814c`](https://github.com/kovey/dsh-nvim-tui/commit/656814c) ·
+[`8fdf1de`](https://github.com/kovey/dsh-nvim-tui/commit/8fdf1de) ·
+[`cc038f3`](https://github.com/kovey/dsh-nvim-tui/commit/cc038f3) ·
+[`e477c5f`](https://github.com/kovey/dsh-nvim-tui/commit/e477c5f) ·
+[`1fd8e70`](https://github.com/kovey/dsh-nvim-tui/commit/1fd8e70) ·
+[`86fec6c`](https://github.com/kovey/dsh-nvim-tui/commit/86fec6c) ·
+[`b010056`](https://github.com/kovey/dsh-nvim-tui/commit/b010056) ·
+[`bb13252`](https://github.com/kovey/dsh-nvim-tui/commit/bb13252) ·
+[`1e15d42`](https://github.com/kovey/dsh-nvim-tui/commit/1e15d42) ·
+[`096195b`](https://github.com/kovey/dsh-nvim-tui/commit/096195b) ·
+[`9939404`](https://github.com/kovey/dsh-nvim-tui/commit/9939404) ·
+[`728b6cb`](https://github.com/kovey/dsh-nvim-tui/commit/728b6cb) ·
+[`9284a1b`](https://github.com/kovey/dsh-nvim-tui/commit/9284a1b) ·
+[`187906a`](https://github.com/kovey/dsh-nvim-tui/commit/187906a) ·
+[`7d62519`](https://github.com/kovey/dsh-nvim-tui/commit/7d62519) ·
+[`fc0fb24`](https://github.com/kovey/dsh-nvim-tui/commit/fc0fb24) ·
+[`3e3c8d9`](https://github.com/kovey/dsh-nvim-tui/commit/3e3c8d9) ·
+[`39a8070`](https://github.com/kovey/dsh-nvim-tui/commit/39a8070) ·
+[`4d2fa5c`](https://github.com/kovey/dsh-nvim-tui/commit/4d2fa5c)
+
+- **架构切片重构（P0–P2 + I1/I2 + 跨域收口）**。app.ts 的 116 个平铺状态
+  成员按域收拢为六个 slice（runtime/sessions/ui/ext/trans/agent），核心
+  服务实现外移到 owner 模块，App 收敛为 kernel 原语（19 项）+ slice 壳，
+  app.ts 794 → 498 行：
+  - **P0 切片**：116 个历史平铺成员改 get/set 访问器转发进 slice
+    （buildApp 重写为 slices 字面量 + FLAT_FIELDS 映射 + defineProperty
+    转发），现有模块零改动、tsc 全绿；
+  - **P1 落地**：删除平铺字段与访问器，全模块机械改写为
+    `app.slices.<域>.field` 站点级访问，sessions 注册表改名 `live`
+    （`app.slices.sessions.live`）；installMarketInstall/installDeps 试点
+    签名收窄为 `(app, AppSlices['agent'])`，闭包链同步穿参；
+  - **P2 边界守卫**：新增 `scripts/check-arch.mjs` 并入 `npm run check`
+    ——App 接口 kernel-only（遗留平铺哨兵字段不得回归）、slice 域名白名单、
+    src 模块零遗留平铺访问三项断言；
+  - **I1 服务外移**：13 个核心服务实现搬入 owner 模块（sessions 的
+    readState/recordState/refreshHistory/refreshList、transcript 的
+    readFileSnapshot/maybePushFileDiff、subagents 的 feedForSubagent、
+    commands 的 registerCommands/commandCatalog/refreshCommandCatalog、
+    boot 的 exitDiag/closeNvimWindow/teardown/quit——boot 入口同步注入、
+    任何 await 前就位），createApp 留壳；check-arch 增 MOVED_SERVICES
+    哨兵，i1-services-check 运行时验证壳默认值 + 注入后各服务真实行为；
+  - **I2 默认值外移**：slice 默认值由 owner 模块 install 时注入自己的域
+    （runtime→boot 拆出 installRuntime 最先调用、ext→ext-api、
+    sessions+ui.activeFeed→sessions、trans+ui.diff→transcript、ui 表面→
+    statusline、ui.feedForSubagent+agent 子代理部分→subagents、agent 主体→
+    commands），命令注册设施与 commandSpecs 存储回归 kernel（t=0 存在）；
+    check-arch 增 MOVED_STATE 哨兵（createApp 不得再种 slice 初始状态）；
+  - **跨域读收口**：slice 状态数据成员全部 readonly，owner 经 WritableSlice
+    视图写入；21 个域操作方法（agent 13 / ext 2 / runtime 4 / boot 2 辅助）
+    收口 38 处历史跨域状态写，check-arch 增非 owner 文件跨域写扫描；
+  - **审查修复**：子代理注册表函数（listSubagentChildren/
+    seedRunningSubagents/cleanSubagentChain/runningSubagentsOf + zstd
+    判定）归位 sessions 域，install 期跨域注入清零；spinnerStep 补回帧
+    取模（帧索引不再越界）；ext 域 setPendingCardInput/fireExtReady 此前
+    只声明未注入（Object.assign 逃过 tsc，boot 的卡片输入/ready 路径会
+    TypeError）——已在 installExtApi 注入，并新增
+    `scripts/app-ops-check.mjs` 运行时守卫（19 个 ops 全量注入断言 +
+    spinner 取模/卡片 pending 回环）并入 check 堵住该盲区；
+  - **验证**：tsc check / build / smoke×3 全绿，完整 install 链探针
+    （A–H 全通）+ services 探针 + panel-stack/table-wrap 回归通过。
+
+- **EXT-API：ui.region 四边停靠槽 + Node 侧多块并发（slot 机制）**。
+  - **region 四边停靠槽**：浮动窗口停靠从右/左两缘泛化为四边——右/左
+    纵向列栈（panel 同款）、上/下横向行栈（显式 width 优先、权重分摊剩余
+    预算、90% 屏宽挤压），每 ext 每边一块、同边重复 claim 拒绝、跨边并存；
+    Lua 侧原语 `api.region_claim/release`，`panel_claim/release` 保留为
+    right/left 别名，`region_reflow` 泛化原 panel_reflow（四边独立计数，
+    reasoning 面板仍排右缘列底，VimResized/toggle/注销统一走它）；硬约束
+    不变——仅 editor-relative 浮窗、聊天区/输入框布局永不改变、无分屏；
+    capabilities 增 region，handles() 增 regions（固定边序、首边优先）；
+    smoke 13l 覆盖四边栈几何与聊天/输入几何不变断言。
+  - **Node 侧多块并发**：`ui.panel`/`ui.region` 增 slot 机制（槽名映射伪
+    extId：default 沿用 `__node__` 兼容、其余 `__node_N`，`__node*` 前缀
+    保留、Lua 侧 register 拒绝抢注）；同槽同边重复 claim = 释放旧块换新块
+    （releaseClaim），panelRelease/regionRelease(slot?) 按槽释放（无参仅
+    default）；句柄新增 slot + release()；`ui.panels()` 盘点全部面板；
+    teardown 钩子 extNodeCleanup——quit/teardown 关窗前先释放槽位再广播。
+    Lua 侧零改动；fake-app 验证多槽并发/替换语义/default 兼容/句柄释放/
+    盘点/teardown 清理。
+
+- **卡片动作确认/输入型交互（kind=confirm/input）**。ExtCardAction 增加
+  kind 字段，`dsh-ext-card-activate` 分派按类型走三条路：plain 直发；
+  confirm 弹选择器确认（条目补 ⚠/✎ 角标，先看到后果再触发）；input 进入
+  pendingCardInput 单槽（输入框预填 inputDefault + notice 提示），
+  `dsh-input` 拦截先于 `tui:input` 广播——空输入取消、卡片失效自动取消、
+  分派入口统一清旧 pending（旧 pending 不再劫持下一次输入）；headless 下
+  confirm/input 退化为 plain。动作 API 拆分为 resolveCardAction（渲染期）
+  与 fireCardAction（触发期）；smoke 13i2 覆盖三种形态最终值断言。
+
+- **待办/任务面板实时化 + 钉底化**。
+  - **修复：待办清单状态实时更新（不再堆叠旧副本）**。todo 块此前每次
+    重发全量清单都 append 新副本，状态更新被旧块淹没；现在 feed 跟踪当
+    回合活块（todoBlockStart/todoBlockLen），重发时 base.splice 原位替换
+    + shiftExtCards 偏移修正（复用 ext-card 模式），空清单移除块，
+    turn/start 重置；smoke 6a2 断言单块/原位更新/旧行消失/空移除。
+  - **/tasks 弹窗化 + 聊天区实时任务板**：tasksCommand 改弹窗列表
+    （openPicker，选中 kill:<id> 即取消，保留 `/tasks kill <id>` 直呼
+    路径）；feed 新增 setJobsBlock 常驻任务板（jobsBlockStart/Len/Key，
+    同内容 no-op、变更原位 splice+shiftExtCards、空列表移除）；
+    refreshBgJobs 由 onJobsChanged/onJobDone 事件驱动，把
+    「⚙ 任务 N 项 · X 运行中 + 状态图标行」实时重发到活跃会话 feed。
+  - **面板钉底化**：todoLiveRows/jobsLiveRows 钉底活行槽——flush 组装在
+    activity 行之前（流式内容顶不走、永不遮挡 thinking）；todo 全 ✓ 才
+    base.push 提交进聊天流，未完成留在钉底实时更新，turn/end 以最终状态
+    提交；setJobsBoard 同内容 no-op，commitJobsBoard 终态落盘（替换原
+    splice 机制）；rec.jobsCache 缓存 jobs.list 与 onJobDone 合并结果
+    （live 列表掉落的运行态兜底 killed）。smoke 6a2/6a2b 重写：钉底位置
+    （头部=len-4、thinking 恒为末行）、原位更新、全 ✓ 提交进流、turn/end
+    兜底提交、终态提交。
+  - **修复：终态面板被 30s idle 心跳反复重发**。jobs.list 终态后仍返回
+    任务、缓存清空被心跳重新填充 → 终态板无限重复提交（实测 89/119/149s
+    三连）；todo 全 ✓ 重发同列表同理。现在终态提交 key = id:status 排序
+    拼接（不含 elapsed），rec.committedJobsKey 保证一批只提交一次（新批次
+    新 id 自然重新走钉底→提交）；feed 的 lastTodoKey 回合内去重
+    （turn/start 重置）；jobs-commit-probe 验证运行态三连钉底零提交 /
+    终态三连只提交一次 / 新批次再走全流程。
+  - **/tasks 与 /todo 弹窗实时同步**：openLivePicker + update_picker 原位
+    重渲染（行集/取值表原位替换、窗口高度自适应、光标越界收敛、无 picker
+    时 no-op）；弹窗打开期间 jobs 事件链与 todo/write foldEvent 推送最新
+    行（图标/耗时/状态实时刷新）、结算时注销 updater；smoke 覆盖
+    update_picker 全语义。
+
+- 文档同步：ARCHITECTURE.md 固化切片方案与 install 体三原则；EXT-API.md
+  补 region/slot/capabilities；README 命令数 60 → 61；check / build /
+  smoke 全绿。
+
+## [v0.3.0（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.0)
+
 覆盖提交：
 [`b2f51be`](https://github.com/kovey/dsh-nvim-tui/commit/b2f51be) ·
 [`8b44f34`](https://github.com/kovey/dsh-nvim-tui/commit/8b44f34) ·
@@ -45,36 +183,6 @@ PLACEHOLDER_31
 [`7447045`](https://github.com/kovey/dsh-nvim-tui/commit/7447045) ·
 [`c7501ba`](https://github.com/kovey/dsh-nvim-tui/commit/c7501ba) ·
 [`689d4af`](https://github.com/kovey/dsh-nvim-tui/commit/689d4af)
-
-
-
-## [v0.3.2（2026-09-07）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.2)
-
-覆盖提交：
-[`1b1864b`](https://github.com/kovey/dsh-nvim-tui/commit/1b1864b) ·
-[`2d46e9c`](https://github.com/kovey/dsh-nvim-tui/commit/2d46e9c) ·
-[`656814c`](https://github.com/kovey/dsh-nvim-tui/commit/656814c) ·
-[`8fdf1de`](https://github.com/kovey/dsh-nvim-tui/commit/8fdf1de) ·
-[`cc038f3`](https://github.com/kovey/dsh-nvim-tui/commit/cc038f3) ·
-[`e477c5f`](https://github.com/kovey/dsh-nvim-tui/commit/e477c5f) ·
-[`de24a5e`](https://github.com/kovey/dsh-nvim-tui/commit/de24a5e) ·
-[`1fd8e70`](https://github.com/kovey/dsh-nvim-tui/commit/1fd8e70) ·
-[`86fec6c`](https://github.com/kovey/dsh-nvim-tui/commit/86fec6c) ·
-[`b010056`](https://github.com/kovey/dsh-nvim-tui/commit/b010056) ·
-[`bb13252`](https://github.com/kovey/dsh-nvim-tui/commit/bb13252) ·
-[`1e15d42`](https://github.com/kovey/dsh-nvim-tui/commit/1e15d42) ·
-[`096195b`](https://github.com/kovey/dsh-nvim-tui/commit/096195b) ·
-[`9939404`](https://github.com/kovey/dsh-nvim-tui/commit/9939404) ·
-[`728b6cb`](https://github.com/kovey/dsh-nvim-tui/commit/728b6cb) ·
-[`9284a1b`](https://github.com/kovey/dsh-nvim-tui/commit/9284a1b) ·
-[`187906a`](https://github.com/kovey/dsh-nvim-tui/commit/187906a) ·
-[`7d62519`](https://github.com/kovey/dsh-nvim-tui/commit/7d62519) ·
-[`fc0fb24`](https://github.com/kovey/dsh-nvim-tui/commit/fc0fb24) ·
-[`3e3c8d9`](https://github.com/kovey/dsh-nvim-tui/commit/3e3c8d9) ·
-[`39a8070`](https://github.com/kovey/dsh-nvim-tui/commit/39a8070) ·
-[`4d2fa5c`](https://github.com/kovey/dsh-nvim-tui/commit/4d2fa5c)
-
-## [v0.3.0（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.0)
 
 - **插件开放接口（EXT-API，P0–P4）**。本插件对外开放稳定接口，其他 dsh 插件
   与 nvim 插件可在 TUI 内渲染 UI、使用 nvim 窗口、读写输入、订阅会话事件：
