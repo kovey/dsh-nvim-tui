@@ -3,35 +3,6 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [v0.3.1（2026-09-05）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.1)
-
-覆盖提交：
-[`cb2ba38`](https://github.com/kovey/dsh-nvim-tui/commit/cb2ba38) ·
-[`a64a736`](https://github.com/kovey/dsh-nvim-tui/commit/a64a736) ·
-[`b955980`](https://github.com/kovey/dsh-nvim-tui/commit/b955980) ·
-[`1af0d92`](https://github.com/kovey/dsh-nvim-tui/commit/1af0d92) ·
-[`7cb811e`](https://github.com/kovey/dsh-nvim-tui/commit/7cb811e)
-
-- **修复：启动时旧会话恢复失败导致整个 dsh 进程闪退**。
-  （issue [#5](https://github.com/kovey/dsh-nvim-tui/issues/5)：0.3.0 安装后
-  `dsh --profile nvim` 闪一下就退出——旧会话恢复失败直通 boot 外层 catch →
-  `quit(1)`，整个 dsh 进程随 TUI 一起退出）。
-  此前启动时恢复会话（`resumeSessionId` 显式指定或自动恢复上次会话）一旦
-  reject（旧版本/不兼容的会话日志等），rejection 直通 boot 外层 catch →
-  `quit(1)`，整个 dsh 进程随 TUI 一起退出。现在 boot 恢复路径改为
-  `resumeOrFresh` 兜底：恢复失败时先把错误写入错误日志（含会话 id 与原因，
-  不再无痕），随后打开一个全新会话，并在新会话的聊天窗口提示
-  「⚠ 恢复会话失败 <id> — <原因>（已新建会话）」；自动恢复成功仍显示原有
-  「已自动恢复上次会话」提示，失败时不再误显示。旧会话仍在 `/sessions`
-  列表中，可随时重试打开。新建会话本身失败仍视为致命错误（loud-fail）。
-
-- **补全三个此前仅有占位目录、无处理器的命令**：
-  - `/dir [路径]`：目录浏览浮窗（Enter 目录进入 / 文件在新标签页打开，
-    gt/gT 切换）；
-  - `/lines [路径]`：文件行视图（只读浮窗，`i` 打开编辑；无参弹目录选择器）；
-  - `/history`：输入历史浏览（最新在前，多行条目以 ↵ 折叠展示、Enter 回填
-    原文，q/Esc 关闭）。
-
 ## [v0.3.2（2026-09-07）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.2)
 
 覆盖提交：
@@ -163,6 +134,35 @@
 - 文档同步：ARCHITECTURE.md 固化切片方案与 install 体三原则；EXT-API.md
   补 region/slot/capabilities；README 命令数 60 → 61；check / build /
   smoke 全绿。
+
+## [v0.3.1（2026-09-05）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.1)
+
+覆盖提交：
+[`cb2ba38`](https://github.com/kovey/dsh-nvim-tui/commit/cb2ba38) ·
+[`a64a736`](https://github.com/kovey/dsh-nvim-tui/commit/a64a736) ·
+[`b955980`](https://github.com/kovey/dsh-nvim-tui/commit/b955980) ·
+[`1af0d92`](https://github.com/kovey/dsh-nvim-tui/commit/1af0d92) ·
+[`7cb811e`](https://github.com/kovey/dsh-nvim-tui/commit/7cb811e)
+
+- **修复：启动时旧会话恢复失败导致整个 dsh 进程闪退**。
+  （issue [#5](https://github.com/kovey/dsh-nvim-tui/issues/5)：0.3.0 安装后
+  `dsh --profile nvim` 闪一下就退出——旧会话恢复失败直通 boot 外层 catch →
+  `quit(1)`，整个 dsh 进程随 TUI 一起退出）。
+  此前启动时恢复会话（`resumeSessionId` 显式指定或自动恢复上次会话）一旦
+  reject（旧版本/不兼容的会话日志等），rejection 直通 boot 外层 catch →
+  `quit(1)`，整个 dsh 进程随 TUI 一起退出。现在 boot 恢复路径改为
+  `resumeOrFresh` 兜底：恢复失败时先把错误写入错误日志（含会话 id 与原因，
+  不再无痕），随后打开一个全新会话，并在新会话的聊天窗口提示
+  「⚠ 恢复会话失败 <id> — <原因>（已新建会话）」；自动恢复成功仍显示原有
+  「已自动恢复上次会话」提示，失败时不再误显示。旧会话仍在 `/sessions`
+  列表中，可随时重试打开。新建会话本身失败仍视为致命错误（loud-fail）。
+
+- **补全三个此前仅有占位目录、无处理器的命令**：
+  - `/dir [路径]`：目录浏览浮窗（Enter 目录进入 / 文件在新标签页打开，
+    gt/gT 切换）；
+  - `/lines [路径]`：文件行视图（只读浮窗，`i` 打开编辑；无参弹目录选择器）；
+  - `/history`：输入历史浏览（最新在前，多行条目以 ↵ 折叠展示、Enter 回填
+    原文，q/Esc 关闭）。
 
 ## [v0.3.0（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.0)
 
