@@ -300,7 +300,68 @@ Node → Lua: runner 调 api.rpc_dispatch(extId, method, args) / api.rpc_event(.
 
 ## 八、路线图（未实现项）
 
-- region 布局（chat 让出顶部/底部区域的真实分屏槽）—— 当前面板列为右缘浮动栈。
+### region 布局（已细化，待实施）
+
+**硬约束（本次明确）**
+
+1. **聊天区、输入框布局永不改变**：不收缩、不让位、不参与任何高度/宽度
+   预算调整——两窗口布局、winfixheight、自愈层全部维持现状。
+2. **扩展窗口只允许浮动窗口**：editor-relative float，**不支持分屏/分割
+   窗口**（nvim split 树会与两窗口布局打架，明确不做）。
+3. 复用登记制：注册过的 region 浮窗被 boot 守卫/克隆守卫放行，未登记的
+   维持严管；teardown / unregister / 外力关窗的清理路径与现有面板一致。
+
+**定位**：region = 屏幕四边的「逻辑停靠槽」——右/左为纵向列栈，上/下为
+横向行栈；浮窗覆盖在聊天区之上（与现有右缘面板列同一形态），z-index 30
+（聊天之上、菜单/审批之下），任何情况下不动 chat/input 的几何。
+
+**API 形态**
+
+```lua
+-- Lua 面：每 ext 每边一块；同边多 ext = 栈（不是 tab）
+local r, err = api.region_claim('ext', { side = 'right', -- 'right'|'left'|'top'|'bottom'
+  height = 12,      -- 右/左：显式行数，缺省按权重分摊列栈预算
+  width = 60,       -- 上/下：显式列数（列宽沿用现有钳位）
+  size = 6,         -- 上/下：固定行数（缺省 6）
+  title, footer, lines })
+api.region_release('ext')
+-- panel_claim/release 保留为 right/left 特例的薄封装（别名兼容，现有
+-- 扩展与 smoke 不受影响）；handles() 增 regions = { [extId] = { side, win, buf } }
+```
+
+```ts
+// Node 面
+tui.ui.region({ side: 'top', width: 60, size: 6, title: '构建进度', lines: [] })
+tui.ui.regionRelease()
+tui.capabilities().region   // 新增能力位
+```
+
+**布局规则（`panel_reflow()` 泛化为 `region_reflow()`）**
+
+- right/left：与现状一致——claim 顺序自上而下，显式 height 优先、权重分摊
+  剩余、超 90% 屏高等比挤压；reasoning 面板仍排右缘列底。
+- top/bottom（新增）：claim 顺序自左向右，显式 width 优先、权重分摊剩余、
+  超 90% 屏宽等比挤压；高度 = `size` 行（缺省 6）。
+- 四边各自独立计数（左右已实现，上下同模式新增）；VimResized / claim /
+  release / reasoning toggle 统一触发 reflow 重锚定。
+- 菜单/审批浮窗 z-index 更高，天然不被 region 遮挡；region 之间同边不重叠。
+
+**明确不做**
+
+- 真实分屏/分割窗口、chat 让位（宽度/高度预算调整）、同边多 ext 同槽 tab 化。
+
+**实施预估（基于现有面板列栈增量）**
+
+| 改动点 | 内容 |
+|---|---|
+| state.lua | `S.panelStack` → `S.regionStacks[side]`（四边）+ `S.regions`；保留 panelStack 别名期 |
+| api.lua | `region_claim/release` + reflow 增 top/bottom 分支；`panel_claim/release` 改薄封装 |
+| ext-api.ts | `ui.region/regionRelease` + `ExtRegionOpts/ExtRegionHandles`；capabilities 增 `region` |
+| autocmds / prune / unregister | 已走 reflow 与逐 ext 登记，无结构改动 |
+| smoke | top/bottom 栈、四边并存、别名兼容、外力关窗出栈、挤压 |
+
+### 其他未实现项
+
 - Node 侧 `ui.panel` 多块并发（Lua 侧已支持每 ext 一块；Node 的 `__node__`
-  目前同一时刻一块）。
+  目前同一时刻一块）——随 region 一并解决（`__node__` 每边一块）。
 - 卡片动作的确认/输入型交互（当前为单选动作）。
