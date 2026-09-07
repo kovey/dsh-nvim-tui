@@ -29,6 +29,11 @@
   plain 动作打断后，下一次输入仍会被路由给已失效的旧动作）；`api.register`
   拒绝 `__node` 保留前缀（防止插件抢注与 Node slot 机制串扰）。
 
+- **跨域状态写收口（「跨域读走方法」落地）**：slice 状态字段 readonly 化，
+  所有者经 `WritableSlice` 视图写入；跨域变更收敛为 21 个域操作方法
+  （agent/ext/runtime 三域 ops），38 处历史跨域状态写全部改造；check-arch
+  3c 扫描器（非 owner 文件跨域状态写 = 违规）与类型层双保险。
+
 - **app.ts 瘦身 I1/I2（ARCHITECTURE.md 第五节）**：createApp 的 13 个
   核心服务实现外移（state IO/历史刷新→sessions、文件快照/diff→transcript、
   feedForSubagent→subagents、生命周期→boot）＋ slice 初始状态由各 owner

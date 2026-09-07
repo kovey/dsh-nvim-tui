@@ -122,26 +122,31 @@ export interface WorkflowRun {
 export interface AppSlices {
     /** nvim process / window lifecycle + boot entry. */
     runtime: {
-        nvim: NeovimClient | null;
-        child: ReturnType<typeof import('node:child_process')['spawn']> | null;
-        channelIdValue: number | null;
-        disposed: boolean;
-        quitting: boolean;
-        chatWinId: number | null;
-        reasoningOpen: boolean;
-        reasoningWinId: number | null;
-        feedDisposer: (() => void) | null;
-        hostDisposers: Array<() => void>;
-        spinnerTimer: ReturnType<typeof setInterval> | null;
-        spinnerIndex: number;
-        idleRefreshTimer: ReturnType<typeof setInterval> | null;
+        readonly nvim: NeovimClient | null;
+        readonly child: ReturnType<typeof import('node:child_process')['spawn']> | null;
+        readonly channelIdValue: number | null;
+        readonly disposed: boolean;
+        readonly quitting: boolean;
+        readonly chatWinId: number | null;
+        readonly reasoningOpen: boolean;
+        readonly reasoningWinId: number | null;
+        readonly feedDisposer: (() => void) | null;
+        readonly hostDisposers: Array<() => void>;
+        readonly spinnerTimer: ReturnType<typeof setInterval> | null;
+        readonly spinnerIndex: number;
+        readonly idleRefreshTimer: ReturnType<typeof setInterval> | null;
         boot: () => Promise<void>;
+        /** Owner ops: cross-domain consumers mutate runtime state ONLY here. */
+        setChatWin: (id: number | null) => void;
+        setReasoning: (open: boolean, win: number | null) => void;
+        spinnerSet: (timer: ReturnType<typeof setInterval> | null) => void;
+        spinnerStep: () => void;
     };
     /** Sessions, history, active-session state + subagent registry. */
     sessions: {
-        live: Map<string, SessionRec>;
-        activeId: string | null;
-        historyHeaders: Array<{
+        readonly live: Map<string, SessionRec>;
+        readonly activeId: string | null;
+        readonly historyHeaders: Array<{
             id: string;
             cwd?: string;
             createdAt?: number;
@@ -149,7 +154,7 @@ export interface AppSlices {
             origin?: string;
             inheritedEventCount?: number;
         }>;
-        historyById: Map<string, {
+        readonly historyById: Map<string, {
             id: string;
             cwd?: string;
             createdAt?: number;
@@ -157,18 +162,18 @@ export interface AppSlices {
             origin?: string;
             inheritedEventCount?: number;
         }>;
-        sessionEntries: Array<{
+        readonly sessionEntries: Array<{
             id: string;
             title: string;
             active: boolean;
             kind: string;
         }>;
-        runningSubagents: Map<string, {
+        readonly runningSubagents: Map<string, {
             parentId: string;
             label: string;
             startedAt: number;
         }>;
-        childParent: Map<string, {
+        readonly childParent: Map<string, {
             parentId: string;
             label: string;
         }>;
@@ -218,38 +223,45 @@ export interface AppSlices {
         foldEvent: (rec: SessionRec, event: SessionEvent) => void;
         maybePushFileDiff: (feed: FeedRenderer, event: SessionEvent, labelPrefix?: string) => void;
         readFileSnapshot: (p: string) => Promise<string | null>;
-        pendingFileSnaps: Map<string, {
+        readonly pendingFileSnaps: Map<string, {
             display: string;
             before: string | null;
         }>;
-        renderedDiffCalls: WeakMap<FeedRenderer, Set<string>>;
-        pendingEchoes: Map<string, string[]>;
+        readonly renderedDiffCalls: WeakMap<FeedRenderer, Set<string>>;
+        readonly pendingEchoes: Map<string, string[]>;
     };
     /** Extension surface (ext-api.ts owns; installs run before boot). */
     ext: {
         extApi: TuiExtApi;
-        extReadyResolve: (() => void) | null;
+        readonly extReadyResolve: (() => void) | null;
         extFire: (event: ExtEventName, payload: unknown) => void;
-        extSessionSubs: Array<{
+        readonly extSessionSubs: Array<{
             filter: ExtSessionEventFilter;
             cb: (sid: string, ev: SessionEvent) => void;
         }>;
         extDispatchSessionEvent: (sessionId: string, event: SessionEvent) => void;
-        extLuaSubs: Map<string, Set<string> | 'all'>;
+        readonly extLuaSubs: Map<string, Set<string> | 'all'>;
         extNodeCleanup: (() => void | Promise<void>) | null;
-        pendingCardInput: {
+        readonly pendingCardInput: {
             mark: number;
             actionIdx: number;
             prompt: string;
         } | null;
-        extNodeHandlers: Map<string, {
+        readonly extNodeHandlers: Map<string, {
             handler: (method: string, args: unknown[]) => unknown | Promise<unknown>;
             timeoutMs: number;
         }>;
-        extStatusSegments: Map<string, {
+        readonly extStatusSegments: Map<string, {
             text: string;
             priority: number;
         }>;
+        /** Owner ops: cross-domain consumers mutate ext state ONLY here. */
+        setPendingCardInput: (v: {
+            mark: number;
+            actionIdx: number;
+            prompt: string;
+        } | null) => void;
+        fireExtReady: () => void;
     };
     /** Transcript / event-stream reconstruction. */
     trans: {
@@ -257,7 +269,7 @@ export interface AppSlices {
         synthesizeToolResult: (rec: SessionRec, callId: string, seq: number | undefined, turn: unknown, step: unknown) => void;
         surfaceReplace: (session: HarnessSession, type: string, seq: number, data: unknown) => void;
         repairOrphanToolCalls: (rec: SessionRec) => number;
-        workflowRuns: Map<string, WorkflowRun>;
+        readonly workflowRuns: Map<string, WorkflowRun>;
     };
     /** Agent interaction: commands, input routing, pending UI, subagent chat. */
     agent: {
@@ -278,51 +290,93 @@ export interface AppSlices {
         atQuery: (query: string, start?: number) => Promise<void>;
         currentSelection: () => ReturnType<ModelSelection['currentSelection']>;
         commandSpecs: CommandSpec[];
-        pendingInput: string[];
-        pendingImages: Array<SaveImageAttachment | Extract<MessageContent, {
+        readonly pendingInput: string[];
+        readonly pendingImages: Array<SaveImageAttachment | Extract<MessageContent, {
             type: 'image';
         }>>;
-        pendingRename: {
+        readonly pendingRename: {
             kind: 'workspace';
             id: string;
         } | {
             kind: 'session';
             id: string;
         } | null;
-        pendingQueueEdit: {
+        readonly pendingQueueEdit: {
             list: 'nextTurn' | 'nextStep';
             messageId: string;
         } | null;
-        approvalSettle: ((outcome: string) => void) | null;
-        approvalReq: ApprovalRequest | null;
-        questionsResolve: {
+        readonly approvalSettle: ((outcome: string) => void) | null;
+        readonly approvalReq: ApprovalRequest | null;
+        readonly questionsResolve: {
             resolve: (v: {
                 answers: unknown[];
             }) => void;
             reject: (e: Error) => void;
         } | null;
-        pickerSettle: ((value: string | null) => void) | null;
-        dirSettle: ((picked: string | null) => void) | null;
-        bellOn: boolean;
-        subagentView: {
+        readonly pickerSettle: ((value: string | null) => void) | null;
+        readonly dirSettle: ((picked: string | null) => void) | null;
+        readonly bellOn: boolean;
+        readonly subagentView: {
             childId: string;
             feed: FeedRenderer;
         } | null;
-        subagentChat: {
+        readonly subagentChat: {
             childId: string;
             parentId: string;
             label: string;
             feed: FeedRenderer;
         } | null;
-        pendingSubagentFollowup: {
+        readonly pendingSubagentFollowup: {
             childId: string;
             label: string;
         } | null;
         openSubagentView: (childId: string, label: string) => Promise<void>;
         openSubagentChat: (childId: string, label: string) => Promise<void>;
         sendToSubagent: (text: string) => void;
+        /** Owner ops: cross-domain consumers mutate agent state ONLY here. */
+        setApproval: (entry: ApprovalRequest | null, settle: ((outcome: string) => void) | null) => void;
+        settleApproval: (outcome: string) => void;
+        setPickerSettle: (fn: ((value: string | null) => void) | null) => void;
+        settlePicker: (value: string | null) => void;
+        setQuestions: (r: {
+            resolve: (v: {
+                answers: unknown[];
+            }) => void;
+            reject: (e: Error) => void;
+        } | null) => void;
+        settleQuestions: (answers: unknown[]) => void;
+        rejectQuestions: () => void;
+        setDirSettle: (fn: ((picked: string | null) => void) | null) => void;
+        resolveDirPicker: (picked: string | null) => void;
+        setPendingRename: (v: {
+            kind: 'workspace';
+            id: string;
+        } | {
+            kind: 'session';
+            id: string;
+        } | null) => void;
+        setPendingQueueEdit: (v: {
+            list: 'nextTurn' | 'nextStep';
+            messageId: string;
+        } | null) => void;
+        setSubagentView: (v: {
+            childId: string;
+            feed: FeedRenderer;
+        } | null) => void;
+        setSubagentChat: (v: {
+            childId: string;
+            parentId: string;
+            label: string;
+            feed: FeedRenderer;
+        } | null) => void;
     };
 }
+/** Writable view of one slice — owners cast to it inside their own
+ *  files; every other file sees readonly state and must go through the
+ *  domain ops. */
+export type WritableSlice<T> = {
+    -readonly [K in keyof T]: T[K];
+};
 /** The complete cross-module surface: kernel primitives + the domain
  *  slices. Nothing else may live on the root (check-arch.mjs guards). */
 export interface App {

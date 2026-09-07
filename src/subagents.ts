@@ -10,7 +10,8 @@ import { t } from './i18n.js'
 import { ageLabel, isExpired, orderSubagentChildren } from './subagent-clean.js'
 import { queueSubagentPromptKey } from './types.js'
 import type { SessionEvent, SubagentInfo } from './types.js'
-import type { App, CommandSpec } from './app.js'
+import type { App, AppSlices, CommandSpec, WritableSlice } from './app.js'
+const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 
 /** Enumerate the active session's subagent children (live + persisted).
  *  Preferred path: the official `subagents.listChildren` directory.
@@ -22,7 +23,7 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
   // drops the routing state).
   if (app.slices.agent.subagentChat !== null) {
     await app.luaCall('require("dsh_tui").close_subagent_chat()', []).catch(() => {})
-    app.slices.agent.subagentChat = null
+    W(app.slices.agent).subagentChat = null
   }
   // Gather the event log: live children stream from the in-memory store
   // (new events keep arriving via session/event routing); settled children
@@ -58,7 +59,7 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
     reasoningView: () => null,
     inlineReasoning: true,
   })
-  app.slices.agent.subagentView = { childId, feed }
+  W(app.slices.agent).subagentView = { childId, feed }
   for (const e of events) {
     feed.applyEvent(e, { history: true })
     app.slices.ui.maybePushFileDiff(feed, e)
@@ -99,7 +100,7 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
   // handler drops the routing state).
   if (app.slices.agent.subagentView !== null) {
     await app.luaCall('require("dsh_tui").close_subagent_view()', []).catch(() => {})
-    app.slices.agent.subagentView = null
+    W(app.slices.agent).subagentView = null
   }
   const live = app.runtimeCtx.sessions.get(childId)
   let events: SessionEvent[] = []
@@ -126,7 +127,7 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
     return
   }
   // The window takes over the "next input goes to the child" quick path.
-  app.slices.agent.pendingSubagentFollowup = null
+  W(app.slices.agent).pendingSubagentFollowup = null
   const feed = new FeedRenderer(app.slices.runtime.nvim!, ids.buf, ids.win, {
     idsProvider: () => app.luaCall('return require("dsh_tui").subagent_chat_ids()', []),
     activeChecker: () => true,
@@ -135,7 +136,7 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
     reasoningView: () => null,
     inlineReasoning: true,
   })
-  app.slices.agent.subagentChat = { childId, parentId: app.slices.sessions.activeId, label, feed }
+  W(app.slices.agent).subagentChat = { childId, parentId: app.slices.sessions.activeId, label, feed }
   for (const e of events) {
     feed.applyEvent(e, { history: true })
     app.slices.ui.maybePushFileDiff(feed, e)
@@ -264,8 +265,8 @@ const subagentsCommand = async (app: App) => {
         ])
       : 'view'
     if (action === 'continue') {
-      app.slices.agent.pendingSubagentFollowup = { childId: sel, label: child?.label ?? sel.slice(0, 8) }
-      app.notice(`下一条输入将发给子代理 ${app.slices.agent.pendingSubagentFollowup.label}（/subagents 可取消，直接输入即发送）`)
+      W(app.slices.agent).pendingSubagentFollowup = { childId: sel, label: child?.label ?? sel.slice(0, 8) }
+      app.notice(`下一条输入将发给子代理 ${app.slices.agent.pendingSubagentFollowup!.label}（/subagents 可取消，直接输入即发送）`)
       return
     }
     if (action === null) return
@@ -281,6 +282,12 @@ const subagentsCommand = async (app: App) => {
 
 /** Fill the subagents module's App slots and register its commands. */
 export function installSubagents(app: App): void {
+  // -- agent sub-part ops (this module owns subagentView/subagentChat) --
+  const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
+  const A = W(app.slices.agent)
+  A.setSubagentView = (v) => { A.subagentView = v }
+  A.setSubagentChat = (v) => { A.subagentChat = v }
+
   // -- ui.feedForSubagent + agent subagent-chat domain defaults (I2) --
   app.slices.ui.feedForSubagent = () => undefined
   Object.assign(app.slices.agent, {

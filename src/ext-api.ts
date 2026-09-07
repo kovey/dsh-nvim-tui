@@ -17,7 +17,7 @@
  * @module dsh-nvim-tui/ext-api
  */
 import type { SessionEvent } from './types.js'
-import type { App } from './app.js'
+import type { App, AppSlices, WritableSlice } from './app.js'
 
 /** Extension API version (semver, independent of the bundle version). */
 export const EXT_API_VERSION = '0.1.0'
@@ -288,6 +288,7 @@ export interface TuiExtApi {
 /** Install the extension API onto the App (runs before boot; index.ts then
  *  publishes the built surface through the cordis registry). */
 export function installExtApi(app: App): void {
+  const WE = app.slices.ext as WritableSlice<AppSlices['ext']>
   // -- ext domain defaults (I2: the ext slice lives here) --
   Object.assign(app.slices.ext, {
     extApi: null as unknown as TuiExtApi,
@@ -409,7 +410,7 @@ export function installExtApi(app: App): void {
   const api: TuiExtApi = {
     version: EXT_API_VERSION,
     ready: new Promise<void>((resolve) => {
-      app.slices.ext.extReadyResolve = resolve
+      WE.extReadyResolve = resolve
     }),
     capabilities: () => ({
       headless: app.headless,
@@ -637,7 +638,7 @@ export function installExtApi(app: App): void {
 
   app.slices.ext.extApi = api
   app.slices.ext.extFire = fire
-  app.slices.ext.extSessionSubs = sessionSubs
+  WE.extSessionSubs = sessionSubs
 
   /** session/event mirror dispatch: Node-side subscribers (filtered here)
    *  plus the Lua-side routing (extLuaSubs, fed by dsh-ext-register).

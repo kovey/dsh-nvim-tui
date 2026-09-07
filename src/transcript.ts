@@ -360,7 +360,7 @@ const queueCommand = async (app: App): Promise<void> => {
       app.notice(ok === true ? '已从队列移除' : '该消息已被处理')
     } catch (err) { app.notice(`移除失败: ${(err as Error).message}`) }
   } else if (act === 'edit') {
-    app.slices.agent.pendingQueueEdit = { list: picked.list, messageId: picked.id }
+    app.slices.agent.setPendingQueueEdit({ list: picked.list, messageId: picked.id })
     app.notice(t('下一条输入将替换该排队消息'))
   }
 }

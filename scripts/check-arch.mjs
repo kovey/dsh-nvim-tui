@@ -65,6 +65,44 @@ for (const s of MOVED_STATE) {
   if (appSrc.includes(s)) fail(`createApp still seeds slice state (${s}) — inject it in the owner module`)
 }
 
+// 3c) 跨域状态写收口：readonly 状态字段只允许 owner 文件写入（经
+//     WritableSlice 视图）；非 owner 文件的直接赋值是架构违规——跨域
+//     变更必须走域操作方法（setXxx/settleXxx）。
+const STATE_OWNERS = {
+  'src/app.ts': new Set(), // kernel：无 slice 状态写
+  'src/boot.ts': new Set(['runtime']),
+  'src/ext-api.ts': new Set(['ext']),
+  'src/statusline.ts': new Set(['ui']),
+  'src/sessions.ts': new Set(['sessions']),
+  'src/subagents.ts': new Set(['agent']),
+  'src/transcript.ts': new Set(['trans', 'ui']),
+  'src/commands.ts': new Set(['agent']),
+  'src/market-install.ts': new Set(),
+  'src/deps.ts': new Set(),
+}
+const STATE_FIELDS = {
+  runtime: ['nvim','child','channelIdValue','disposed','quitting','chatWinId','reasoningOpen','reasoningWinId','feedDisposer','hostDisposers','spinnerTimer','spinnerIndex','idleRefreshTimer'],
+  sessions: ['live','activeId','historyHeaders','historyById','sessionEntries','runningSubagents','childParent'],
+  ui: ['pendingFileSnaps','renderedDiffCalls','pendingEchoes'],
+  ext: ['extApi','extReadyResolve','extSessionSubs','extLuaSubs','extNodeCleanup','pendingCardInput','extNodeHandlers','extStatusSegments'],
+  trans: ['workflowRuns'],
+  agent: ['pendingInput','pendingImages','pendingRename','pendingQueueEdit','approvalSettle','approvalReq','questionsResolve','pickerSettle','dirSettle','bellOn','subagentView','subagentChat','pendingSubagentFollowup'],
+}
+for (const [file, owned] of Object.entries(STATE_OWNERS)) {
+  const src = readFileSync(join(root, file), 'utf8')
+  for (const [dom, fields] of Object.entries(STATE_FIELDS)) {
+    if (owned.has(dom)) continue
+    for (const f of fields) {
+      const re = new RegExp(`app\\.slices\\.${dom}\\.${f}\\s*=(?!=)`)
+      const m = src.match(re)
+      if (m) {
+        const ln = src.slice(0, m.index).split('\n').length
+        fail(`${file}:${ln} cross-domain state write app.slices.${dom}.${f} (readonly — use the domain ops)`)
+      }
+    }
+  }
+}
+
 // 4) legacy flat access must not reappear (outside app.ts's own internal
 //    slice-literal implementations which are exempt)
 for (const f of readdirSync(join(root, 'src')).filter((n) => n.endsWith('.ts'))) {

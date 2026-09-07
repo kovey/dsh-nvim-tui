@@ -15,16 +15,16 @@ import { t } from './i18n.js'
 import { encodeHeaderOnlyLog, readCleanedIds, writeCleanedIds } from './subagent-clean.js'
 import type { AgentHandle, SessionEvent } from './types.js'
 import { BUILD_STAMP, BUILD_VERSION } from './app.js'
-import type { App, CommandSpec, ModelRef } from './app.js'
+import type { App, AppSlices, CommandSpec, ModelRef, WritableSlice } from './app.js'
+const WSS = (d: AppSlices['sessions']) => d as WritableSlice<AppSlices['sessions']>
 
 /** Own one live agent: chat buffer + feed + registry entry. */
 const attachSession = async (app: App, handle: AgentHandle, modelRef: ModelRef) => {
   const id = handle.agent.session.id
   const ids = await app.lua.ensureChat(id)
-  app.slices.runtime.chatWinId = ids.chatWin
+  app.slices.runtime.setChatWin(ids.chatWin)
   const rids = await app.lua.ensureReasoning(id)
-  if (rids?.reasoningWin !== null && rids?.reasoningWin !== undefined) app.slices.runtime.reasoningWinId = rids.reasoningWin
-  app.slices.runtime.reasoningOpen = rids?.reasoningOpen === true
+  app.slices.runtime.setReasoning(rids?.reasoningOpen === true, (rids?.reasoningWin ?? null) as number | null)
   const feed = new FeedRenderer(app.slices.runtime.nvim!, ids.chatBuf, ids.chatWin, {
     idsProvider: () => app.luaCall('return require("dsh_tui").ensure_chat(...)', [id]),
     activeChecker: () => id === app.slices.sessions.activeId,
@@ -199,7 +199,7 @@ const updateTitle = (app: App) => {
 }
 
 const switchTo = async (app: App, id: string) => {
-  app.slices.sessions.activeId = id
+  WSS(app.slices.sessions).activeId = id
   await app.lua.setActive(id)
   app.slices.ui.ensureSpinner()
   app.slices.ui.updateStatusline()
@@ -345,7 +345,7 @@ const sessionsCommand = async (app: App): Promise<void> => {
         // NOT switch the active view.
         await ensureLiveSession(app, sid)
       }
-      app.slices.agent.pendingRename = { kind: 'session', id: sid }
+      app.slices.agent.setPendingRename({ kind: 'session', id: sid })
       app.notice(t('下一条输入将作为该会话的新标题（空输入取消）'))
       return
     }
@@ -418,7 +418,7 @@ const sessionsCommand = async (app: App): Promise<void> => {
     if (act === 'new') {
       await createSession(app, w.path)
     } else if (act === 'rename') {
-      app.slices.agent.pendingRename = { kind: 'workspace', id: wid }
+      app.slices.agent.setPendingRename({ kind: 'workspace', id: wid })
       app.notice(`下一条输入将作为工作区「${w.title}」的新名称（/sessions 期间可继续操作）`)
     }
     return
@@ -494,7 +494,7 @@ const workspaceCommand = async (app: App, a: string | undefined): Promise<void> 
     { label: t('取消'), value: 'cancel' },
   ])
   if (act === 'rename') {
-    app.slices.agent.pendingRename = { kind: 'workspace', id: wid }
+    app.slices.agent.setPendingRename({ kind: 'workspace', id: wid })
     app.notice(`下一条输入将作为工作区「${w.title}」的新名称`)
     return
   }
@@ -775,7 +775,7 @@ export function installSessions(app: App): void {
           return undefined
         }
       }
-      app.slices.sessions.historyHeaders = all
+      WSS(app.slices.sessions).historyHeaders = all
         .filter((h) => h.cwd === cwd && /^session-/.test(h.id) && h.origin !== 'subagent')
         .map((h) => ({ ...h, title: cachedTitle(h) ?? h.title }))
       app.slices.sessions.historyById.clear()
@@ -799,7 +799,7 @@ export function installSessions(app: App): void {
         entries.push({ id: h.id, title: h.title ?? '', active: false, kind: 'history' })
       }
     }
-    app.slices.sessions.sessionEntries = entries
+    WSS(app.slices.sessions).sessionEntries = entries
   }
 
 

@@ -168,6 +168,16 @@ app.ts 预期：806 → ~300 行（kernel + 壳 + 注入辅助）。
 
 ### 5.4 风险（实施后固化为规则）
 
+> **跨域读走方法——收口完成（2026-09）**：slice 状态字段全部 `readonly`，
+> 只有 owner 文件经 `WritableSlice<T>` 视图写入；跨域变更一律走 owner
+> 注入的**域操作方法**（agent 域：setApproval/settleApproval/setPickerSettle/
+> settlePicker/setQuestions/settleQuestions/rejectQuestions/setDirSettle/
+> resolveDirPicker/setPendingRename/setPendingQueueEdit/setSubagentView/
+> setSubagentChat；ext 域：setPendingCardInput/fireExtReady；runtime 域：
+> setChatWin/setReasoning/spinnerSet/spinnerStep）。类型层（readonly +
+> WritableSlice 白名单视图）+ 检查层（check-arch 3c 跨域状态写扫描器）
+> 双保险，38 处历史跨域状态写全部收敛为 ops 调用。
+
 - I1 为纯搬移（已遵守：diff 仅代码位移 + 作用域适配）。
 - **install 体三原则**：只写自己拥有的域；只调 kernel 原语；install 期
   不得读他域（违反即未定义调用——I2 实测两次踩中：installStatusline 调

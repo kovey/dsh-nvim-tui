@@ -53,13 +53,13 @@ const ensureSpinner = (app: App) => {
     app.slices.sessions.runningSubagentsOf(app.slices.sessions.activeId).length > 0 ||
     (rec?.bgJobs ?? 0) > 0
   if (running && app.slices.runtime.spinnerTimer === null) {
-    app.slices.runtime.spinnerTimer = setInterval(() => {
-      app.slices.runtime.spinnerIndex = (app.slices.runtime.spinnerIndex + 1) % WHALE_EMOJI_FRAMES.length
+    app.slices.runtime.spinnerSet(setInterval(() => {
+      app.slices.runtime.spinnerStep()
       app.slices.ui.updateStatusline()
-    }, 450)
+    }, 450))
   } else if (!running && app.slices.runtime.spinnerTimer !== null) {
     clearInterval(app.slices.runtime.spinnerTimer)
-    app.slices.runtime.spinnerTimer = null
+    app.slices.runtime.spinnerSet(null)
   }
 }
 

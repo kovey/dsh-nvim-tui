@@ -14,6 +14,8 @@ import { appendFileSync, writeFileSync } from 'node:fs'
 import { spawnNvim, connectNvim } from './bridge.js'
 import { FeedRenderer } from './feed.js'
 import { EXT_API_VERSION } from './ext-api.js'
+import type { AppSlices, WritableSlice } from './app.js'
+const W = (d: AppSlices['runtime']) => d as WritableSlice<AppSlices['runtime']>
 import { t } from './i18n.js'
 import type { ChatMessage, GoalState, MessageContent } from './types.js'
 import type { App } from './app.js'
@@ -22,6 +24,11 @@ import type { App } from './app.js'
  *  install: install bodies push disposers into runtime.hostDisposers
  *  (statusline/commands/…), so the domain needs its shape from t=0. */
 export function installRuntime(app: App): void {
+  const R = app.slices.runtime as WritableSlice<AppSlices['runtime']>
+  R.setChatWin = (id) => { R.chatWinId = id }
+  R.setReasoning = (open, win) => { R.reasoningOpen = open; R.reasoningWinId = win }
+  R.spinnerSet = (timer) => { R.spinnerTimer = timer }
+  R.spinnerStep = () => { R.spinnerIndex = R.spinnerIndex + 1 }
   Object.assign(app.slices.runtime, {
     nvim: null,
     child: null,
@@ -85,7 +92,7 @@ export async function boot(app: App): Promise<void> {
    *  reloaded (hmr) while dsh keeps running; the next apply spawns a fresh nvim. */
   app.teardown = async () => {
     if (app.slices.runtime.disposed) return
-    app.slices.runtime.disposed = true
+    W(app.slices.runtime).disposed = true
     try {
       app.slices.runtime.feedDisposer?.()
     } catch {}
@@ -97,22 +104,16 @@ export async function boot(app: App): Promise<void> {
     app.slices.runtime.hostDisposers.length = 0
     if (app.slices.runtime.spinnerTimer !== null) {
       clearInterval(app.slices.runtime.spinnerTimer)
-      app.slices.runtime.spinnerTimer = null
+      W(app.slices.runtime).spinnerTimer = null
     }
     if (app.slices.runtime.idleRefreshTimer !== null) {
       clearInterval(app.slices.runtime.idleRefreshTimer)
-      app.slices.runtime.idleRefreshTimer = null
+      W(app.slices.runtime).idleRefreshTimer = null
     }
     // Unblock pending interactions so the host can drain.
-    app.slices.agent.approvalSettle?.('cancelled')
-    app.slices.agent.approvalSettle = null
-    if (app.slices.agent.questionsResolve) {
-      const r = app.slices.agent.questionsResolve
-      app.slices.agent.questionsResolve = null
-      r.reject(new Error('UI torn down'))
-    }
-    app.slices.agent.pickerSettle?.(null)
-    app.slices.agent.pickerSettle = null
+    app.slices.agent.settleApproval('cancelled')
+    app.slices.agent.rejectQuestions()
+    app.slices.agent.settlePicker(null)
     if (app.slices.sessions.activeId !== null) app.slices.sessions.recordState(app.slices.sessions.activeId)
     // Persist every live session before disposing its agent. Bounded: an
     // active turn holds the session's append boundary open, and the flush /
@@ -154,7 +155,7 @@ export async function boot(app: App): Promise<void> {
    *  with a hard fallback in case the launcher's graceful shutdown stalls. */
   app.quit = async (code = 0) => {
     if (app.slices.runtime.quitting) return
-    app.slices.runtime.quitting = true
+    W(app.slices.runtime).quitting = true
     app.exitDiag('quit', `code=${code}`, `disposed=${app.slices.runtime.disposed}`)
     try {
       // Tell nvim-side extensions BEFORE the window closes — the teardown
@@ -190,7 +191,7 @@ export async function boot(app: App): Promise<void> {
         if (!app.slices.runtime.disposed) void app.quit(0)
       },
     })
-    app.slices.runtime.child = spawned.child
+    W(app.slices.runtime).child = spawned.child
 
     // nvim now owns the terminal; keep our own process silent so DSH
     // logging cannot corrupt the TUI.
@@ -199,9 +200,10 @@ export async function boot(app: App): Promise<void> {
     console.warn = silent
     console.error = silent
 
-    app.slices.runtime.nvim = await connectNvim(spawned.sockPath)
-    const channelId = await app.slices.runtime.nvim.channelId
-    app.slices.runtime.channelIdValue = channelId
+    const nvim = await connectNvim(spawned.sockPath)
+    W(app.slices.runtime).nvim = nvim
+    const channelId = await nvim.channelId
+    W(app.slices.runtime).channelIdValue = channelId
     await app.luaCall('require("dsh_tui").attach(...)', [channelId])
     // Extension handshake: agree on the API major version (a mismatch
     // surfaces as a boot notice).
@@ -276,7 +278,7 @@ export async function boot(app: App): Promise<void> {
         // so ext subscribers never see card inputs as chat input).
         if (app.slices.ext.pendingCardInput !== null) {
           const pending = app.slices.ext.pendingCardInput
-          app.slices.ext.pendingCardInput = null
+          app.slices.ext.setPendingCardInput(null)
           const text = raw.trim()
           if (text === '') {
             app.notice('已取消卡片输入')
@@ -306,10 +308,10 @@ export async function boot(app: App): Promise<void> {
       else if (method === 'dsh-session-select') void app.guard('切换会话', app.slices.sessions.selectSession)(String(args?.[0] ?? ''))
       else if (method === 'dsh-session-new') void app.guard('新建会话', app.slices.sessions.createSession)()
       else if (method === 'dsh-reasoning-toggled') {
-        app.slices.runtime.reasoningOpen = args?.[0] === true
+        W(app.slices.runtime).reasoningOpen = args?.[0] === true
         if (app.slices.runtime.reasoningOpen) {
           const ids = await app.luaCall('return require("dsh_tui").ids()', []).catch(() => null)
-          app.slices.runtime.reasoningWinId = ids?.reasoningWin ?? null
+          W(app.slices.runtime).reasoningWinId = ids?.reasoningWin ?? null
         }
       }
       else if (method === 'dsh-approval-decided') {
@@ -332,36 +334,35 @@ export async function boot(app: App): Promise<void> {
               } catch { /* policy switch is best-effort */ }
             }
           }
-          app.slices.agent.approvalSettle?.('allowed-once')
+          app.slices.agent.settleApproval('allowed-once')
         } else {
-          app.slices.agent.approvalSettle?.(raw === 'y' ? 'allowed-once' : 'rejected')
+          app.slices.agent.settleApproval(raw === 'y' ? 'allowed-once' : 'rejected')
         }
-        app.slices.agent.approvalSettle = null
-        app.slices.agent.approvalReq = null
+        app.slices.agent.setApproval(null, null)
       }
       else if (method === 'dsh-questions-answered') {
         const answers = args?.[0] ?? []
         app.slices.agent.questionsResolve?.resolve({ answers })
-        app.slices.agent.questionsResolve = null
+        app.slices.agent.setQuestions(null)
       }
       else if (method === 'dsh-questions-cancelled') {
         const reject = app.slices.agent.questionsResolve
-        app.slices.agent.questionsResolve = null
+        app.slices.agent.setQuestions(null)
         reject?.reject(new Error('cancelled by user'))
       }
       else if (method === 'dsh-picker-selected') {
-        app.slices.agent.pickerSettle?.(args?.[0])
-        app.slices.agent.pickerSettle = null
+        app.slices.agent.settlePicker(args?.[0])
+        app.slices.agent.settlePicker(null)
       }
       else if (method === 'dsh-picker-cancelled') {
-        app.slices.agent.pickerSettle?.(null)
-        app.slices.agent.pickerSettle = null
+        app.slices.agent.settlePicker(null)
+        app.slices.agent.settlePicker(null)
       }
       else if (method === 'dsh-subagent-view-closed') {
-        app.slices.agent.subagentView = null
+        app.slices.agent.setSubagentView(null)
       }
       else if (method === 'dsh-subagent-chat-closed') {
-        app.slices.agent.subagentChat = null
+        app.slices.agent.setSubagentChat(null)
       }
       else if (method === 'dsh-subagent-send') {
         try {
@@ -372,8 +373,8 @@ export async function boot(app: App): Promise<void> {
       }
       else if (method === 'dsh-dir-selected') {
         const picked = args?.[0]
-        app.slices.agent.dirSettle?.(picked ?? null)
-        app.slices.agent.dirSettle = null
+        app.slices.agent.resolveDirPicker(picked ?? null)
+        app.slices.agent.setDirSettle(null)
       }
       else if (method === 'dsh-at-query') {
         const query = String(args?.[0]?.query ?? '')
@@ -411,7 +412,7 @@ export async function boot(app: App): Promise<void> {
         const dispatch = (feed2: typeof feed, idx: number): void => {
           // Any new card activation supersedes a pending input-mode prompt
           // (the input branch below re-arms it when needed).
-          app.slices.ext.pendingCardInput = null
+          app.slices.ext.setPendingCardInput(null)
           const r = feed2.resolveCardAction(mark, idx)
           if (r === null || r.action === undefined) {
             app.notice('⚠ 卡片已失效')
@@ -444,7 +445,7 @@ export async function boot(app: App): Promise<void> {
                 return
               }
               const prompt = String(act.inputPrompt ?? `输入「${act.label}」的参数`)
-              app.slices.ext.pendingCardInput = { mark, actionIdx: idx, prompt }
+              app.slices.ext.setPendingCardInput({ mark, actionIdx: idx, prompt })
               if (typeof act.inputDefault === 'string' && act.inputDefault !== '') {
                 void app.luaCall('require("dsh_tui").fill_input(...)', [act.inputDefault]).catch(() => {})
               }
@@ -485,7 +486,7 @@ export async function boot(app: App): Promise<void> {
 
     // Session elapsed / stats tick slowly while idle (the spinner interval
     // already covers the running state at 180ms).
-    app.slices.runtime.idleRefreshTimer = setInterval(() => {
+    W(app.slices.runtime).idleRefreshTimer = setInterval(() => {
       if (!app.slices.runtime.disposed) {
         app.slices.ui.refreshBgJobs()
         app.slices.ui.ensureSpinner()
@@ -511,7 +512,7 @@ export async function boot(app: App): Promise<void> {
       const p = args?.file_path ?? args?.path
       return typeof p === 'string' && p !== '' ? p : null
     }
-    app.slices.runtime.feedDisposer = app.runtimeCtx.on('session/event', (owner, event) => {
+    W(app.slices.runtime).feedDisposer = app.runtimeCtx.on('session/event', (owner, event) => {
       if (app.slices.runtime.disposed) return
       // Extension mirror: opt-in session-event subscribers (Node-side
       // onSessionEvent; the Lua-side routing lands with P3).
@@ -855,19 +856,17 @@ export async function boot(app: App): Promise<void> {
           if (settled) return
           settled = true
           cleanup()
-          app.slices.agent.approvalSettle = null
-          app.slices.agent.approvalReq = null
+          app.slices.agent.setApproval(null, null)
           resolve('cancelled')
         }
         req.signal?.addEventListener('abort', onAbort, { once: true })
-        app.slices.agent.approvalReq = req
-        app.slices.agent.approvalSettle = (outcome) => {
+        app.slices.agent.setApproval(req, (outcome) => {
           if (settled) return
           settled = true
           cleanup()
-          app.slices.agent.approvalReq = null
+          app.slices.agent.setApproval(null, null)
           resolve(outcome)
-        }
+        })
         const rec = app.slices.sessions.live.get(req.agent?.session?.id)
         rec?.feed.appendNotice(`⚠ 审批请求: ${req.toolName ?? '?'}${req.reason ? ` — ${req.reason}` : ''}`)
         // Approvals always ring — attention is required, bell toggle or not.
@@ -879,8 +878,7 @@ export async function boot(app: App): Promise<void> {
           if (!settled) {
             settled = true
             cleanup()
-            app.slices.agent.approvalSettle = null
-            app.slices.agent.approvalReq = null
+            app.slices.agent.setApproval(null, null)
             resolve('rejected')
           }
         })
@@ -893,11 +891,11 @@ export async function boot(app: App): Promise<void> {
     app.slices.runtime.hostDisposers.push(app.runtimeCtx.on('user-questions/request', (request, next) => {
       if (app.slices.runtime.disposed) return next()
       return new Promise((resolve, reject) => {
-        app.slices.agent.questionsResolve = { resolve, reject }
+        app.slices.agent.setQuestions({ resolve, reject })
         request.signal?.addEventListener('abort', () => {
           if (app.slices.agent.questionsResolve) {
             const r = app.slices.agent.questionsResolve
-            app.slices.agent.questionsResolve = null
+            app.slices.agent.setQuestions(null)
             r.reject(new Error('cancelled by caller'))
           }
         }, { once: true })
@@ -905,7 +903,7 @@ export async function boot(app: App): Promise<void> {
           .catch(() => {
             if (app.slices.agent.questionsResolve) {
               const r = app.slices.agent.questionsResolve
-              app.slices.agent.questionsResolve = null
+              app.slices.agent.setQuestions(null)
               r.reject(new Error('no UI'))
             }
           })
@@ -1000,8 +998,8 @@ export async function boot(app: App): Promise<void> {
 
     // Extension surface: resolve readiness, notify Node subscribers, and
     // fire the nvim-side User DshTuiReady autocmd.
-    app.slices.ext.extReadyResolve?.()
-    app.slices.ext.extReadyResolve = null
+    app.slices.ext.fireExtReady()
+    app.slices.ext.setPendingCardInput(null)
     app.slices.ext.extFire('tui:ready', { active: app.slices.sessions.activeId })
     void app.luaCall('require("dsh_tui.api").emit(...)', ['Ready', { active: app.slices.sessions.activeId }]).catch(() => {})
 
