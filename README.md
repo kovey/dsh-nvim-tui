@@ -128,7 +128,7 @@ dsh --profile nvim-tui
 > 本仓库根目录就是 bundle 本身：`cordis.patch.yml` 挂载 `nvim-tui-runner` 行，
 > package.json 的 `dsh.bundle.patch` 声明了它。
 
-启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.3.1 (build YYYY-MM-DD HH:mm) · channel N`。
+启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.3.2 (build YYYY-MM-DD HH:mm) · channel N`。
 输入 `/help` 随时查看全部命令。
 
 ## 配置
@@ -223,8 +223,8 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 会话 | `/rewind [第N条]` | 回退：选择一条用户消息边界，截断其后的会话内容并重建界面 |
 | 会话 | `/rename <新标题>` | 钉住会话标题 |
 | 会话 | `/search <关键词>` | 跨会话全文搜索（session-query-sqlite），命中可一键恢复 |
-| 会话 | `/tasks [kill <job-id>]` | 任务列表**弹窗**（选中即取消）+ 聊天区**钉底任务板**（⚙ 块实时更新，全部结束才提交进聊天流） |
-| 会话 | `/todo [任务内容]` | 添加/查看待办任务（todo/write 事件，状态栏 📋 计数） |
+| 会话 | `/tasks [kill <job-id>]` | 任务列表**弹窗**（打开期间**实时刷新**，选中即取消）+ 聊天区**钉底任务板**（⚙ 块实时更新，全部结束才提交进聊天流） |
+| 会话 | `/todo [任务内容]` | 添加/查看待办任务（**弹窗实时同步** + 钉底待办板，todo/write 事件，状态栏 📋 计数） |
 | 会话 | `/skills [技能名]` | 技能目录浏览（浮窗查看详情） |
 | 会话 | `/fb up\|down [备注]` | 对最后一条助手消息点赞/点踩（message-feedback） |
 | 会话 | `/subagents` | 子代理目录（思考链只读回放 + **对话窗口** + continuable 续聊） |
@@ -453,7 +453,8 @@ nvim/lua/dsh_tui/             nvim 侧 UI（按职责拆分的 Lua 模块）
 docs/                         文档（EXT-API.md 插件开放接口参考）
 examples/                     示例插件（examples/nvim/git-panel.lua + examples/dsh-plugin/）
 scripts/smoke.ts              无头冒烟测试（Node ≥23.6 直跑）
-scripts/check-arch.mjs        架构边界守卫（并入 npm run check：App kernel-only / slice 域名白名单）
+scripts/check-arch.mjs        架构边界守卫（并入 npm run check：App kernel-only / slice 域名白名单 / 跨域状态写零容忍）
+scripts/app-ops-check.mjs      域操作注入运行时守卫（并入 npm run check：19 个 ops 全量注入断言）
 scripts/e2e.ts                真模型端到端回归
 tsconfig.json / tsconfig.scripts.json   主构建 / scripts 检查配置
 cordis.patch.yml              bundle patch：insert nvim-tui-runner 行

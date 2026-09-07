@@ -8,7 +8,7 @@
 覆盖提交：
 [`7cb811e`](https://github.com/kovey/dsh-nvim-tui/commit/7cb811e)
 
-- **修复：打开旧版本会话报错不再直接退出，改为新建会话并在聊天区提示**
+PLACEHOLDER_31
   （issue [#5](https://github.com/kovey/dsh-nvim-tui/issues/5)：0.3.0 安装后
   `dsh --profile nvim` 闪一下就退出——旧会话恢复失败直通 boot 外层 catch →
   `quit(1)`，整个 dsh 进程随 TUI 一起退出）。
@@ -20,88 +20,6 @@
   「⚠ 恢复会话失败 <id> — <原因>（已新建会话）」；自动恢复成功仍显示原有
   「已自动恢复上次会话」提示，失败时不再误显示。旧会话仍在 `/sessions`
   列表中，可随时重试打开。新建会话本身失败仍视为致命错误（loud-fail）。
-
-## [v0.3.0（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.0)
-
-- **修复：卡片交互与 region 三个审查发现**：bottom 区域原锚定在屏幕底缘
-  会盖住输入框——改为锚定在输入框上方（按输入窗实时位置计算）；卡片动作
-  分派入口统一清空 pendingCardInput（原实现下 pending 输入被另一张卡的
-  plain 动作打断后，下一次输入仍会被路由给已失效的旧动作）；`api.register`
-  拒绝 `__node` 保留前缀（防止插件抢注与 Node slot 机制串扰）。
-
-- **弹窗实时同步（/tasks 与 /todo）**：新增 （打开后
-   原位重渲染，窗口高度随行数调整、光标越界收敛、关闭后
-  no-op）；/tasks 与 /todo 弹窗改为活体 picker——jobs 事件与 todo/write
-  事件在浮窗打开期间实时刷新行状态，关闭时注销（agent.livePopup 单槽）。
-
-- **修复：终态面板被 30s 心跳反复重发**。jobs.list 在任务结束后仍返回
-  终态任务，缓存清空后被下轮刷新重新填充 → 终态板每 30s 重复提交一次
-  （实测 89s/119s/149s 三连）；待办同理（模型重发全 ✓ 列表会重复提交）。
-  修复：终态提交按「批次身份」去重（id:status 排序拼接，不含 elapsed，
-  rec.committedJobsKey 一次提交）；待办全 ✓ 按回合去重（lastTodoKey，
-  turn/start 重置）。探针验证三态心跳循环只提交一次。
-
-- **待办/任务面板钉底化**：📋 待办与 ⚙ 任务板改为**底部钉住**（与
-  thinking 指示同区、位于其上、流式内容无法顶走、永不遮挡 thinking
-  行）——进行中实时原位更新；待办全部 ✓ / 任务全部终态时**提交进聊天
-  流成为内容**（turn/end 未完成待办以最终状态提交）；jobs 侧新增
-  rec.jobsCache（jobs.list + onJobDone 合并，live 列表掉落的运行态
-  兜底为 killed），终态板带 ✓/✗/⚠ 标记落盘。
-
-- **任务（jobs）弹窗化 + 聊天区实时任务板**：`/tasks` 从逐条 notice
-  改为弹窗列表（选中即取消该任务）；`FeedRenderer.setJobsBlock` 新增
-  常驻任务板原语（与待办块同款就地替换 + 偏移修正 + 内容不变 no-op +
-  空列表移除），statusline 的 refreshBgJobs 在每次 jobs 变更时重发全量
-  行集——后台任务状态随 ⚙/⏳/✓/✗/⚠ 标记实时刷新。
-
-- **修复：待办清单状态不实时更新**。todo/write 每次重发全量清单，feed 原
-  实现每次**追加**新块——旧块堆叠、状态永不刷新。改为每回合**单块就地
-  替换**（复用 ext-card 的 splice + shiftExtCards 偏移修正，重发时原位
-  更新、清空时移除块，turn/start 重置跟踪）；状态栏 📋 计数本就实时
-  （foldEvent → updateStatusline），无改动。
-
-- **跨域状态写收口（「跨域读走方法」落地）**：slice 状态字段 readonly 化，
-  所有者经 `WritableSlice` 视图写入；跨域变更收敛为 21 个域操作方法
-  （agent/ext/runtime 三域 ops），38 处历史跨域状态写全部改造；check-arch
-  3c 扫描器（非 owner 文件跨域状态写 = 违规）与类型层双保险。
-
-- **app.ts 瘦身 I1/I2（ARCHITECTURE.md 第五节）**：createApp 的 13 个
-  核心服务实现外移（state IO/历史刷新→sessions、文件快照/diff→transcript、
-  feedForSubagent→subagents、生命周期→boot）＋ slice 初始状态由各 owner
-  模块 install 时注入——app.ts 806 → 443 行（kernel + 接口 + 壳）；实施
-  中确认命令注册设施与 commandSpecs 存储属 kernel 引导设施、runtime 域
-  默认值经 installRuntime 最先注入；check-arch 增 MOVED_SERVICES/
-  MOVED_STATE 哨兵；行为零变化，smoke 全绿。
-
-- **架构切片（P0/P1/P2，ARCHITECTURE.md）**：App 平铺字段 116 → kernel
-  19 项 + 六个领域 slice（runtime/sessions/ui/ext/trans/agent）；P0 兼容
-  访问器过渡（现有模块零改动）、P1 删除平铺成员与访问器、全模块改
-  `app.slices.<域>.<字段>` 访问、sessions 注册表改名 live、单域模块签名
-  收窄试点；P2 落地 `scripts/check-arch.mjs` 边界守卫（并入 npm run check：
-  App kernel-only、slice 域名白名单、遗留平铺访问零容忍）。行为零变化，
-  smoke 全程绿。
-
-- **卡片动作确认/输入型交互**：`actions` 支持 `kind`——`plain`（缺省，
-  立即执行）、`confirm`（选择器确认，`confirmText` 提示）、`input`（输入框
-  取值，`inputPrompt`/`inputDefault`；`pendingCardInput` 拦截下一条
-  dsh-input，空输入取消，拦截先于 `tui:input` 广播）；headless 下
-  confirm/input 退化为 plain 直接执行；feed 层动作 API 拆为
-  resolveCardAction + fireCardAction（分派在 runner 侧）。
-
-- **Node 侧 ui.panel/ui.region 多块并发（slot 机制）**：每次 claim 映射到
-  独立伪 extId（`__node*` 保留前缀；'default' 槽沿用 `__node__` 向后
-  兼容），同槽重复 claim = 释放旧块换新块，不同槽并发堆叠；句柄新增
-  `slot` + `release()`（只释放自己），`panelRelease/regionRelease(slot?)`
-  按槽释放（无参 = 仅 default），`ui.panels()` 盘点；teardown 前统一释放
-  全部槽。
-
-- **region 四边停靠槽（路线图落地）**：`api.region_claim/release` 与
-  `tui.ui.region/regionRelease` —— 右/左纵向列栈（panel 同款形态，panel
-  API 保留为 right/left 别名）、上/下横向行栈（显式 width 或权重分摊、
-  90% 屏宽挤压、高度 = size 行）；**仅浮动窗口、无分屏、聊天区/输入框
-  布局永不改变**；每 ext 每边一块、同边按 claim 顺序堆叠；VimResized /
-  claim / release / reasoning toggle / 外力关窗统一走 `region_reflow`；
-  `handles().regions`、`capabilities().region`。
 
 - **补全三个此前仅有占位目录、无处理器的命令**：
   - `/dir [路径]`：目录浏览浮窗（Enter 目录进入 / 文件在新标签页打开，
@@ -127,6 +45,36 @@
 [`7447045`](https://github.com/kovey/dsh-nvim-tui/commit/7447045) ·
 [`c7501ba`](https://github.com/kovey/dsh-nvim-tui/commit/c7501ba) ·
 [`689d4af`](https://github.com/kovey/dsh-nvim-tui/commit/689d4af)
+
+
+
+## [v0.3.2（2026-09-07）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.2)
+
+覆盖提交：
+[`1b1864b`](https://github.com/kovey/dsh-nvim-tui/commit/1b1864b) ·
+[`2d46e9c`](https://github.com/kovey/dsh-nvim-tui/commit/2d46e9c) ·
+[`656814c`](https://github.com/kovey/dsh-nvim-tui/commit/656814c) ·
+[`8fdf1de`](https://github.com/kovey/dsh-nvim-tui/commit/8fdf1de) ·
+[`cc038f3`](https://github.com/kovey/dsh-nvim-tui/commit/cc038f3) ·
+[`e477c5f`](https://github.com/kovey/dsh-nvim-tui/commit/e477c5f) ·
+[`de24a5e`](https://github.com/kovey/dsh-nvim-tui/commit/de24a5e) ·
+[`1fd8e70`](https://github.com/kovey/dsh-nvim-tui/commit/1fd8e70) ·
+[`86fec6c`](https://github.com/kovey/dsh-nvim-tui/commit/86fec6c) ·
+[`b010056`](https://github.com/kovey/dsh-nvim-tui/commit/b010056) ·
+[`bb13252`](https://github.com/kovey/dsh-nvim-tui/commit/bb13252) ·
+[`1e15d42`](https://github.com/kovey/dsh-nvim-tui/commit/1e15d42) ·
+[`096195b`](https://github.com/kovey/dsh-nvim-tui/commit/096195b) ·
+[`9939404`](https://github.com/kovey/dsh-nvim-tui/commit/9939404) ·
+[`728b6cb`](https://github.com/kovey/dsh-nvim-tui/commit/728b6cb) ·
+[`9284a1b`](https://github.com/kovey/dsh-nvim-tui/commit/9284a1b) ·
+[`187906a`](https://github.com/kovey/dsh-nvim-tui/commit/187906a) ·
+[`7d62519`](https://github.com/kovey/dsh-nvim-tui/commit/7d62519) ·
+[`fc0fb24`](https://github.com/kovey/dsh-nvim-tui/commit/fc0fb24) ·
+[`3e3c8d9`](https://github.com/kovey/dsh-nvim-tui/commit/3e3c8d9) ·
+[`39a8070`](https://github.com/kovey/dsh-nvim-tui/commit/39a8070) ·
+[`4d2fa5c`](https://github.com/kovey/dsh-nvim-tui/commit/4d2fa5c)
+
+## [v0.3.0（2026-09-04）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.0)
 
 - **插件开放接口（EXT-API，P0–P4）**。本插件对外开放稳定接口，其他 dsh 插件
   与 nvim 插件可在 TUI 内渲染 UI、使用 nvim 窗口、读写输入、订阅会话事件：
