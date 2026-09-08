@@ -410,3 +410,11 @@ dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.6"
 
 并恢复 cordis.patch.yml 中被删除的行（storage 三件套 + 旧 shipped 预设根
 roots 配置），重启 dsh 进程。
+
+
+## /rewind 的宿主能力说明（v0.3.2+）
+
+`/rewind`（回退到某条消息）依赖宿主 `dsh-session` 的 `session.truncate`
+原语；当前宿主编排层未公开该符号，因此命令会提示「会话截断不可用」并
+建议 `/fork` 派生替代。若宿主未来公开 truncate，本插件无需改动即自动
+启用该路径（代码已按能力探测降级）。
