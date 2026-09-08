@@ -5,5 +5,7 @@ import type { App } from '../kernel/app.js';
  * spinning with '🔧 后台 N'; nothing running → null (statusline shows idle).
  */
 export declare function runningBadge(mainRunning: boolean, subRunning: number, bgJobs: number): string | null;
+/** /density — compact tool cards (title line only). */
+/** /whale [on|off] — blue whale wallpaper/watermark toggle. */
 /** Fill the statusline module's App slots and register its commands. */
 export declare function installStatusline(app: App): void;

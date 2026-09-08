@@ -5,16 +5,19 @@
  *
  * @module dsh-nvim-tui/transcript
  */
-import { writeFileSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { FeedRenderer } from '../feed/feed.js'
 import { t } from '../kernel/i18n.js'
 import { diffTexts, fileDiffsFromMeta } from '../feed/diff.js'
-import type { ChatMessage, HarnessSession, InboxLike, MessageContent, SessionEvent } from '../kernel/types.js'
-import type { App, CommandSpec, SessionRec } from '../kernel/app.js'
+import type { ChatMessage, HarnessSession, MessageContent, SessionEvent } from '../kernel/types.js'
+import type { App, SessionRec } from '../kernel/app.js'
 import { registerHostHandler } from '../kernel/host-events.js'
+import { installTrajectoryCommand } from './commands/trajectory.js'
+import { installExportCommand } from './commands/export.js'
+import { installRewindCommand } from './commands/rewind.js'
+import { installQueueCommand } from './commands/queue.js'
 
 /**
  * Repair the "insufficient tool messages" session poison.
@@ -195,177 +198,6 @@ const repairOrphanToolCalls = (rec: SessionRec): number => {
 }
 
 /** /trajectory — structured steps of the active session's last turn. */
-const trajectoryCommand = (app: App) => {
-  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
-  if (!rec) {
-    app.notice(t('无活跃会话'))
-    return
-  }
-  const events = sessionEvents(rec.handle.agent.session)
-  const turnStart = [...events].reverse().find((e) => e.type === 'turn/start')
-  if (turnStart === undefined) {
-    app.notice(t('本会话还没有回合'))
-    return
-  }
-  const turn = turnStart.data?.turn
-  const lines = [`回合 #${turn ?? '?'} 步骤轨迹`, '']
-  let step = 0
-  let toolCount = 0
-  for (const e of events) {
-    const data = e.data as { turn?: number; step?: number; message?: ChatMessage; name?: string; arguments?: string; error?: unknown } | undefined
-    if (e.type === 'turn/start') {
-      step = data?.turn === turn ? (data?.step ?? 0) : step
-      continue
-    }
-    if (data === undefined || data.turn !== turn) continue
-    if (e.type === 'assistant/message') {
-      const text = FeedRenderer.messageText(data.message).replace(/\s+/g, ' ').slice(0, 90)
-      lines.push(`步骤 ${data.step ?? '?'} · ${text || '（无文本）'}`)
-    } else if (e.type === 'tool/call') {
-      lines.push(`  🔧 ${data.name}(${FeedRenderer.argsPreview(data.arguments)})`)
-      toolCount++
-    } else if (e.type === 'tool/result') {
-      const err = data.error !== undefined && data.error !== null ? ' ✗' : ' ✓'
-      lines.push(`    ${err}`)
-    }
-  }
-  lines.push('', `工具调用 ${toolCount} 次`)
-  void app.luaCall('require("dsh_tui").show_lines_float(...)', ['步骤轨迹', lines]).catch(() => {})
-}
-
-/** /export — write the rendered transcript to a markdown file. */
-const exportCommand = async (app: App) => {
-  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
-  if (!rec) return
-  try {
-    const lines = await app.slices.runtime.nvim!.request('nvim_buf_get_lines', [rec.feed.bufId, 0, -1, false])
-    const path = join(process.cwd(), `dsh-export-${new Date().toISOString().replace(/[:.]/g, '-')}.md`)
-    writeFileSync(path, `# ${rec.title ?? rec.id}\n\n` + lines.join('\n') + '\n')
-    app.notice(`已导出: ${path}`)
-  } catch (err) {
-    app.notice(`导出失败: ${(err as Error).message}`)
-  }
-}
-
-/** /rewind — pick a user-message boundary, truncate the session after
- *  it, and rebuild the chat from the remaining events. */
-const rewindCommand = async (app: App, a: string | undefined) => {
-  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
-  if (!rec) {
-    app.notice(t('无活跃会话'))
-    return
-  }
-  const session = app.runtimeCtx.sessions.get(rec.id)
-  if (session === undefined || typeof session.truncate !== 'function') {
-    app.notice(t('会话截断不可用：宿主 dsh-session 不支持 truncate（可用 /fork 派生替代）'))
-    return
-  }
-  const arg = (a ?? '').trim()
-  const boundaries = []
-  for (const e of sessionEvents(session)) {
-    if (e.type === 'user/message') {
-      const um = (e.data as { message?: ChatMessage } | ChatMessage | undefined)
-      const umsg = (um as { message?: ChatMessage } | undefined)?.message ?? (um as ChatMessage | undefined)
-      const text = Array.isArray(umsg?.content)
-        ? umsg.content.filter((b): b is Extract<MessageContent, { type: 'text' }> => b?.type === 'text' && typeof (b as { text?: unknown }).text === 'string').map((b) => b.text).join(' ')
-        : (umsg?.text ?? '')
-      boundaries.push({ seq: e.seq, text: String(text).replace(/\s+/g, ' ').slice(0, 48) })
-    }
-  }
-  if (boundaries.length === 0) {
-    app.notice(t('（没有可回退的用户消息）'))
-    return
-  }
-  const recent = boundaries.slice(-8)
-  let target
-  if (arg !== '' && /^\d+$/.test(arg)) {
-    const n = Math.min(Number(arg), boundaries.length)
-    target = boundaries[boundaries.length - n]
-  } else {
-    const sel = await app.openPicker(t('回退到哪条消息之后（截断其后内容）'),
-      recent.map((b) => ({ label: `#${b.seq} ${b.text}`, value: String(b.seq) })))
-    if (sel === null) return
-    target = boundaries.find((b) => String(b.seq) === sel)
-  }
-  if (target === undefined) {
-    app.notice(t('未找到目标边界'))
-    return
-  }
-  try {
-    session.truncate(target.seq)
-    // Rebuild the chat from the truncated events (the harness truncates
-    // in place and emits no events).
-    rec.feed.clear()
-    for (const e of sessionEvents(session)) {
-      app.slices.ui.foldEvent(rec, e)
-      rec.feed.applyEvent(e, { history: true })
-      app.slices.ui.maybePushFileDiff(rec.feed, e)
-    }
-    void rec.feed.flush()
-    app.notice(`已回退到 #${target.seq}（其后内容已截断）`)
-  } catch (err) {
-    app.notice(`回退失败: ${(err as Error).message}`)
-  }
-}
-
-/** /queue — pending-message queue (official QueueDock counterpart):
- *  view queued turns and next-step input, edit / remove rows, clear all. */
-const queueCommand = async (app: App): Promise<void> => {
-  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
-  if (!rec) {
-    app.notice(t('无活跃会话'))
-    return
-  }
-  const inbox = rec.handle.agent.inbox as InboxLike | undefined
-  const nextTurn = (inbox?.nextTurn ?? []) as unknown[]
-  const nextStep = (inbox?.nextStep ?? []) as unknown[]
-  if (nextTurn.length === 0 && nextStep.length === 0) {
-    app.notice(t('（没有排队中的消息）'))
-    return
-  }
-  interface QueueRow { label: string; value: string }
-  const rows: QueueRow[] = []
-  const add = (list: 'nextTurn' | 'nextStep', msgs: unknown[], prefix: string) => {
-    for (const m of msgs) {
-      const id = (m as { id?: string }).id
-      const text = FeedRenderer.messageText(m as ChatMessage)
-      rows.push({
-        label: `${prefix}${FeedRenderer.truncate(text.replace(/\s+/g, ' '), 60)}`,
-        value: JSON.stringify({ list, id: String(id ?? '') }),
-      })
-    }
-  }
-  if (nextTurn.length > 0) rows.push({ label: `── 排队回合 ${nextTurn.length} 条`, value: 'none' })
-  add('nextTurn', nextTurn, '  ')
-  if (nextStep.length > 0) rows.push({ label: `── 下一步输入 ${nextStep.length} 条`, value: 'none' })
-  add('nextStep', nextStep, '  ')
-  rows.push({ label: '🗑 清空全部排队', value: 'clear' })
-  const sel = await app.openPicker(t('消息队列'), rows)
-  if (sel === null || sel === 'none') return
-  if (sel === 'clear') {
-    if (typeof inbox?.clear !== 'function') { app.notice(t('inbox 不可用')); return }
-    try { inbox.clear(); app.notice(t('已清空排队消息')) } catch (err) { app.notice(`清空失败: ${(err as Error).message}`) }
-    return
-  }
-  let picked: { list: 'nextTurn' | 'nextStep'; id: string } | undefined
-  try { picked = JSON.parse(sel) as { list: 'nextTurn' | 'nextStep'; id: string } } catch {}
-  if (picked === undefined) return
-  const act = await app.openPicker(t('队列操作'), [
-    { label: '删除该条', value: 'del' },
-    { label: '编辑该条（下一条输入作为新内容）', value: 'edit' },
-  ])
-  if (act === 'del') {
-    if (typeof inbox?.remove !== 'function') { app.notice(t('inbox 不可用')); return }
-    try {
-      const ok = inbox.remove(picked.id)
-      app.notice(ok === true ? '已从队列移除' : '该消息已被处理')
-    } catch (err) { app.notice(`移除失败: ${(err as Error).message}`) }
-  } else if (act === 'edit') {
-    app.slices.agent.setPendingQueueEdit({ list: picked.list, messageId: picked.id })
-    app.notice(t('下一条输入将替换该排队消息'))
-  }
-}
-
 /** Fill the transcript module's App slots and register its commands. */
 export function installTranscript(app: App): void {
   // -- trans + ui.diff domain defaults (I2) --
@@ -448,13 +280,12 @@ export function installTranscript(app: App): void {
   app.slices.trans.synthesizeToolResult = (rec, callId, seq, turn, step) => synthesizeToolResult(rec, callId, seq, turn, step)
   app.slices.trans.surfaceReplace = (session, type, seq, data) => surfaceReplace(session, type, seq, data)
   app.slices.trans.repairOrphanToolCalls = (rec) => repairOrphanToolCalls(rec)
-  const specs: CommandSpec[] = [
-    { name: '/trajectory', desc: t('回合步骤轨迹'), usage: t(''), group: t('信息'), fn: () => trajectoryCommand(app) },
-    { name: '/export', desc: t('导出转录 md'), usage: t('导出转录'), group: t('信息'), fn: () => exportCommand(app) },
-    { name: '/rewind', desc: t('回退到某条消息'), usage: t('[第N条]'), group: t('会话'), fn: (a) => rewindCommand(app, a) },
-    { name: '/queue', desc: t('消息队列（编辑/删除/清空）'), usage: t('消息队列'), group: t('会话'), fn: () => queueCommand(app) },
-  ]
-  app.registerCommands(specs)
+  // -- the slash commands, one file each (self-registering) --
+  installTrajectoryCommand(app)
+  installExportCommand(app)
+  installRewindCommand(app)
+  installQueueCommand(app)
+
 
   // -- host events this module owns (wired by boot via host-events.ts) ----
   // Workflow lifecycle cards → the owning session's feed.

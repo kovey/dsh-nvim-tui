@@ -1,8 +1,15 @@
+/**
+ * dsh_tui deps module: dependency health check + one-click assembly.
+ *
+ * `/deps` reports every harness/third-party dependency the TUI's commands
+ * consume, grouped with a ✓/✗/⚠ status. `/deps install` writes the missing
+ * host-plugin rows into the profile's cordis.patch.yml (idempotent — row ids
+ * already present are skipped) and the loader's user-patch watcher hot-reloads
+ * the composition.
+ *
+ * @module dsh-nvim-tui/deps
+ */
 import type { App, AppSlices } from '../kernel/app.js';
-/** Structural row ids already present in the patch file (comments ignored). */
-export declare function readPatchRowIds(path: string): Set<string>;
-/** Does the package exist inside the dsh install (hoisted or nested pnpm)?
- *  The install root derives from the dsh bin path; tests override it via
- *  `DSH_NVIM_TUI_INSTALL_ROOT`. */
-export declare function packageExists(pkg: string, file: string): boolean;
+/** Patch-row templates, keyed by the loader row id (or a special fix id). */
 export declare function installDeps(app: App, s: AppSlices['agent']): void;
+export { readPatchRowIds, packageExists } from './services.js';

@@ -1,3 +1,4 @@
+import type { App } from '../kernel/app.js';
 /** One market entry (flattened registry record). */
 export interface MarketEntry {
     /** `owner/repo` — also the display name. */
@@ -123,3 +124,29 @@ export declare function firstErrorLine(tail: string): string;
  *  - git        → fall back to the npm publish when the repo is unreachable
  */
 export declare function classifyPnpmError(tail: string): PnpmFailure;
+/** Open the nvim progress window so long pnpm runs never look stuck. */
+export declare const openProgress: (app: App, title: string) => {
+    log: (l: string) => void;
+    bar: (b: string) => void;
+    close: (delayMs?: number) => void;
+};
+/** Spawn `dsh plugin …`, streaming its output into the progress float. */
+export declare const runPluginCliP: (profileName: string, args: string[], pg: {
+    log: (l: string) => void;
+}, envExtra?: Record<string, string>) => Promise<{
+    code: number | null;
+    tail: string;
+}>;
+/** Post-install verification + the entry-file auto-repair chain (the
+ *  dsh-context incident): a source-only repo installs without its main
+ *  entry → swap to the npm publish / release tarball automatically. */
+export declare const verifyOrRepairMain: (entry: MarketEntry, profileName: string, spec: string, pg: {
+    log: (l: string) => void;
+    bar: (b: string) => void;
+}, runs: Set<string>) => Promise<boolean>;
+/** Install with automatic diagnosis + remedy chains (bounded attempt
+ *  budget, every remedy is logged into the progress float). */
+export declare const installWithRepair: (app: App, entry: MarketEntry, profileName: string, initialSpec: string, pg: {
+    log: (l: string) => void;
+    bar: (b: string) => void;
+}) => Promise<void>;
