@@ -10,7 +10,7 @@ import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsServ
  *  THIS, not process.cwd(): /search can resume a session from another
  *  project directory while the shell cwd stays put. */
 export declare const activeSessionCwd: (app: App) => string;
-export declare const BUILD_VERSION = "0.3.2";
+export declare const BUILD_VERSION = "0.3.3";
 export declare const BUILD_STAMP: string;
 export interface ServiceMap {
     appExit: (code?: number) => void;

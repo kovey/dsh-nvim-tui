@@ -44,7 +44,7 @@ export const activeSessionCwd = (app: App): string => {
   return typeof cwd === 'string' && cwd !== '' ? cwd : process.cwd()
 }
 
-export const BUILD_VERSION = '0.3.2'
+export const BUILD_VERSION = '0.3.3'
 export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 // ---------------------------------------------------------------------------

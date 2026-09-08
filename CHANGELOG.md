@@ -3,6 +3,88 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.3.3（2026-09-08）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.3)
+
+覆盖提交：
+[`f54bc46`](https://github.com/kovey/dsh-nvim-tui/commit/f54bc46) ·
+[`ad01deb`](https://github.com/kovey/dsh-nvim-tui/commit/ad01deb) ·
+[`6e3d1a0`](https://github.com/kovey/dsh-nvim-tui/commit/6e3d1a0) ·
+[`6e71794`](https://github.com/kovey/dsh-nvim-tui/commit/6e71794) ·
+[`b59c546`](https://github.com/kovey/dsh-nvim-tui/commit/b59c546) ·
+[`920250b`](https://github.com/kovey/dsh-nvim-tui/commit/920250b) ·
+[`4e2bfbc`](https://github.com/kovey/dsh-nvim-tui/commit/4e2bfbc) ·
+[`a9a9e51`](https://github.com/kovey/dsh-nvim-tui/commit/a9a9e51) ·
+[`38f0c23`](https://github.com/kovey/dsh-nvim-tui/commit/38f0c23) ·
+[`2aaf439`](https://github.com/kovey/dsh-nvim-tui/commit/2aaf439) ·
+[`4f4b743`](https://github.com/kovey/dsh-nvim-tui/commit/4f4b743) ·
+[`21b7263`](https://github.com/kovey/dsh-nvim-tui/commit/21b7263) ·
+[`2222bba`](https://github.com/kovey/dsh-nvim-tui/commit/2222bba) ·
+[`e883e16`](https://github.com/kovey/dsh-nvim-tui/commit/e883e16) ·
+[`ad72547`](https://github.com/kovey/dsh-nvim-tui/commit/ad72547) ·
+[`d02d57f`](https://github.com/kovey/dsh-nvim-tui/commit/d02d57f) ·
+[`c0507e4`](https://github.com/kovey/dsh-nvim-tui/commit/c0507e4) ·
+[`895d81b`](https://github.com/kovey/dsh-nvim-tui/commit/895d81b) ·
+[`16f7f8e`](https://github.com/kovey/dsh-nvim-tui/commit/16f7f8e) ·
+[`a4e1639`](https://github.com/kovey/dsh-nvim-tui/commit/a4e1639) ·
+[`66b42f8`](https://github.com/kovey/dsh-nvim-tui/commit/66b42f8) ·
+[`600ac31`](https://github.com/kovey/dsh-nvim-tui/commit/600ac31) ·
+[`682b81b`](https://github.com/kovey/dsh-nvim-tui/commit/682b81b)
+
+- **目录分层重构（P1–P6）**。src 按模块建立子目录（kernel/feed/boot/
+  commands/sessions/subagents/transcript/statusline/ext-api/deps/market），
+  src 根仅保留 index.ts（架构守卫强制）；boot.ts 收为纯组合根
+  （1024 → 175 行）；命令模块一命令一文件（40+ 个 installXxxCommand
+  自注册），业务模块各自的命令文件同构；内核提供公共接口，模块间低
+  耦合、模块内高内聚；新增 `scripts/check-arch.mjs`（kernel-only App
+  接口、slice 域白名单、跨域写扫描、依赖方向、模块边界等 8 项断言）
+  与 `scripts/app-ops-check.mjs`（域 op 注入运行时验证，op 清单从
+  AppSlices 声明派生）。lib/ 干净重建，陈旧平铺产物全部清除。
+- **六路并行全仓审计 + 分级修复（P1×10 / P2×25 / P3×12）**。六名审计
+  代理对全部源码与 Lua 侧逐行深读、交叉实证，修复确认项：
+  - P1：diff LCS DP 索引整体错位（尾部编辑整块错乱）；/attach 图片
+    分支死代码 + 附件二次保存；连续图片消息第二张丢失识图模型切换；
+    粘贴 data URL 未走字节契约 + 有状态正则；pendingImages 跨会话
+    泄漏（新增 clearPendings op）；ui.float 全新会话必失败；/deps
+    install 生产路径根推导错误；boot disconnect 无 disposed 守卫
+    （hmr 重载误杀进程）；/glance 纯 no-op 接线；nvim 执行层注释
+    诚实化（白名单仅存在于注释 → 明示全权信任面 + request 前缀 /
+    call 只读白名单护栏 + unrestrictedExec 能力声明）。
+  - P2：picker/dirPicker 单槽并发悬挂（先 settle 旧槽）；/memory
+    delete 路径穿越；nlcmd「用 bash」误路由持久化损坏默认模型；
+    dsh-ext 应答 msgpack 冻结；luaExt.on / registerCommands disposer
+    所有权；market 卸载自保护 + CLI 超时；cleanSubagentChain 假成功；
+    sendToSubagent 回显中毒；归档会话自动复活；host-events guard；
+    watchdog NaN；feed flush 竞态窗口 + lastView 自愈；table 字素簇
+    折行/参差行列/转义管道；任务板整板重复提交；diff 截断统计；
+    Lua region bottom SW 锚点几何、at_menu 光标乱文、popups reload
+    清句柄、输入 buffer wipe 自愈、boot guard 浮窗豁免、浮窗顶替补
+    cancel 通知等。
+  - P3：会话 cwd 语义（跨目录恢复不再读写错项目）、子代理零事件
+    可打开、/archive 刷新、layoutIdx 初始态、check-arch marker
+    fail-loudly、stats NaN 防线、文案括号、fb/bell 边界、e2e 加固、
+    README/发布面包同步、smoke 回归用例扩充（含纠偏两条固化旧 bug
+    期望的断言）。
+- **设计级修复**。approval/questions 改队列（并发父+子代理请求不再
+  互相覆盖挂死，teardown 全队列结算）；live 会话 LRU 软上限 16
+  （冷会话 dispose + buffer 回收）；ext 状态 hmr 幂等（订阅/ready
+  跨 reload 存活）；market 停用保配置（disabled 注入行体）；/sessions
+  跨 cwd 会话可达；/glance vim.g 持久化；market notfound 换源链排除
+  已失败源；/rewind 宿主能力依赖文档化。
+- **livePopup 未播种根修（自动恢复全线失败的 reading 'kind' 家族）**。
+  播种 livePopup: null、statusline 判空同挡 undefined，并复活自 P3 起
+  静默假绿的 app-ops-check 探针（root ReferenceError 被自身
+  uncaughtException 处理器吞掉）——现从 d.ts 派生 76 个域 op 全量
+  断言 + readonly 状态字段播种探针。
+- **新功能**：/models 改为 sessions 式弹窗目录（当前模型 + live
+  provider 的 settings 模型目录，Enter 切换）；输入框全屏编辑模式
+  （`<C-e>` 切换：近全屏浮窗像编辑普通文件，Enter 换行、Esc 命令
+  模式、回车发送回常规输入框、q 丢弃）；输入框提示栏同步加入
+  「C-e 全屏」。
+- **启动健壮性**：dsh_tui 全部子模块预载进 package.preload，完全绕开
+  vim.loader 字节码缓存（缓存污染时不再报误导性的 'loop or previous
+  error loading module'）；回声去重文本与宿主存储逐字一致（连续空格
+  折叠后比对，多行/缩进草稿不再重复显示）。
+
 ## [v0.3.2（2026-09-07）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.2)
 
 覆盖提交：
