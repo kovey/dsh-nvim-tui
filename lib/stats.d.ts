@@ -6,7 +6,7 @@
  * `assistant/message` events' `data.usage` (disjoint TokenUsage counts);
  * cache hit rate and context ratio derive from the billed input.
  */
-import type { TokenUsage, Usage } from './types.js';
+import type { TokenUsage, Usage } from './kernel/types.js';
 export declare const EMPTY_USAGE: Usage;
 /** Fold one TokenUsage record into the session accumulator. */
 export declare function foldUsage(acc: Usage, usage: TokenUsage): Usage;

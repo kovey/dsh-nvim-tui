@@ -1,4 +1,4 @@
-import type { ImageAttachmentRef, SaveImageAttachment } from './types.js';
+import type { ImageAttachmentRef, SaveImageAttachment } from './kernel/types.js';
 /** Detect the raster format from the encoded bytes; null when unsupported. */
 export declare function sniffMediaType(bytes: Uint8Array): string | null;
 /**

@@ -6,7 +6,18 @@
  *  3. Legacy flat accessors (`app.<oldField>`) must not reappear anywhere.
  */
 import { readFileSync, readdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, relative } from 'node:path'
+
+/** Recursive .ts walk (src/ is now a directory tree). */
+const walkTs = (dir) => {
+  const out = []
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name)
+    if (e.isDirectory()) out.push(...walkTs(p))
+    else if (e.name.endsWith('.ts')) out.push(p)
+  }
+  return out
+}
 
 const root = join(dirname(new URL(import.meta.url).pathname), '..')
 const fail = (msg) => { console.error('✗ arch-check:', msg); process.exitCode = 1 }
@@ -20,7 +31,7 @@ const LEGACY_SENTINELS = [
   'bellOn: boolean', 'chatWinId: number', 'historyHeaders: Array',
   // (commandSpecs is the KERNEL command registry — sanctioned on the root)
 ]
-const appSrc = readFileSync(join(root, 'src/app.ts'), 'utf8')
+const appSrc = readFileSync(join(root, 'src/kernel/app.ts'), 'utf8')
 const ifaceStart = appSrc.indexOf('/** The complete cross-module surface')
 const ifaceEnd = appSrc.indexOf('/** Build the App object.')
 const iface = appSrc.slice(ifaceStart, ifaceEnd)
@@ -32,8 +43,8 @@ for (const s of LEGACY_SENTINELS) {
 // 2) slice domain names must be real
 const SLICES = ['runtime', 'sessions', 'ui', 'ext', 'trans', 'agent']
 const domRe = /app\.slices\.([a-z]+)\b/g
-for (const f of readdirSync(join(root, 'src')).filter((n) => n.endsWith('.ts'))) {
-  const src = readFileSync(join(root, 'src', f), 'utf8')
+for (const f of walkTs(join(root, 'src'))) {
+  const src = readFileSync(f, 'utf8')
   for (const m of src.matchAll(domRe)) {
     if (!SLICES.includes(m[1])) fail(`${f}: unknown slice domain '${m[1]}'`)
   }
@@ -70,7 +81,7 @@ for (const s of MOVED_STATE) {
 //     WritableSlice 视图）；非 owner 文件的直接赋值是架构违规——跨域
 //     变更必须走域操作方法（setXxx/settleXxx）。
 const STATE_OWNERS = {
-  'src/app.ts': new Set(), // kernel：无 slice 状态写
+  'src/kernel/app.ts': new Set(), // kernel：无 slice 状态写
   'src/boot.ts': new Set(['runtime']),
   'src/ext-api.ts': new Set(['ext']),
   'src/statusline.ts': new Set(['ui']),
@@ -80,11 +91,11 @@ const STATE_OWNERS = {
   'src/commands.ts': new Set(['agent']),
   'src/market-install.ts': new Set(),
   'src/deps.ts': new Set(),
-  'src/rpc.ts': new Set(),
-  'src/host-events.ts': new Set(),
+  'src/kernel/rpc.ts': new Set(),
+  'src/kernel/host-events.ts': new Set(),
   'src/session-events.ts': new Set(),
-  'src/lifecycle.ts': new Set(['runtime']),
-  'src/headless.ts': new Set(),
+  'src/kernel/lifecycle.ts': new Set(['runtime']),
+  'src/kernel/headless.ts': new Set(),
 }
 const STATE_FIELDS = {
   runtime: ['nvim','child','channelIdValue','disposed','quitting','chatWinId','reasoningOpen','reasoningWinId','feedDisposer','hostDisposers','spinnerTimer','spinnerIndex','idleRefreshTimer'],
@@ -111,12 +122,26 @@ for (const [file, owned] of Object.entries(STATE_OWNERS)) {
 
 // 4) legacy flat access must not reappear (outside app.ts's own internal
 //    slice-literal implementations which are exempt)
-for (const f of readdirSync(join(root, 'src')).filter((n) => n.endsWith('.ts'))) {
-  if (f === 'app.ts') continue
-  const src = readFileSync(join(root, 'src', f), 'utf8')
+for (const f of walkTs(join(root, 'src'))) {
+  if (f === join(root, 'src/kernel/app.ts')) continue
+  const src = readFileSync(f, 'utf8')
   for (const m of src.matchAll(/\bapp\.(nvim|pickerSettle|pendingInput|workflowRuns|bellOn|chatWinId|historyHeaders|extApi|spinnerIndex|activeId|sessions)\b/g)) {
     fail(`${f}: legacy flat access app.${m[1]} (use app.slices.<domain>.${m[1]})`)
   }
 }
 
-console.log('✓ arch-check: App kernel-only, slice domains valid, no legacy flat access')
+// 5) kernel 依赖方向（阶段 1）：kernel 文件只允许 import kernel 内部 +
+//    以下白名单（feed 渲染层类型在 P2 迁入 feed/ 前暂居根目录）。
+const KERNEL_OUTER_ALLOWED = ['../feed.js']
+for (const f of walkTs(join(root, 'src/kernel'))) {
+  const src = readFileSync(f, 'utf8')
+  for (const m of src.matchAll(/from '(\.[^']+)'/g)) {
+    const imp = m[1]
+    if (imp.startsWith('./')) continue
+    if (!KERNEL_OUTER_ALLOWED.includes(imp)) {
+      fail(`${relative(root, f)}: kernel import ${imp} is not kernel-internal (kernel must not depend on business modules)`)
+    }
+  }
+}
+
+console.log('✓ arch-check: App kernel-only, slice domains valid, no legacy flat access, kernel dependency direction clean')

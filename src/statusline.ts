@@ -12,10 +12,10 @@ import {
   EMPTY_USAGE, foldUsage, billedInput, cacheHitRate, estimateCost,
   formatTokens, formatElapsed, modeLabel, escapeStatusline,
 } from './stats.js'
-import { t } from './i18n.js'
-import type { InboxLike, SessionEvent } from './types.js'
-import type { App, CommandSpec, SessionRec } from './app.js'
-import { registerHostHandler } from './host-events.js'
+import { t } from './kernel/i18n.js'
+import type { InboxLike, SessionEvent } from './kernel/types.js'
+import type { App, CommandSpec, SessionRec } from './kernel/app.js'
+import { registerHostHandler } from './kernel/host-events.js'
 
 /** Fold one transcript event into the session's statusline stats. */
 const foldEvent = (app: App, rec: SessionRec, event: SessionEvent) => {

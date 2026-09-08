@@ -1,4 +1,4 @@
-import type { App } from './app.js';
+import type { App } from './kernel/app.js';
 /** Synchronous runtime-domain defaults — MUST run before every other
  *  install: install bodies push disposers into runtime.hostDisposers
  *  (statusline/commands/…), so the domain needs its shape from t=0.

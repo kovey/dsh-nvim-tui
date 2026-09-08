@@ -35,8 +35,8 @@
  * watchdog), then exits.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { setLocale } from './i18n.js'
-import { createApp } from './app.js'
+import { setLocale } from './kernel/i18n.js'
+import { createApp } from './kernel/app.js'
 import { installExtApi } from './ext-api.js'
 import { installStatusline } from './statusline.js'
 import { installSessions } from './sessions.js'
@@ -46,14 +46,14 @@ import { installCommands } from './commands.js'
 import { installMarketInstall } from './market-install.js'
 import { installDeps } from './deps.js'
 import { boot, installRuntime } from './boot.js'
-import type { RuntimeCtx, RunnerConfig } from './types.js'
+import type { RuntimeCtx, RunnerConfig } from './kernel/types.js'
 
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
-export { BUILD_VERSION, BUILD_STAMP } from './app.js'
+export { BUILD_VERSION, BUILD_STAMP } from './kernel/app.js'
 
 export const name = 'dsh-nvim-tui'
 
-export type { RunnerConfig } from './types.js'
+export type { RunnerConfig } from './kernel/types.js'
 export type {
   TuiExtApi, ExtNvimLayer, ExtSessionEventFilter, ExtEventName,
   ExtUiLayer, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult,

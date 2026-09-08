@@ -18,7 +18,7 @@ import { readFileSync, unlinkSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
-import type { ImageAttachmentRef, SaveImageAttachment } from './types.js'
+import type { ImageAttachmentRef, SaveImageAttachment } from './kernel/types.js'
 
 /** Media types the version-one attachment path accepts (dsh-attachment). */
 const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']

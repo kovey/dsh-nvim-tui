@@ -8,7 +8,7 @@
 import { spawn } from 'node:child_process'
 import { renameSync } from 'node:fs'
 import { join } from 'node:path'
-import { locale, t } from './i18n.js'
+import { locale, t } from './kernel/i18n.js'
 import {
   MarketEntry, fetchCatalog, readCatalog, writeCatalog, isFresh, searchCatalog,
   readInstalledPlugins, runningProfileName, installSpec, openUrl,
@@ -17,7 +17,7 @@ import {
   isNpmName, latestVersion, depMatchesEntry,
   profileDir, classifyPnpmError, firstErrorLine, repoRoot,
 } from './market.js'
-import type { App, CommandSpec } from './app.js'
+import type { App, CommandSpec } from './kernel/app.js'
 
 /** /market [关键词 | refresh] — plugin marketplace: curated
  *  awesome-dsh-plugin catalog sorted by GitHub stars (desc), with

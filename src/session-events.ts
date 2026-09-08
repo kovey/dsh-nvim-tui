@@ -9,9 +9,9 @@
  * @module dsh-nvim-tui/session-events
  */
 import { FeedRenderer } from './feed.js'
-import { t } from './i18n.js'
-import type { ChatMessage, GoalState, MessageContent, SessionEvent } from './types.js'
-import type { App, SessionRec } from './app.js'
+import { t } from './kernel/i18n.js'
+import type { ChatMessage, GoalState, MessageContent, SessionEvent } from './kernel/types.js'
+import type { App, SessionRec } from './kernel/app.js'
 
 /** Produced-file heuristic for /deliverables: mutation tools whose args
  *  carry a follow-along path (official render intents: diff / edit). */

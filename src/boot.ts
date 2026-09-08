@@ -18,17 +18,17 @@
  *
  * @module dsh-nvim-tui/boot
  */
-import { spawnNvim, connectNvim } from './bridge.js'
+import { spawnNvim, connectNvim } from './kernel/bridge.js'
 import { EXT_API_VERSION, announceReady, handleDshExtRequest } from './ext-api.js'
-import { installLifecycle } from './lifecycle.js'
-import { installHeadless } from './headless.js'
-import { dispatchNvimNotification, registerNvimNotification } from './rpc.js'
-import { wireHostEvents } from './host-events.js'
+import { installLifecycle } from './kernel/lifecycle.js'
+import { installHeadless } from './kernel/headless.js'
+import { dispatchNvimNotification, registerNvimNotification } from './kernel/rpc.js'
+import { wireHostEvents } from './kernel/host-events.js'
 import { makeSessionEventHandler } from './session-events.js'
 import { resumeOrCreate } from './sessions.js'
 import { drainPendingInput } from './commands.js'
-import type { AppSlices, WritableSlice } from './app.js'
-import type { App } from './app.js'
+import type { AppSlices, WritableSlice } from './kernel/app.js'
+import type { App } from './kernel/app.js'
 const W = (d: AppSlices['runtime']) => d as WritableSlice<AppSlices['runtime']>
 
 /** Synchronous runtime-domain defaults — MUST run before every other

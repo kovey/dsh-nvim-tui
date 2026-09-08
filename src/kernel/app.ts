@@ -19,8 +19,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { NeovimClient } from 'neovim'
-import type { FeedRenderer } from './feed.js'
-import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-api.js'
+import type { FeedRenderer } from '../feed.js'
+import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js'
 import type { RunnerConfig } from './types.js'
 import type {
   AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService,

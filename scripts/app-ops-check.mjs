@@ -3,7 +3,7 @@
  * EVERY op declared on the slices must be a real function (Object.assign
  * injection is invisible to tsc — this catches missing implementations).
  */
-import { createApp } from '../lib/app.js'
+import { createApp } from '../lib/kernel/app.js'
 import { installRuntime } from '../lib/boot.js'
 import { installExtApi } from '../lib/ext-api.js'
 import { installStatusline } from '../lib/statusline.js'

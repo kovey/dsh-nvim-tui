@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url'
 import { attach, NeovimClient } from 'neovim'
 
 const here = dirname(fileURLToPath(import.meta.url))
-/** Bundle root: one level up from lib/. */
-const bundleRoot = join(here, '..')
+/** Bundle root: two levels up from lib/kernel/. */
+const bundleRoot = join(here, '..', '..')
 /** Directory added to nvim's runtimepath (contains lua/dsh_tui/). */
 const nvimRtpDir = join(bundleRoot, 'nvim')
 /** Absolute path of the dsh_tui Lua module entry. */

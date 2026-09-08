@@ -10,11 +10,11 @@ import { readFile, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { FeedRenderer } from './feed.js'
-import { t } from './i18n.js'
+import { t } from './kernel/i18n.js'
 import { diffTexts, fileDiffsFromMeta } from './diff.js'
-import type { ChatMessage, HarnessSession, InboxLike, MessageContent, SessionEvent } from './types.js'
-import type { App, CommandSpec, SessionRec } from './app.js'
-import { registerHostHandler } from './host-events.js'
+import type { ChatMessage, HarnessSession, InboxLike, MessageContent, SessionEvent } from './kernel/types.js'
+import type { App, CommandSpec, SessionRec } from './kernel/app.js'
+import { registerHostHandler } from './kernel/host-events.js'
 
 /**
  * Repair the "insufficient tool messages" session poison.

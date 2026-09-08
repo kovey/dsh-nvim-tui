@@ -1,4 +1,4 @@
-import type { App, AppSlices } from './app.js';
+import type { App, AppSlices } from './kernel/app.js';
 /** Structural row ids already present in the patch file (comments ignored). */
 export declare function readPatchRowIds(path: string): Set<string>;
 /** Does the package exist inside the dsh install (hoisted or nested pnpm)?

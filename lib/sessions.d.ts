@@ -1,4 +1,4 @@
-import type { App } from './app.js';
+import type { App } from './kernel/app.js';
 export declare function installSessions(app: App): void;
 /** Boot-time session selection (moved out of boot): explicit resume id
  *  (env/config) wins; otherwise auto-resume the LAST active session of this

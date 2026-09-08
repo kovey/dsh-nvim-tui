@@ -25,7 +25,7 @@
  *  - Events arriving during a flush set `dirty`; the flush chains a follow-up.
  */
 import { NeovimClient } from 'neovim';
-import type { ChatMessage, SessionEvent } from './types.js';
+import type { ChatMessage, SessionEvent } from './kernel/types.js';
 /** Inline highlight span (byte offsets into the rendered line). */
 export interface Span {
     s: number;

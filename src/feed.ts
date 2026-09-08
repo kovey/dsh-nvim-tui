@@ -30,8 +30,8 @@ import { whaleFrames, whaleRowsIndented } from './whale.js'
 import { transformTables, renderTable, isTableRow, isSeparator } from './table.js'
 import { imageLabel } from './images.js'
 import { formatElapsed, formatTokens } from './stats.js'
-import { t } from './i18n.js'
-import type { ChatMessage, ImageAttachmentRef, MessageContent, MessageSourceLike, SessionEvent } from './types.js'
+import { t } from './kernel/i18n.js'
+import type { ChatMessage, ImageAttachmentRef, MessageContent, MessageSourceLike, SessionEvent } from './kernel/types.js'
 
 const INLINE_RE = /(\*\*[^*]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\n]+\))/g
 /** Exact ✎ diff header: ✎ (新增|修改|删除) <path> (+N −M) — the ONLY line

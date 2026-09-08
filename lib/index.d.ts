@@ -35,11 +35,11 @@
  * watchdog), then exits.
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { RunnerConfig } from './types.js';
+import type { RunnerConfig } from './kernel/types.js';
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
-export { BUILD_VERSION, BUILD_STAMP } from './app.js';
+export { BUILD_VERSION, BUILD_STAMP } from './kernel/app.js';
 export declare const name = "dsh-nvim-tui";
-export type { RunnerConfig } from './types.js';
+export type { RunnerConfig } from './kernel/types.js';
 export type { TuiExtApi, ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtUiLayer, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult, ExtPickerOpts, ExtCommandSpec, ExtPanelOpts, ExtPanelHandles, ExtLuaLayer, ExtRegionOpts, ExtRegionHandles, } from './ext-api.js';
 export { EXT_API_VERSION, EXT_HANDLER_TIMEOUT_MS, matchSessionEventFilter } from './ext-api.js';
 /**
