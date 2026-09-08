@@ -15,6 +15,10 @@ function K.install()
   vim.api.nvim_buf_set_keymap(S.input_buf, 'n', 'ZZ', '<Nop>', { noremap = true })
   vim.api.nvim_buf_set_keymap(S.input_buf, 'n', 'ZQ', '<Nop>', { noremap = true })
 
+  -- Fullscreen input editor: <C-e> opens the near-fullscreen float
+  -- (Enter = newline inside it; Esc → normal; <CR> sends, q discards).
+  vim.api.nvim_buf_set_keymap(S.input_buf, 'i', '<C-e>', '<Cmd>lua require("dsh_tui").full_input_toggle()<CR>', { noremap = true })
+
   -- Input buffer (insert mode): <CR> submits, <C-CR> inserts a literal
   -- newline (multi-line input), <Up>/<Down> cycle history; <Tab>/<C-n>/
   -- <C-p>/<S-Tab> navigate the slash-command completion menu while it is

@@ -95,6 +95,7 @@ S.cmdIdx = 0              -- 1-based selection index
 S.cmdTop = 1              -- first visible row
 S.subagentView = { buf = nil, win = nil }
 S.subagentChat = { buf = nil, win = nil, inputBuf = nil, inputWin = nil, hist = {}, histIdx = nil, draft = nil }
+S.fullInput = { win = nil, buf = nil }
 S.atWin = nil
 S.atBuf = nil
 S.atItems = {}            -- { path, mention }

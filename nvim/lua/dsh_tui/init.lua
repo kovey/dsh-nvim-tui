@@ -143,6 +143,13 @@ M.refresh_input_frame = I.refresh_frame
 -- dsh_tui.session
 M.ensure_chat = SE.ensure_chat
 M.close_chat = SE.close_chat
+
+-- dsh_tui.full_input
+local FI = require('dsh_tui.full_input')
+M.full_input_toggle = FI.toggle
+M.full_input_open = FI.open
+M.full_input_close = FI.close_public
+M.full_input_submit = FI.submit_public
 M.ensure_reasoning = SE.ensure_reasoning
 M.reasoning_panel_geometry = SE.reasoning_panel_geometry
 M.toggle_reasoning = SE.toggle_reasoning

@@ -2805,6 +2805,27 @@ description:
   assert.equal(got, 42, 'rpcnotify roundtrip')
   log('rpcnotify roundtrip ok:', got)
 
+  // 12c. fullscreen input editor (<C-e>): opens a valid near-fullscreen
+  // float prefilled with the draft, normal-mode keys exist, q discards and
+  // the input box keeps its content (submit path reuses M.submit — tested
+  // through the regular dsh-input assertions above).
+  await lua('vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "草稿行1", "草稿行2" })', [])
+  await lua('require("dsh_tui").resize_input()', [])
+  const fiOpened = await lua('require("dsh_tui").full_input_open(); return vim.api.nvim_win_is_valid(require("dsh_tui.state").fullInput.win)', [])
+  assert.equal(fiOpened, true, 'fullscreen input opens a valid float')
+  const fiPrefill = await lua('return vim.api.nvim_buf_get_lines(require("dsh_tui.state").fullInput.buf, 0, -1, false)', [])
+  assert.deepEqual(fiPrefill, ['草稿行1', '草稿行2'], 'fullscreen input prefills the draft')
+  const fiKeys = await lua('local b = require("dsh_tui.state").fullInput.buf; local ks = vim.api.nvim_buf_get_keymap(b, "n"); local has = {}; for _, m in ipairs(ks) do if m.lhs == "<CR>" then has.cr = true end; if m.lhs == "q" then has.q = true end end; return has', [])
+  assert.equal(fiKeys.cr, true, 'normal-mode <CR> bound (send)')
+  assert.equal(fiKeys.q, true, 'normal-mode q bound (discard)')
+  await lua('require("dsh_tui").full_input_close()', [])
+  const fiClosed = await lua('return require("dsh_tui.state").fullInput.win == nil', [])
+  assert.equal(fiClosed, true, 'discard closes the float')
+  const fiDraftKept = await lua('return require("dsh_tui.buffer").input_text()', [])
+  assert.equal(fiDraftKept, '草稿行1\n草稿行2', 'discard keeps the input-box draft')
+  await lua('vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "" }); require("dsh_tui").resize_input()', [])
+  log('fullscreen input editor: open/prefill/discard ok')
+
   log('SMOKE PASS')
 } finally {
   // Graceful close — the TUI's /exit path relies on ':qa!' so nvim never
