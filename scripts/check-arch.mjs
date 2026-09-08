@@ -82,18 +82,18 @@ for (const s of MOVED_STATE) {
 //     变更必须走域操作方法（setXxx/settleXxx）。
 const STATE_OWNERS = {
   'src/kernel/app.ts': new Set(), // kernel：无 slice 状态写
-  'src/boot.ts': new Set(['runtime']),
-  'src/ext-api.ts': new Set(['ext']),
-  'src/statusline.ts': new Set(['ui']),
-  'src/sessions.ts': new Set(['sessions']),
-  'src/subagents.ts': new Set(['agent']),
-  'src/transcript.ts': new Set(['trans', 'ui']),
+  'src/boot/boot.ts': new Set(['runtime']),
+  'src/ext-api/index.ts': new Set(['ext']),
+  'src/statusline/index.ts': new Set(['ui']),
+  'src/sessions/index.ts': new Set(['sessions']),
+  'src/subagents/index.ts': new Set(['agent']),
+  'src/transcript/index.ts': new Set(['trans', 'ui']),
   'src/commands.ts': new Set(['agent']),
-  'src/market-install.ts': new Set(),
-  'src/deps.ts': new Set(),
+  'src/market/index.ts': new Set(),
+  'src/deps/index.ts': new Set(),
   'src/kernel/rpc.ts': new Set(),
   'src/kernel/host-events.ts': new Set(),
-  'src/session-events.ts': new Set(),
+  'src/boot/session-events.ts': new Set(),
   'src/kernel/lifecycle.ts': new Set(['runtime']),
   'src/kernel/headless.ts': new Set(),
 }
@@ -154,4 +154,18 @@ for (const f of walkTs(join(root, 'src/feed'))) {
   }
 }
 
-console.log('✓ arch-check: App kernel-only, slice domains valid, no legacy flat access, kernel/feed dependency direction clean')
+// 7) 业务模块依赖方向（阶段 3）：模块目录只允许外联 kernel/ 与 feed/
+//    （boot/ 是组合层，豁免）。
+const MODULE_DIRS = ['sessions', 'subagents', 'transcript', 'statusline', 'ext-api', 'deps', 'market']
+for (const dir of MODULE_DIRS) {
+  for (const f of walkTs(join(root, 'src', dir))) {
+    const src = readFileSync(f, 'utf8')
+    for (const m of src.matchAll(/from '(\.\.[^']+)'/g)) {
+      const imp = m[1]
+      if (imp.startsWith('../kernel/') || imp.startsWith('../feed/')) continue
+      fail(`${relative(root, f)}: module import ${imp} crosses a module boundary (allowed: kernel/ + feed/ only)`)
+    }
+  }
+}
+
+console.log('✓ arch-check: App kernel-only, slice domains valid, no legacy flat access, dependency direction clean')

@@ -20,10 +20,10 @@ import { diffTexts, fileDiffsFromMeta } from '../lib/feed/diff.js'
 import { t, setLocale, locale } from '../lib/kernel/i18n.js'
 import { matchIntent } from '../lib/nlcmd.js'
 import { ageLabel, isExpired, orderSubagentChildren } from '../lib/kernel/subagent-clean.js'
-import { runningBadge } from '../lib/statusline.js'
+import { runningBadge } from '../lib/statusline/index.js'
 import stringWidth from 'string-width'
-import { matchSessionEventFilter } from '../lib/ext-api.js'
-import { readPatchRowIds, packageExists } from '../lib/deps.js'
+import { matchSessionEventFilter } from '../lib/ext-api/index.js'
+import { readPatchRowIds, packageExists } from '../lib/deps/index.js'
 import { encodeSessionLog, encodeHeaderOnlyLog } from '../lib/kernel/subagent-clean.js'
 import { zstdDecompressSync } from 'node:zlib'
 import os from 'node:os'
@@ -31,7 +31,7 @@ import {
   parseStars, buildCatalog, searchCatalog, parsePluginYaml,
   setDisabledRows, readDisabledIds, isNpmName, depMatchesEntry, repoRoot, installSpec,
   classifyPnpmError, firstErrorLine, profileDir,
-} from '../lib/market.js'
+} from '../lib/market/progress.js'
 
 // console.* is async and its output can be swallowed by non-TTY capture
 // environments once the nvim child shares the pipe; write synchronously.

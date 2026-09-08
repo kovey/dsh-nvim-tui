@@ -16,9 +16,9 @@
  *
  * @module dsh-nvim-tui/ext-api
  */
-import type { SessionEvent } from './kernel/types.js'
-import type { App, AppSlices, WritableSlice } from './kernel/app.js'
-import { registerNvimNotification } from './kernel/rpc.js'
+import type { SessionEvent } from '../kernel/types.js'
+import type { App, AppSlices, WritableSlice } from '../kernel/app.js'
+import { registerNvimNotification } from '../kernel/rpc.js'
 
 /** Extension API version (semver, independent of the bundle version). */
 export const EXT_API_VERSION = '0.1.0'
@@ -30,10 +30,10 @@ export const EXT_API_VERSION = '0.1.0'
  *  results are discarded). */
 export const EXT_HANDLER_TIMEOUT_MS = 30_000
 
-import type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardHandle, TuiExtApi } from './kernel/ext-types.js'
+import type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardHandle, TuiExtApi } from '../kernel/ext-types.js'
 
 // Public contract re-exports: the type definitions moved to kernel/ext-types.ts
-export type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult, ExtPickerOpts, ExtPanelOpts, ExtPanelHandles, ExtRegionOpts, ExtRegionHandles, ExtCommandSpec, ExtLuaLayer, ExtUiLayer, TuiExtApi } from './kernel/ext-types.js'
+export type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult, ExtPickerOpts, ExtPanelOpts, ExtPanelHandles, ExtRegionOpts, ExtRegionHandles, ExtCommandSpec, ExtLuaLayer, ExtUiLayer, TuiExtApi } from '../kernel/ext-types.js'
 
 /** Pure filter match (exported for unit tests). */
 export function matchSessionEventFilter(

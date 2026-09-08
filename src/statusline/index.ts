@@ -7,15 +7,15 @@
  *
  * @module dsh-nvim-tui/statusline
  */
-import { WHALE_EMOJI_FRAMES } from './feed/whale.js'
+import { WHALE_EMOJI_FRAMES } from '../feed/whale.js'
 import {
   EMPTY_USAGE, foldUsage, billedInput, cacheHitRate, estimateCost,
   formatTokens, formatElapsed, modeLabel, escapeStatusline,
-} from './feed/stats.js'
-import { t } from './kernel/i18n.js'
-import type { InboxLike, SessionEvent } from './kernel/types.js'
-import type { App, CommandSpec, SessionRec } from './kernel/app.js'
-import { registerHostHandler } from './kernel/host-events.js'
+} from '../feed/stats.js'
+import { t } from '../kernel/i18n.js'
+import type { InboxLike, SessionEvent } from '../kernel/types.js'
+import type { App, CommandSpec, SessionRec } from '../kernel/app.js'
+import { registerHostHandler } from '../kernel/host-events.js'
 
 /** Fold one transcript event into the session's statusline stats. */
 const foldEvent = (app: App, rec: SessionRec, event: SessionEvent) => {

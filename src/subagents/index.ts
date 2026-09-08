@@ -5,14 +5,14 @@
  *
  * @module dsh-nvim-tui/subagents
  */
-import { FeedRenderer } from './feed/feed.js'
-import { t } from './kernel/i18n.js'
-import { ageLabel, isExpired, orderSubagentChildren } from './kernel/subagent-clean.js'
-import { queueSubagentPromptKey } from './kernel/types.js'
-import type { SessionEvent, SubagentInfo } from './kernel/types.js'
-import type { App, AppSlices, CommandSpec, WritableSlice } from './kernel/app.js'
-import { registerHostHandler } from './kernel/host-events.js'
-import { registerNvimNotification } from './kernel/rpc.js'
+import { FeedRenderer } from '../feed/feed.js'
+import { t } from '../kernel/i18n.js'
+import { ageLabel, isExpired, orderSubagentChildren } from '../kernel/subagent-clean.js'
+import { queueSubagentPromptKey } from '../kernel/types.js'
+import type { SessionEvent, SubagentInfo } from '../kernel/types.js'
+import type { App, AppSlices, CommandSpec, WritableSlice } from '../kernel/app.js'
+import { registerHostHandler } from '../kernel/host-events.js'
+import { registerNvimNotification } from '../kernel/rpc.js'
 const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 
 /** Enumerate the active session's subagent children (live + persisted).

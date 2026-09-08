@@ -4,12 +4,12 @@
  * injection is invisible to tsc — this catches missing implementations).
  */
 import { createApp } from '../lib/kernel/app.js'
-import { installRuntime } from '../lib/boot.js'
-import { installExtApi } from '../lib/ext-api.js'
-import { installStatusline } from '../lib/statusline.js'
-import { installSessions } from '../lib/sessions.js'
-import { installSubagents } from '../lib/subagents.js'
-import { installTranscript } from '../lib/transcript.js'
+import { installRuntime } from '../lib/boot/boot.js'
+import { installExtApi } from '../lib/ext-api/index.js'
+import { installStatusline } from '../lib/statusline/index.js'
+import { installSessions } from '../lib/sessions/index.js'
+import { installSubagents } from '../lib/subagents/index.js'
+import { installTranscript } from '../lib/transcript/index.js'
 import { installCommands } from '../lib/commands.js'
 
 const ctx = { effect: () => () => {}, get: () => undefined }

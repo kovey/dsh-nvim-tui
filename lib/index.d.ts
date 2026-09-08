@@ -40,8 +40,8 @@ import type { RunnerConfig } from './kernel/types.js';
 export { BUILD_VERSION, BUILD_STAMP } from './kernel/app.js';
 export declare const name = "dsh-nvim-tui";
 export type { RunnerConfig } from './kernel/types.js';
-export type { TuiExtApi, ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtUiLayer, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult, ExtPickerOpts, ExtCommandSpec, ExtPanelOpts, ExtPanelHandles, ExtLuaLayer, ExtRegionOpts, ExtRegionHandles, } from './ext-api.js';
-export { EXT_API_VERSION, EXT_HANDLER_TIMEOUT_MS, matchSessionEventFilter } from './ext-api.js';
+export type { TuiExtApi, ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtUiLayer, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult, ExtPickerOpts, ExtCommandSpec, ExtPanelOpts, ExtPanelHandles, ExtLuaLayer, ExtRegionOpts, ExtRegionHandles, } from './ext-api/index.js';
+export { EXT_API_VERSION, EXT_HANDLER_TIMEOUT_MS, matchSessionEventFilter } from './ext-api/index.js';
 /**
  * Mount the Neovim TUI runner over dsh-base.
  */

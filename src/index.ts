@@ -37,15 +37,15 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { setLocale } from './kernel/i18n.js'
 import { createApp } from './kernel/app.js'
-import { installExtApi } from './ext-api.js'
-import { installStatusline } from './statusline.js'
-import { installSessions } from './sessions.js'
-import { installSubagents } from './subagents.js'
-import { installTranscript } from './transcript.js'
+import { installExtApi } from './ext-api/index.js'
+import { installStatusline } from './statusline/index.js'
+import { installSessions } from './sessions/index.js'
+import { installSubagents } from './subagents/index.js'
+import { installTranscript } from './transcript/index.js'
 import { installCommands } from './commands.js'
-import { installMarketInstall } from './market-install.js'
-import { installDeps } from './deps.js'
-import { boot, installRuntime } from './boot.js'
+import { installMarketInstall } from './market/index.js'
+import { installDeps } from './deps/index.js'
+import { boot, installRuntime } from './boot/boot.js'
 import type { RuntimeCtx, RunnerConfig } from './kernel/types.js'
 
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
@@ -59,8 +59,8 @@ export type {
   ExtUiLayer, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult,
   ExtPickerOpts, ExtCommandSpec, ExtPanelOpts, ExtPanelHandles, ExtLuaLayer,
   ExtRegionOpts, ExtRegionHandles,
-} from './ext-api.js'
-export { EXT_API_VERSION, EXT_HANDLER_TIMEOUT_MS, matchSessionEventFilter } from './ext-api.js'
+} from './ext-api/index.js'
+export { EXT_API_VERSION, EXT_HANDLER_TIMEOUT_MS, matchSessionEventFilter } from './ext-api/index.js'
 
 /**
  * Mount the Neovim TUI runner over dsh-base.

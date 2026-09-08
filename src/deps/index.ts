@@ -13,7 +13,7 @@ import { appendFileSync, existsSync, readFileSync, readdirSync, realpathSync } f
 import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { App, AppSlices } from './kernel/app.js'
+import type { App, AppSlices } from '../kernel/app.js'
 
 /** One assembly row: package identity + the exact YAML appended to the patch. */
 interface RowTemplate {
