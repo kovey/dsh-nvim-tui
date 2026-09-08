@@ -47,6 +47,20 @@ export function matchSessionEventFilter(
   return kinds.includes(eventType)
 }
 
+// -- hmr-surviving module state (see installExtApi) -------------------------
+let readyAnnounced = false
+const readyWaiters: Array<() => void> = []
+const moduleListeners = new Map<string, Set<(payload: unknown) => void>>()
+const moduleSessionSubs: Array<{
+  filter: ExtSessionEventFilter
+  cb: (sid: string, ev: SessionEvent) => void
+}> = []
+const readyListeners = (): Map<string, Set<(payload: unknown) => void>> => moduleListeners
+const readySessionSubs = (): Array<{
+  filter: ExtSessionEventFilter
+  cb: (sid: string, ev: SessionEvent) => void
+}> => moduleSessionSubs
+
 /** Install the extension API onto the App (runs before boot; index.ts then
  *  publishes the built surface through the cordis registry). */
 export function installExtApi(app: App): void {
@@ -56,7 +70,18 @@ export function installExtApi(app: App): void {
     extApi: null as unknown as TuiExtApi,
     extReadyResolve: null,
     setPendingCardInput: (v: { mark: number; actionIdx: number; prompt: string } | null) => { WE.pendingCardInput = v },
-    fireExtReady: () => { const fn = WE.extReadyResolve; WE.extReadyResolve = null; fn?.() },
+    fireExtReady: () => {
+      // Ready waiters survive runner-row reloads (module scope): a SECOND
+      // apply's api.ready resolves together with the first one — nobody
+      // hangs, and tui:ready fires exactly once.
+      const first = !readyAnnounced
+      readyAnnounced = true
+      const ws = [...readyWaiters]
+      readyWaiters.length = 0
+      for (const w of ws) w()
+      WE.extReadyResolve = null
+      return first
+    },
     extFire: () => {},
     extSessionSubs: [],
     extDispatchSessionEvent: () => {},
@@ -67,11 +92,11 @@ export function installExtApi(app: App): void {
     extStatusSegments: new Map(),
   })
 
-  const listeners = new Map<string, Set<(payload: unknown) => void>>()
-  const sessionSubs: Array<{
-    filter: ExtSessionEventFilter
-    cb: (sid: string, ev: SessionEvent) => void
-  }> = []
+  // Subscription/slot state lives at MODULE scope: a runner-row reload
+  //  (hmr) re-runs apply() in the same process — plugin subscriptions and
+  //  status segments must survive the reload, not silently vanish.
+  const listeners = readyListeners()
+  const sessionSubs = readySessionSubs()
   /** Node-side floats opened via ui.float: key → win id. */
   const nodeFloats = new Map<string, number>()
   let floatSeq = 0
@@ -147,8 +172,21 @@ export function installExtApi(app: App): void {
     }
   }
 
+  // The execution layer is full-trust by DESIGN (documented in
+  //  kernel/ext-types.ts), but the two cheapest guardrails still apply:
+  //  requests must be real nvim_* API methods, and vim.fn calls are limited
+  //  to a read-only-ish whitelist (lua/ex remain the documented escape
+  //  hatches with NO sandbox).
+  const SAFE_VIM_FN = new Set([
+    'fnameescape', 'expand', 'fnamemodify', 'getcwd', 'stdpath', 'glob', 'globpath',
+    'has', 'exists', 'getenv', 'executable', 'filereadable', 'isdirectory',
+    'getftime', 'getfsize', 'tempname', 'bufname', 'bufnr', 'line', 'col',
+    'winwidth', 'winheight', 'winnr', 'tabpagenr', 'systemlist', 'trim',
+    'strwidth', 'strdisplaywidth', 'keys', 'values', 'len', 'string', 'type',
+  ])
   const nvimLayer: ExtNvimLayer = {
     request: (method, args = [], opts) => {
+      if (!method.startsWith('nvim_')) return Promise.reject(new Error(`nvim.request 仅接受 nvim_* API 方法（收到: ${method}）`))
       if (app.slices.runtime.nvim === null) return Promise.reject(new Error('nvim not connected'))
       const p = app.slices.runtime.nvim.request(method, args as never[]) as Promise<unknown>
       if (opts?.timeoutMs === undefined) return p
@@ -159,6 +197,7 @@ export function installExtApi(app: App): void {
       ])
     },
     call: (fn, args = []) => {
+      if (!SAFE_VIM_FN.has(fn)) return Promise.reject(new Error(`nvim.call 不在只读白名单内（收到: ${fn}；需要任意执行请用 nvim.lua/nvim.ex）`))
       if (app.slices.runtime.nvim === null) return Promise.reject(new Error('nvim not connected'))
       return app.slices.runtime.nvim.call(fn, args as never[]) as Promise<unknown>
     },
@@ -186,6 +225,9 @@ export function installExtApi(app: App): void {
       panel: !app.headless,
       region: !app.headless,
       rpc: true,
+      // NO sandbox on lua/ex (nvim has none): the surface is a full-trust
+      // execution layer — declared so installers can warn, never implied.
+      unrestrictedExec: true,
     }),
     nvim: nvimLayer,
     on: (event, cb) => {
@@ -611,8 +653,11 @@ export function handleDshExtRequest(app: App, method: string, args: unknown[], r
  *  promise, notify Node subscribers, and fire the nvim-side User DshTuiReady
  *  autocmd. */
 export function announceReady(app: App): void {
-  app.slices.ext.fireExtReady()
+  const first = app.slices.ext.fireExtReady()
   app.slices.ext.setPendingCardInput(null)
-  app.slices.ext.extFire('tui:ready', { active: app.slices.sessions.activeId })
+  // Node-side tui:ready is one-shot per process (hmr reloads must not
+  // double-announce); the nvim-side Ready autocmd fires per boot — the new
+  // nvim instance's plugins need it every time.
+  if (first) app.slices.ext.extFire('tui:ready', { active: app.slices.sessions.activeId })
   void app.luaCall('require("dsh_tui.api").emit(...)', ['Ready', { active: app.slices.sessions.activeId }]).catch(() => {})
 }

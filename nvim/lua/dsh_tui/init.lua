@@ -142,6 +142,7 @@ M.refresh_input_frame = I.refresh_frame
 
 -- dsh_tui.session
 M.ensure_chat = SE.ensure_chat
+M.close_chat = SE.close_chat
 M.ensure_reasoning = SE.ensure_reasoning
 M.reasoning_panel_geometry = SE.reasoning_panel_geometry
 M.toggle_reasoning = SE.toggle_reasoning

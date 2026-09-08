@@ -244,7 +244,7 @@ export interface AppSlices {
     readonly extStatusSegments: Map<string, { text: string; priority: number }>
     /** Owner ops: cross-domain consumers mutate ext state ONLY here. */
     setPendingCardInput: (v: { mark: number; actionIdx: number; prompt: string } | null) => void
-    fireExtReady: () => void
+    fireExtReady: () => boolean
   }
   /** Transcript / event-stream reconstruction. */
   trans: {

@@ -102,7 +102,23 @@ function SE.toggle_reasoning()
   -- The reasoning panel participates in the region docks (LAST on the
   -- right — the deliberately claimed ext regions keep the top): re-lay.
   require('dsh_tui.api').region_reflow()
-  return S.reasoningOpen
+  --- Evict one session's chat buffer (runner-side LRU reclamation): close
+--- any window showing it, wipe the buffer, drop the registry entry.
+function S.close_chat(id)
+  local buf = S.chats[id]
+  if buf and vim.api.nvim_buf_is_valid(buf) then
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      if vim.api.nvim_win_get_buf(win) == buf then
+        pcall(vim.api.nvim_win_close, win, true)
+      end
+    end
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+  end
+  S.chats[id] = nil
+end
+
+return S
+.reasoningOpen
 end
 
 --- Switch the visible chat to this session (the runner owns the entry list).

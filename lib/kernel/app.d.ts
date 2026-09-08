@@ -294,7 +294,7 @@ export interface AppSlices {
             actionIdx: number;
             prompt: string;
         } | null) => void;
-        fireExtReady: () => void;
+        fireExtReady: () => boolean;
     };
     /** Transcript / event-stream reconstruction. */
     trans: {
