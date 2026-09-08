@@ -69,6 +69,9 @@ const synthesizeToolResult = (rec: SessionRec, callId: string, seq: number | und
     error: started
       ? { name: 'ToolOutcomeUnknownError', code: 'TOOL_OUTCOME_UNKNOWN' }
       : { name: 'ToolNotStartedError', code: 'TOOL_NOT_STARTED' },
+    // Synthetic marker: this result was INVENTED by the self-healing repair,
+    // not produced by the tool runtime — feeds/logs can identify it.
+    meta: { synthetic: true },
   }, {
     surfaceOp: 'append',
     ...(started ? { sourceEventSeqs: [seq] } : {}),

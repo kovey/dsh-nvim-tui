@@ -280,8 +280,13 @@ export function installSubagents(app: App): void {
       // Bounded memory: long-running hosts spawn unbounded children;
       // evict the oldest routing entry past the cap.
       if (app.slices.sessions.childParent.size > 400) {
-        const oldest = app.slices.sessions.childParent.keys().next()
-        if (oldest.done !== true) app.slices.sessions.childParent.delete(oldest.value)
+        // Evict the oldest entry whose child is NOT running — a live
+        // child's routing entry must survive for its tool diffs.
+        for (const [k] of app.slices.sessions.childParent) {
+          if (app.slices.sessions.runningSubagents.has(k)) continue
+          app.slices.sessions.childParent.delete(k)
+          break
+        }
       }
       app.slices.ui.ensureSpinner()
       app.slices.ui.updateStatusline()

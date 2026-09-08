@@ -38,6 +38,15 @@ export const sessionsCommand = async (app: App): Promise<void> => {
     if (inWs.has(h.id) || archived.has(h.id) || app.slices.sessions.live.has(h.id)) continue
     rows.push({ label: `    ${h.title ?? ''} · ${h.id}（历史）`, value: `sess:${h.id}` })
   }
+  // Persisted sessions from OTHER working directories (historyById holds
+  // everything): reachable here instead of being invisible outside their
+  // own cwd — resume works cross-directory.
+  for (const h of app.slices.sessions.historyById.values()) {
+    if (h.cwd === undefined || h.cwd === process.cwd()) continue
+    if (inWs.has(h.id) || archived.has(h.id) || app.slices.sessions.live.has(h.id)) continue
+    if (app.slices.sessions.historyHeaders.some((x) => x.id === h.id)) continue
+    rows.push({ label: `    ${h.title ?? ''} · ${h.id}（其他目录）`, value: `sess:${h.id}` })
+  }
   const sel = await app.openPicker(t('会话（工作区分组 · Enter 打开）'), rows)
   if (sel === null) return
   if (sel === 'act:new') {

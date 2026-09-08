@@ -61,7 +61,9 @@ export declare function installSpec(entry: MarketEntry): string;
 export declare function patchPath(profileName: string): string;
 /** Read the user patch file ('' when absent). */
 export declare function readPatch(path: string): string;
-/** Parse the disabled ids we manage (exact 2-line marker pairs). */
+/** Parse the disabled ids we manage: a row `- id: X` whose BODY contains a
+ *  `disabled: true` line (the body may also carry config keys — the marker
+ *  is not required to be the immediate next line). */
 export declare function readDisabledIds(text: string): Set<string>;
 /**
  * Idempotently set our managed disable rows: remove prior marker pairs for

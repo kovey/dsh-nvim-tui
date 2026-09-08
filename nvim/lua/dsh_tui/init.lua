@@ -312,6 +312,8 @@ function M.submit()
   end
   if S.history[#S.history] ~= text then
     table.insert(S.history, text)
+    -- Bounded history: long sessions must not grow this forever.
+    while #S.history > 200 do table.remove(S.history, 1) end
   end
   S.histIdx = nil
   S.draft = nil

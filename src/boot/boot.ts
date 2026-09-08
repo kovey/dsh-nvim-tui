@@ -27,6 +27,7 @@ import { wireHostEvents } from '../kernel/host-events.js'
 import { makeSessionEventHandler } from './session-events.js'
 import { resumeOrCreate } from '../sessions/index.js'
 import { drainPendingInput } from '../commands/index.js'
+import { restoreGlance } from '../statusline/commands/glance.js'
 import type { AppSlices, WritableSlice } from '../kernel/app.js'
 import type { App } from '../kernel/app.js'
 const W = (d: AppSlices['runtime']) => d as WritableSlice<AppSlices['runtime']>
@@ -114,6 +115,11 @@ export async function boot(app: App): Promise<void> {
         }
       })
       .catch((err: unknown) => app.notice(`⚠ 扩展接口握手失败: ${(err as Error).message}`))
+    // /glance visibility set persists across restarts via vim.g.
+    void app.luaCall('return vim.g.dsh_tui_glance', [])
+      .then((saved: unknown) => restoreGlance(saved))
+      .catch(() => {})
+
     // Slash-command catalog for the completion menu (name + description);
     // nvim shows it as soon as the input starts with '/'.
     await app.luaCall('require("dsh_tui").set_commands(...)', [app.commandCatalog()]).catch(() => {})

@@ -286,13 +286,20 @@ export function readPatch(path: string): string {
   try { return readFileSync(path, 'utf8') } catch { return '' }
 }
 
-/** Parse the disabled ids we manage (exact 2-line marker pairs). */
+/** Parse the disabled ids we manage: a row `- id: X` whose BODY contains a
+ *  `disabled: true` line (the body may also carry config keys — the marker
+ *  is not required to be the immediate next line). */
 export function readDisabledIds(text: string): Set<string> {
   const out = new Set<string>()
   const lines = text.split('\n')
-  for (let i = 0; i < lines.length - 1; i++) {
+  for (let i = 0; i < lines.length; i++) {
     const m = /^- id:\s*(\S+)\s*$/.exec(lines[i])
-    if (m !== null && /^\s+disabled:\s*true\s*$/.test(lines[i + 1])) out.add(m[1])
+    if (m === null) continue
+    let j = i + 1
+    while (j < lines.length && /^\s/.test(lines[j])) {
+      if (/^\s*disabled:\s*true\s*$/.test(lines[j])) { out.add(m[1]); break }
+      j++
+    }
   }
   return out
 }
@@ -303,27 +310,35 @@ export function readDisabledIds(text: string): Set<string> {
  * pairs at the end of the user patch layer. HMR re-composes within ~1s.
  */
 export function setDisabledRows(text: string, toggles: Array<{ id: string; disabled: boolean }>): string {
-  const managed = new Set(toggles.map((t) => t.id))
+  const byId = new Map(toggles.map((t) => [t.id, t.disabled]))
+  const managed = new Set(byId.keys())
   const lines = text.split('\n')
   const out: string[] = []
+  const seen = new Set<string>()
   let i = 0
   while (i < lines.length) {
-    // A top-level `- id: X` row (the patch layer replaces the whole config
-    // per id): drop the row and its indented body for managed ids, so the
-    // appended toggle pair is the only row for that id.
+    // A top-level `- id: X` row: KEEP its body (config keys survive the
+    // toggle — a disable must not destroy feishu credentials / openAt
+    // overrides) and re-inject the disabled marker inside it.
     const m = /^- id:\s*(\S+)\s*$/.exec(lines[i])
     if (m !== null && managed.has(m[1])) {
+      const id = m[1]
+      seen.add(id)
+      const body: string[] = []
       i++
-      while (i < lines.length && /^\s/.test(lines[i])) i++
+      while (i < lines.length && /^\s/.test(lines[i])) { body.push(lines[i]); i++ }
+      const kept = body.filter((l) => !/^\s*disabled:\s*/.test(l))
+      out.push(`- id: ${id}`)
+      out.push(...kept, `  disabled: ${byId.get(id) ? 'true' : 'false'}`)
       continue
     }
     out.push(lines[i])
     i++
   }
-  while (out.length > 0 && out[out.length - 1].trim() === '') out.pop()
   for (const t of toggles) {
-    out.push(`- id: ${t.id}`, `  disabled: ${t.disabled ? 'true' : 'false'}`)
+    if (!seen.has(t.id)) out.push(`- id: ${t.id}`, `  disabled: ${t.disabled ? 'true' : 'false'}`)
   }
+  while (out.length > 0 && out[out.length - 1].trim() === '') out.pop()
   return out.join('\n') + '\n'
 }
 
@@ -650,8 +665,16 @@ export const installWithRepair = async (
       pg.bar('↻ 锁文件冲突 · 备份后重试…')
       r = await run(spec, '锁文件修复重试')
     } else if (f.kind === 'notfound') {
-      const alt = (await resolveNpmSpec(entry)) ?? (entry.tarball !== undefined ? entry.tarball : repoRoot(entry.url))
-      if (alt !== spec && !runs.has(alt)) {
+      // The failed spec likely CAME from resolveNpmSpec (the ① step), so a
+      // bare re-resolve returns the same dead spec — walk the candidate
+      // chain EXCLUDING it (tarball / repo root are reachable again).
+      const cands = [
+        await resolveNpmSpec(entry),
+        entry.tarball,
+        repoRoot(entry.url),
+      ].filter((c): c is string => typeof c === 'string' && c !== '' && c !== spec && !runs.has(c))
+      const alt = cands[0]
+      if (alt !== undefined) {
         pg.bar('↻ 该版本不存在 · 自动换源…')
         spec = alt
         r = await run(alt, '自动换源')

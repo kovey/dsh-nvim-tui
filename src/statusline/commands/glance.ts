@@ -4,6 +4,13 @@ import type { App } from '../../kernel/app.js'
 
 const GLANCE_SEGMENTS = ['cache', 'context', 'tokens', 'cost', 'elapsed', 'total']
 export const hiddenGlance = new Set<string>()
+/** Restore the persisted visibility set (boot reads vim.g.dsh_tui_glance). */
+export const restoreGlance = (saved: unknown): void => {
+  if (!Array.isArray(saved)) return
+  for (const k of saved) {
+    if (typeof k === 'string' && GLANCE_SEGMENTS.includes(k)) hiddenGlance.add(k)
+  }
+}
 
 export const glanceCommand = (app: App, a: string | undefined) => {
   if (!a) {
@@ -19,6 +26,7 @@ export const glanceCommand = (app: App, a: string | undefined) => {
   if (hiddenGlance.has(seg)) hiddenGlance.delete(seg)
   else hiddenGlance.add(seg)
   app.slices.ui.updateStatusline()
+  void app.luaCall('vim.g.dsh_tui_glance = ...', [[...hiddenGlance]]).catch(() => {})
   app.notice(`glance ${seg}: ${hiddenGlance.has(seg) ? '隐藏' : '显示'}`)
 }
 

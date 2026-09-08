@@ -472,8 +472,8 @@ description:
   // phase-2 helpers: hot-toggle patch rows, npm-name detection, dep matching
   let patch = '- id: keep-me\n  config: { a: 1 }\n'
   patch = setDisabledRows(patch, [{ id: 'keep-me', disabled: true }])
-  assert.ok(patch.includes('- id: keep-me\n  disabled: true'), 'toggle row appended')
-  assert.ok(!patch.includes('config: { a: 1 }'), 'managed marker pair replaces prior rows for the id')
+  assert.ok(patch.includes('- id: keep-me\n  config: { a: 1 }\n  disabled: true'), 'toggle row appended WITH its config preserved (disable must not destroy credentials)')
+  assert.ok(patch.includes('config: { a: 1 }'), 'the row body (config) survives the disable toggle')
   assert.deepEqual([...readDisabledIds(patch)], ['keep-me'], 'disabled ids parsed')
   patch = setDisabledRows(patch, [{ id: 'keep-me', disabled: false }])
   assert.ok(patch.includes('disabled: false'), 'enable row written')

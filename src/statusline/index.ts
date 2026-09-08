@@ -94,23 +94,31 @@ const refreshBgJobs = (app: App) => {
   const jobs = app.svc('jobs')
   let count = 0
   let listed: Array<{ id: string; label?: string; status: string; startedAt?: number }> = []
+  let listedOk = true
   if (jobs !== undefined) {
     try {
       listed = jobs.list(rec.handle.agent)
-    } catch {}
+    } catch {
+      // A transient jobs.list failure must NOT mark every cached running
+      // job as killed (the vanished-from-list branch below) — skip the
+      // merge this round and keep the previous board.
+      listedOk = false
+    }
   }
   const cache = rec.jobsCache ?? new Map<string, { label?: string; status: string; startedAt?: number }>()
   rec.jobsCache = cache
   // Merge the live list into the cache; a cached running/stopping job that
   // VANISHED from the list (finished without a callback) turns terminal.
-  const liveIds = new Set(listed.map((j) => j.id))
-  for (const j of listed) {
-    const prev = cache.get(j.id)
-    cache.set(j.id, { label: j.label ?? prev?.label, status: j.status, startedAt: j.startedAt ?? prev?.startedAt })
-  }
-  for (const [id, c] of cache) {
-    if (!liveIds.has(id) && (c.status === 'running' || c.status === 'stopping')) {
-      cache.set(id, { ...c, status: 'killed' })
+  if (listedOk) {
+    const liveIds = new Set(listed.map((j) => j.id))
+    for (const j of listed) {
+      const prev = cache.get(j.id)
+      cache.set(j.id, { label: j.label ?? prev?.label, status: j.status, startedAt: j.startedAt ?? prev?.startedAt })
+    }
+    for (const [id, c] of cache) {
+      if (!liveIds.has(id) && (c.status === 'running' || c.status === 'stopping')) {
+        cache.set(id, { ...c, status: 'killed' })
+      }
     }
   }
   count = [...cache.values()].filter((c) => c.status === 'running' || c.status === 'stopping').length
