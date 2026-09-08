@@ -172,4 +172,11 @@ for (const dir of MODULE_DIRS) {
   }
 }
 
+// 8) src 根目录只允许 index.ts（模块一律进自己的目录）。
+const rootFiles = readdirSync(join(root, 'src'), { withFileTypes: true })
+  .filter((e) => e.isFile() && e.name.endsWith('.ts')).map((e) => e.name)
+if (rootFiles.length !== 1 || rootFiles[0] !== 'index.ts') {
+  fail(`src root must contain ONLY index.ts (found: ${rootFiles.join(', ')})`)
+}
+
 console.log('✓ arch-check: App kernel-only, slice domains valid, no legacy flat access, dependency direction clean')

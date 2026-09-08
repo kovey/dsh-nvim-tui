@@ -407,31 +407,35 @@ README / UPGRADE）；peer 依赖
 ## 目录结构
 
 ```
-src/                          TypeScript 源码（strict，唯一手写源）
+src/                          TypeScript 源码（strict，唯一手写源；根目录只留 index.ts）
   index.ts    组合根：build App → install 各模块 → boot（对应 init.lua 门面）
-  app.ts      kernel 原语 + 六域 slices（runtime/sessions/ui/ext/trans/agent；对应 state.lua 的角色）
-  boot.ts     nvim 启动 / RPC 通知循环（含 dsh-ext 总线）/ 宿主事件接线 / headless 兜底
-  ext-api.ts  扩展 API：ctx.provide('nvim-tui') 稳定面（nvim 执行层 / ui 原语 / 事件 / dsh-ext）
-  statusline.ts 状态栏渲染、glance 段显隐、whale 动画、事件折叠统计
-  sessions.ts 会话生命周期 + 会话类命令（/sessions /new /fork /workspace …）
-  subagents.ts 子代理目录、思考链回放、子代理对话窗
-  transcript.ts 转录修复（孤儿工具调用）、/export /trajectory /rewind /queue
-  commands.ts 消息发送（followup/续聊队列）+ 通用斜杠命令 + tui_command 工具
-  market-install.ts 插件市场浏览 + 安装进度 UI
-  market.ts   插件市场数据层（目录解析/搜索/依赖匹配/安装规格）
-  deps.ts     依赖体检（缺什么/一键装配，/deps）
-  feed.ts     转录渲染器：DSH 事件 → chat buffer 行模型（节流刷新；交互卡片块 extmark）
-  table.ts    GFM 表格 → 框线表格转换（显示宽度对齐、每行分割线、超宽折行）
-  types.ts    共享类型层：SessionEvent 判别联合 + 宿主服务结构接口
-  i18n.ts     界面字典（zh 字面量 → en 查表，未知键回退中文）
-  bridge.ts   nvim spawn / socket 连接（自建 socket + error 处理）
-  stats.ts    状态栏统计：token/缓存/成本/时长 折叠与格式化
-  images.ts   图片读取：文件 / macOS 剪贴板 / data URL 解析
-  diff.ts     文件变更 diff（LCS 分段 + 截断）
-  whale.ts    蓝鲸壁纸/水印像素画与动画
-  nlcmd.ts    自然语言命令路由（精确短语 → 命令）
-  subagent-clean.ts 子代理链清理（TTL 过期 + 会话日志编码）
-lib/                          tsc 编译产物（.js + .d.ts；dsh 加载入口 main → lib/index.js）
+  kernel/     内核：公共接口与功能（业务模块唯一外联面之一）
+    app.ts       kernel 原语 + 六域 slices（runtime/sessions/ui/ext/trans/agent；对应 state.lua 的角色）
+    types.ts     共享类型层：SessionEvent 判别联合 + 宿主服务结构接口
+    ext-types.ts 扩展 API 公共类型契约（ext-api 实现 + 反出口）
+    rpc.ts       nvim 通知注册表（dsh-* 方法：owner 模块 install 期注册，boot 查表分发）
+    host-events.ts 宿主事件注册表（agent/status、subagent/*、workflow/*、approval/questions）
+    lifecycle.ts 退出四件套（exitDiag/closeNvimWindow/teardown/quit）
+    headless.ts  headless e2e（dump 看门狗 / kick）
+    bridge.ts    nvim spawn / socket 连接（自建 socket + error 处理）
+    i18n.ts      界面字典（zh 字面量 → en 查表，未知键回退中文）
+    subagent-clean.ts 子代理链清理（TTL 过期 + 会话日志编码）
+  feed/       渲染公共层（只依赖 kernel；feed/table/diff/stats/images/whale）
+  boot/       运行期组合层：boot.ts（spawn/连接 + 三条薄循环 + boot 序列，无行为分支）
+    session-events.ts session/event 管线（扩展镜像 → 子代理路由 → MAIN_EVENT_HOOKS 按类型表）
+  commands/   消息发送 + 输入路由 + 斜杠命令
+    index.ts    installCommands：agent 域 ops/默认值 + 核心服务槽位 + 40 命令 install 清单
+    core.ts     核心链路：followup/send/onInput/onCommand/@ 补全/模型切换 + 13 个 dsh-* 通知 + 审批/提问宿主事件 + tui_command 工具
+    nlcmd.ts    自然语言命令路由（精确短语 → 命令）
+    commands/   ★ 40 个命令，一命令一文件（自注册 installXxxCommand(app)）
+  sessions/   会话域：index.ts + services.ts（生命周期 + fork 共享实现）+ commands/ 10 命令文件
+  subagents/  子代理域：index.ts + commands/subagents.ts
+  transcript/ 转录域：index.ts（修复/事件访问 + workflow 宿主事件）+ commands/ 4 命令文件
+  statusline/ 状态栏域：index.ts（渲染/折叠统计 + agent/status 宿主事件）+ commands/ 4 命令文件
+  ext-api/    扩展 API 域：install + handleDshExtRequest + announceReady + 4 个 dsh-ext 通知
+  deps/       依赖体检：index.ts + services.ts（体检机制）+ commands/deps.ts
+  market/     插件市场：index.ts + progress.ts（数据层 + 安装进度 UI）+ commands/market.ts
+lib/                          tsc 编译产物（.js + .d.ts；dsh 加载入口 main → lib/index.js）lib/                          tsc 编译产物（.js + .d.ts；dsh 加载入口 main → lib/index.js）
 nvim/lua/dsh_tui/             nvim 侧 UI（按职责拆分的 Lua 模块）
   init.lua      公共门面：完整的 M.* API 转发 + 跨模块意图编排（submit/菜单路由）+ start()
   state.lua     共享可变状态（窗口/buffer 句柄的唯一来源，M._* 兼容字段的惰性别名）

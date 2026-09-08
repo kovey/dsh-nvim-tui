@@ -230,3 +230,32 @@ boot.ts 曾以 1024 行承载：22 分支的 `dsh-*` 通知 if-else 链、sessio
   /settings 打开文件失败时聊天区提示）；清理 dsh-dir-selected 的
   setDirSettle 死调用。
 
+## 七、src 目录分层：kernel / feed / 业务模块（2026-09-08 实施）
+
+### 7.1 目录树
+
+```
+src/
+├── index.ts          # ★ 根目录唯一文件：组合根（apply + 安装链 + 发布入口）
+├── kernel/           # 内核：公共接口与功能（契约/总线/进程设施/工具）
+├── feed/             # 渲染公共层（feed/table/diff/stats/images/whale）
+├── boot/             # 运行期组合层（boot.ts + session-events.ts，编排豁免）
+├── commands/         # 消息 + 输入 + 命令（index/core/nlcmd + commands/ 40 命令文件）
+├── sessions/         # 会话域（index/services + commands/ 10）
+├── subagents/  transcript/  statusline/  ext-api/  deps/  market/
+└── …各域 index.ts + services/shared + commands/ 一命令一文件
+```
+
+### 7.2 依赖方向（check-arch 硬性扫描）
+
+- 业务模块 → { kernel, feed } + 本模块目录（跨模块零 import）
+- feed → kernel；kernel → 无业务依赖
+- boot/ 与根 index.ts = 组合层（编排豁免）
+- src 根目录只允许 index.ts（守卫 8）
+
+### 7.3 命令系统：一命令一文件 + 自注册
+
+- 每个命令一个文件：实现 + `installXxxCommand(app)` 自注册（与模块
+  install 同构）；模块 index 逐个调用（61 命令全量文件化，含 4 组别名）
+- 命令文件禁止互相 import；共享实现下沉模块 shared/services
+- 命令目录断言：catalog 数（61）+ smoke 全量回归护航拆分等价性
