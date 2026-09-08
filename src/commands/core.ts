@@ -382,11 +382,16 @@ export const onInput = (app: App, text: string): void => {
     return
   }
   const echoRec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
+  const split = splitImageDataUrls(trimmed)
   if (echoRec !== undefined && app.slices.agent.pendingImages.length === 0 &&
-    splitImageDataUrls(trimmed).images.length === 0) {
-    echoRec.feed.pushUser(trimmed, [])
+    split.images.length === 0) {
+    // Echo the CLEANED text — the EXACT string the host will store and
+    // replay. Echoing the pre-collapse draft desyncs the dedupe queue on
+    // any run of spaces/tabs (indented multi-line fullscreen drafts) and
+    // the replay renders a second, slightly different bubble.
+    echoRec.feed.pushUser(split.text, [])
     const q = app.slices.ui.pendingEchoes.get(app.slices.sessions.activeId as string) ?? []
-    q.push(trimmed)
+    q.push(split.text)
     if (q.length > 16) q.shift()
     app.slices.ui.pendingEchoes.set(app.slices.sessions.activeId as string, q)
   }
