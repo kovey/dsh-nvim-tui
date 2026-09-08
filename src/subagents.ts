@@ -5,7 +5,7 @@
  *
  * @module dsh-nvim-tui/subagents
  */
-import { FeedRenderer } from './feed.js'
+import { FeedRenderer } from './feed/feed.js'
 import { t } from './kernel/i18n.js'
 import { ageLabel, isExpired, orderSubagentChildren } from './kernel/subagent-clean.js'
 import { queueSubagentPromptKey } from './kernel/types.js'

@@ -7,11 +7,11 @@
  *
  * @module dsh-nvim-tui/statusline
  */
-import { WHALE_EMOJI_FRAMES } from './whale.js'
+import { WHALE_EMOJI_FRAMES } from './feed/whale.js'
 import {
   EMPTY_USAGE, foldUsage, billedInput, cacheHitRate, estimateCost,
   formatTokens, formatElapsed, modeLabel, escapeStatusline,
-} from './stats.js'
+} from './feed/stats.js'
 import { t } from './kernel/i18n.js'
 import type { InboxLike, SessionEvent } from './kernel/types.js'
 import type { App, CommandSpec, SessionRec } from './kernel/app.js'

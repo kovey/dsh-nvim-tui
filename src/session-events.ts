@@ -8,7 +8,7 @@
  *
  * @module dsh-nvim-tui/session-events
  */
-import { FeedRenderer } from './feed.js'
+import { FeedRenderer } from './feed/feed.js'
 import { t } from './kernel/i18n.js'
 import type { ChatMessage, GoalState, MessageContent, SessionEvent } from './kernel/types.js'
 import type { App, SessionRec } from './kernel/app.js'

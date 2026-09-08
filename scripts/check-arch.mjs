@@ -132,7 +132,7 @@ for (const f of walkTs(join(root, 'src'))) {
 
 // 5) kernel 依赖方向（阶段 1）：kernel 文件只允许 import kernel 内部 +
 //    以下白名单（feed 渲染层类型在 P2 迁入 feed/ 前暂居根目录）。
-const KERNEL_OUTER_ALLOWED = ['../feed.js']
+const KERNEL_OUTER_ALLOWED = ['../feed/feed.js']
 for (const f of walkTs(join(root, 'src/kernel'))) {
   const src = readFileSync(f, 'utf8')
   for (const m of src.matchAll(/from '(\.[^']+)'/g)) {
@@ -144,4 +144,14 @@ for (const f of walkTs(join(root, 'src/kernel'))) {
   }
 }
 
-console.log('✓ arch-check: App kernel-only, slice domains valid, no legacy flat access, kernel dependency direction clean')
+// 6) feed 依赖方向（阶段 2）：渲染层只允许 import kernel 内部 + feed 内部。
+for (const f of walkTs(join(root, 'src/feed'))) {
+  const src = readFileSync(f, 'utf8')
+  for (const m of src.matchAll(/from '(\.\.[^']+)'/g)) {
+    const imp = m[1]
+    if (imp.startsWith('../kernel/')) continue
+    fail(`${relative(root, f)}: feed import ${imp} is not kernel-internal (feed layer depends on kernel only)`)
+  }
+}
+
+console.log('✓ arch-check: App kernel-only, slice domains valid, no legacy flat access, kernel/feed dependency direction clean')

@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { NeovimClient } from 'neovim';
-import type { FeedRenderer } from '../feed.js';
+import type { FeedRenderer } from '../feed/feed.js';
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js';
 import type { RunnerConfig } from './types.js';
 import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspacesService } from './types.js';
