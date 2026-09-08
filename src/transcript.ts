@@ -14,6 +14,7 @@ import { t } from './i18n.js'
 import { diffTexts, fileDiffsFromMeta } from './diff.js'
 import type { ChatMessage, HarnessSession, InboxLike, MessageContent, SessionEvent } from './types.js'
 import type { App, CommandSpec, SessionRec } from './app.js'
+import { registerHostHandler } from './host-events.js'
 
 /**
  * Repair the "insufficient tool messages" session poison.
@@ -454,4 +455,65 @@ export function installTranscript(app: App): void {
     { name: '/queue', desc: t('消息队列（编辑/删除/清空）'), usage: t('消息队列'), group: t('会话'), fn: () => queueCommand(app) },
   ]
   app.registerCommands(specs)
+
+  // -- host events this module owns (wired by boot via host-events.ts) ----
+  // Workflow lifecycle cards → the owning session's feed.
+  registerHostHandler('workflow/start', (app, info) => {
+    if (app.slices.runtime.disposed) return
+    const payload = info as { id?: string; meta?: { name?: string } }
+    const runId = payload?.id ?? '?'
+    const run = app.slices.trans.workflowRuns.get(runId) ?? { id: runId, name: payload?.meta?.name ?? runId, startedAt: Date.now(), phases: [], agents: [], logs: [], running: true, stopReason: undefined }
+    run.startedAt = Date.now()
+    run.running = true
+    app.slices.trans.workflowRuns.set(runId, run)
+    app.slices.ui.activeFeed()?.workflowStart(payload)
+  })
+  registerHostHandler('workflow/phase', (app, info, title) => {
+    if (app.slices.runtime.disposed) return
+    const payload = info as { id?: string }
+    const runId = payload?.id
+    const run = runId === undefined ? undefined : app.slices.trans.workflowRuns.get(runId)
+    if (run) {
+      run.phases.push({ title: title as string, startedAt: Date.now() })
+    }
+    app.slices.ui.activeFeed()?.workflowPhase(payload, title as string)
+  })
+  registerHostHandler('workflow/log', (app, info, message) => {
+    if (app.slices.runtime.disposed) return
+    const payload = info as { id?: string }
+    const runId = payload?.id
+    const run = runId === undefined ? undefined : app.slices.trans.workflowRuns.get(runId)
+    if (run) run.logs.push(message as string)
+  })
+  registerHostHandler('workflow/agent-start', (app, info, agent) => {
+    if (app.slices.runtime.disposed) return
+    const payload = info as { id?: string }
+    const entry = agent as { seq?: number; label?: string }
+    const runId = payload?.id
+    const run = runId === undefined ? undefined : app.slices.trans.workflowRuns.get(runId)
+    if (run) run.agents.push({ seq: entry?.seq ?? 0, label: entry?.label ?? '', outcome: undefined })
+  })
+  registerHostHandler('workflow/agent-end', (app, info, agent) => {
+    if (app.slices.runtime.disposed) return
+    const payload = info as { id?: string }
+    const entry = agent as { seq?: number; outcome?: string }
+    const runId = payload?.id
+    const run = runId === undefined ? undefined : app.slices.trans.workflowRuns.get(runId)
+    if (run) {
+      const agentEntry = run.agents.find((e) => e.seq === entry?.seq)
+      if (agentEntry) agentEntry.outcome = entry?.outcome ?? 'settled'
+    }
+  })
+  registerHostHandler('workflow/end', (app, info, result) => {
+    if (app.slices.runtime.disposed) return
+    const payload = info as { id?: string }
+    const outcome = result as { stopReason?: string; error?: string } | undefined
+    const runId = payload?.id
+    const run = runId === undefined ? undefined : app.slices.trans.workflowRuns.get(runId)
+    if (run) {
+      run.running = false
+      run.stopReason = outcome?.stopReason
+    }
+    app.slices.ui.activeFeed()?.workflowEnd(payload, outcome ?? {})
+  })
 }

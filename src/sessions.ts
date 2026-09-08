@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { appendFileSync } from 'node:fs'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { FeedRenderer } from './feed.js'
 import { t } from './i18n.js'
@@ -16,6 +17,7 @@ import { encodeHeaderOnlyLog, readCleanedIds, writeCleanedIds } from './subagent
 import type { AgentHandle, SessionEvent } from './types.js'
 import { BUILD_STAMP, BUILD_VERSION } from './app.js'
 import type { App, AppSlices, CommandSpec, ModelRef, WritableSlice } from './app.js'
+import { registerNvimNotification } from './rpc.js'
 const WSS = (d: AppSlices['sessions']) => d as WritableSlice<AppSlices['sessions']>
 
 /** Own one live agent: chat buffer + feed + registry entry. */
@@ -832,4 +834,64 @@ export function installSessions(app: App): void {
     { name: '/layout', desc: t('布局预设'), usage: t('default|panel'), group: t('显示'), fn: (a) => layoutCommand(app, a) },
   ]
   app.registerCommands(specs)
+
+  // -- nvim notifications this module owns (dispatched by boot via rpc.ts) --
+  registerNvimNotification('dsh-session-select', '切换会话', (app, args) =>
+    app.slices.sessions.selectSession(String(args?.[0] ?? '')))
+  registerNvimNotification('dsh-session-new', '新建会话', () =>
+    app.slices.sessions.createSession())
+}
+
+/** Boot-time session selection (moved out of boot): explicit resume id
+ *  (env/config) wins; otherwise auto-resume the LAST active session of this
+ *  project (claude --continue behaviour), falling back to the newest
+ *  persisted one; a fresh session only when there is no history (or
+ *  resumeLatest is disabled). Opening an OLD-version session can throw
+ *  (legacy/incompatible log): that must NOT take the whole process down —
+ *  log the failure, open a fresh session instead, and tell the user in the
+ *  chat window that the restore failed. */
+export async function resumeOrCreate(app: App): Promise<void> {
+  // History list for resume: only THIS project's project-level sessions.
+  // Subagent children are bare-UUID ids (no `session-` prefix) — excluded,
+  // as are sessions created in other working directories.
+  await app.slices.sessions.refreshHistory()
+  const resumeId = app.config.resumeSessionId ?? process.env.DSH_NVIM_TUI_RESUME
+  const autoResume = app.config.resumeLatest !== false && process.env.DSH_NVIM_TUI_RESUME_LATEST !== '0'
+  const resumeOrFresh = async (targetId: string): Promise<boolean> => {
+    try {
+      await app.slices.sessions.resumeSession(targetId)
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? (err.message || String(err)) : String(err)
+      try {
+        appendFileSync(app.errorLogPath,
+          `${new Date().toISOString()} ${t('恢复会话失败')} ${targetId}: ${message}\n`)
+      } catch {}
+      // Fall back to a fresh session — the UI stays up; the failure is
+      // shown in the new session's chat window instead of killing dsh.
+      await app.slices.sessions.createSession()
+      app.notice(`⚠ ${t('恢复会话失败')} ${targetId}${message ? ` — ${message}` : ''}（${t('已新建会话')}）`)
+      return false
+    }
+  }
+  if (resumeId) {
+    await resumeOrFresh(resumeId)
+  } else if (autoResume && app.slices.sessions.historyHeaders.length > 0) {
+    const state = app.slices.sessions.readState() as { sessionId?: unknown; cwd?: unknown } | null
+    const fromState = state?.sessionId && state.cwd === process.cwd() &&
+      app.slices.sessions.historyHeaders.some((h) => h.id === state.sessionId)
+      ? (state.sessionId as string)
+      : null
+    const newest = [...app.slices.sessions.historyHeaders]
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0]?.id
+    const target = fromState ?? newest
+    if (target) {
+      if (await resumeOrFresh(target)) app.notice(t('已自动恢复上次会话（/new 新建）'))
+    } else {
+      await app.slices.sessions.createSession()
+    }
+  } else {
+    await app.slices.sessions.createSession()
+  }
+  app.slices.sessions.refreshList()
 }

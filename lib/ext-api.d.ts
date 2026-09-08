@@ -273,3 +273,18 @@ export interface TuiExtApi {
 /** Install the extension API onto the App (runs before boot; index.ts then
  *  publishes the built surface through the cordis registry). */
 export declare function installExtApi(app: App): void;
+/** nvim `request` side of the dsh-ext bus (moved out of boot): every
+ *  vim.rpcrequest(channel, 'dsh-ext', …) gets a BOUNDED response —
+ *  vim.rpcrequest blocks nvim uninterruptibly (and cannot be cancelled from
+ *  Lua), so a hung handler freezes the UI forever. The runner races the
+ *  handler against its timeout and answers an error when it overruns; late
+ *  handler results are discarded (answered flag guards the single-send
+ *  channel). NOTE: nvim DOES process events while blocked in rpcrequest, so
+ *  handlers may safely make nested nvim calls (verified empirically). */
+export declare function handleDshExtRequest(app: App, method: string, args: unknown[], resp: {
+    send: (r: unknown) => void;
+}): void;
+/** Extension readiness announce (moved out of boot): resolve the ready
+ *  promise, notify Node subscribers, and fire the nvim-side User DshTuiReady
+ *  autocmd. */
+export declare function announceReady(app: App): void;

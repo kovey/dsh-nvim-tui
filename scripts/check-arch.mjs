@@ -14,13 +14,14 @@ const fail = (msg) => { console.error('✗ arch-check:', msg); process.exitCode 
 // 1) kernel-only App interface: the legacy fields below must not be declared
 //    as flat members of `App` (they live in AppSlices now).
 const LEGACY_SENTINELS = [
-  'nvim: NeovimClient', 'commandSpecs: CommandSpec', 'pickerSettle:',
+  'nvim: NeovimClient', 'pickerSettle:',
   'pendingInput: string', 'workflowRuns: Map<string, WorkflowRun>',
   'extApi: TuiExtApi', 'sessions: Map<string, SessionRec>',
   'bellOn: boolean', 'chatWinId: number', 'historyHeaders: Array',
+  // (commandSpecs is the KERNEL command registry — sanctioned on the root)
 ]
 const appSrc = readFileSync(join(root, 'src/app.ts'), 'utf8')
-const ifaceStart = appSrc.indexOf('/** The complete cross-module surface.')
+const ifaceStart = appSrc.indexOf('/** The complete cross-module surface')
 const ifaceEnd = appSrc.indexOf('/** Build the App object.')
 const iface = appSrc.slice(ifaceStart, ifaceEnd)
 if (!iface.includes('slices: AppSlices')) fail('App interface lost the slices member')
@@ -79,6 +80,11 @@ const STATE_OWNERS = {
   'src/commands.ts': new Set(['agent']),
   'src/market-install.ts': new Set(),
   'src/deps.ts': new Set(),
+  'src/rpc.ts': new Set(),
+  'src/host-events.ts': new Set(),
+  'src/session-events.ts': new Set(),
+  'src/lifecycle.ts': new Set(['runtime']),
+  'src/headless.ts': new Set(),
 }
 const STATE_FIELDS = {
   runtime: ['nvim','child','channelIdValue','disposed','quitting','chatWinId','reasoningOpen','reasoningWinId','feedDisposer','hostDisposers','spinnerTimer','spinnerIndex','idleRefreshTimer'],

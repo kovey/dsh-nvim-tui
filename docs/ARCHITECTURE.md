@@ -184,3 +184,49 @@ app.ts 预期：806 → ~300 行（kernel + 壳 + 注入辅助）。
   agent 域 registerCommands、写 runtime 域 hostDisposers，均以
   TypeError 静默挂掉为代价发现）。check-arch 的 MOVED_SERVICES/MOVED_STATE
   哨兵持续兜底。
+
+## 六、boot.ts 瘦身：纯组合根（2026-09-07 实施）
+
+### 6.1 现状与目标
+
+boot.ts 曾以 1024 行承载：22 分支的 `dsh-*` 通知 if-else 链、session/event
+长链（含 4 份重复的工具目标快照块）、11 段重复的 host 事件注册样板、生命
+周期四件套与 headless 看门狗。重构后 boot.ts ~180 行，只做四件事：
+
+1. 同步安装 lifecycle + headless 服务（任何 await 前就位）；
+2. spawn nvim / 连接 / 握手 / 命令目录与主题下发；
+3. 运行薄循环（见 6.2）；
+4. 跑 boot 序列（会话恢复 → 看门狗 → 输入排空 → ready → headless kick）。
+
+### 6.2 三条薄循环 + 一张注册表
+
+| 面 | 归属模块 | boot 里的形态 |
+| --- | --- | --- |
+| nvim request（dsh-ext 总线） | ext-api.ts `handleDshExtRequest` | 一行转发 |
+| nvim notification（`dsh-*`） | rpc.ts 注册表；各 owner 在 install 期 `registerNvimNotification`（commands 认领 input/command/abort/审批/提问/选择器/目录/at/paste-image，sessions 认领 select/new，subagents 认领 view/chat/send，ext-api 认领 register/unregister/notice/card-activate，boot= runtime 认领 quit/reasoning-toggled） | 一次查表 + `guard` 包络 |
+| host 事件（agent/status、subagent/*、workflow/*、approval/questions） | host-events.ts 注册表；statusline/subagents/transcript/commands 在 install 期 `registerHostHandler` | 一个 for 循环订阅 |
+| session/event 管线 | session-events.ts `makeSessionEventHandler`：扩展镜像 → 子代理 chat/view 路由（共享 `snapshotToolTarget` 快照助手）→ child→parent diff → 主会话 per-type hook 表（MAIN_EVENT_HOOKS，含 turn/start、tool/call、tool/result、turn/end、session/title、user/message、assistant/message、plan/mode、goal/change）→ fold 与 headless 结束判定 | 一次订阅 |
+
+### 6.3 规则（防膨胀）
+
+- boot.ts **不写行为分支**：新增 `dsh-*` 通知 / host 事件，必须在 owner
+  模块 install 期注册进 rpc.ts / host-events.ts 表；boot 里出现新分支即
+  违反本约定（code review 红线，不靠脚本哨兵）。
+- 通知 handler 的异常一律由 `dispatchNvimNotification` 的 guard 包络
+  （错误日志 + 聊天区 notice），handler 内部不再写各自的 try/catch 样板；
+  此前无 catch 的分支（审批/提问/选择器等）从此不再有 unhandled
+  rejection 杀进程的风险。
+- 顺带修复（同批）：dsh-picker-selected/cancelled 的重复 settlePicker 死
+  调用；dumpAndQuit 声明晚于 session/event 注册的 TDZ 隐患（现由
+  installHeadless 提前注入）；check-arch 断言 1 因 bb13252 注释改动而
+  锚点失配长期静默失效、commandSpecs 假阳性哨兵，均已修复（断言 1 现
+  真实生效）。
+- 全面复查后追加修复（同批）：注册表幂等覆盖（hmr 同进程二次 apply 不再
+  throw，覆盖时留 console.warn 诊断）；handler 一律使用派发期 app 参数
+  而非 install 期闭包捕获；watchdog 定时器经 hostDisposers 由 teardown
+  统一清理（旧 app 不再被定时器滞留 120s）；app.ts 信号监听改为命名
+  函数（原匿名箭头 off 永不命中，每次 apply 泄漏 3 个监听器）；补上
+  Lua 侧一直发送但从未被处理的 dsh-open-failed 通知（/dir、/deliverables、
+  /settings 打开文件失败时聊天区提示）；清理 dsh-dir-selected 的
+  setDirSettle 死调用。
+

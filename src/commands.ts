@@ -17,8 +17,10 @@ import { matchIntent } from './nlcmd.js'
 import { imageLabel, readClipboardImage, readImageFile, sniffMediaType, splitImageDataUrls } from './images.js'
 import { billedInput, formatElapsed, formatTokens, modeLabel } from './stats.js'
 import { queueSubagentPromptKey } from './types.js'
-import type { InboxLike, LlmService, MessageContent, SaveImageAttachment } from './types.js'
+import type { ApprovalRequest, InboxLike, LlmService, MessageContent, SaveImageAttachment } from './types.js'
 import type { AppSlices, WritableSlice } from './app.js'
+import { registerHostHandler } from './host-events.js'
+import { registerNvimNotification } from './rpc.js'
 const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 import type { App, CommandSpec, ModelRef, SessionRec } from './app.js'
 
@@ -1562,5 +1564,186 @@ export function installCommands(app: App): void {
     } catch {
       // tools service absent / registration rejected: keyword routing still works
     }
+  }
+
+  // -- nvim notifications this module owns (dispatched by boot via rpc.ts) --
+  registerNvimNotification('dsh-input', '输入处理', (app, args) => {
+    const raw = String(args?.[0] ?? '')
+    // Card INPUT actions claim the next input: it belongs to the card,
+    // not the agent (interception sits BEFORE the tui:input broadcast,
+    // so ext subscribers never see card inputs as chat input).
+    if (app.slices.ext.pendingCardInput !== null) {
+      const pending = app.slices.ext.pendingCardInput
+      app.slices.ext.setPendingCardInput(null)
+      const text = raw.trim()
+      if (text === '') {
+        app.notice('已取消卡片输入')
+        return
+      }
+      const feed = app.slices.ui.activeFeed()
+      const r = feed === undefined ? null : feed.resolveCardAction(pending.mark, pending.actionIdx)
+      if (r === null || r.action === undefined) {
+        app.notice('⚠ 卡片已失效，输入已取消')
+        return
+      }
+      try {
+        feed!.fireCardAction(r.cardId, text)
+      } catch (err) {
+        app.notice(`⚠ 卡片操作失败: ${(err as Error).message}`)
+      }
+      return
+    }
+    app.slices.ext.extFire('tui:input', { text: raw })
+    try { app.slices.agent.onInput(raw) } catch (err) { app.notice(`⚠ 输入处理失败: ${(err as Error).message}`) }
+  })
+  registerNvimNotification('dsh-command', '命令', (app, args) => {
+    try { app.slices.agent.onCommand(String(args?.[0] ?? '')) } catch (err) { app.notice(`⚠ 命令失败: ${(err as Error).message}`) }
+  })
+  registerNvimNotification('dsh-abort', '中止', (app) => {
+    // <C-c> in the input box: same path as /stop.
+    app.slices.agent.stopCommand()
+  })
+  registerNvimNotification('dsh-approval-decided', '审批', (app, args) => {
+    const raw = String(args?.[0] ?? 'n')
+    if (raw === 'always') {
+      // dsh has no allow-always grant (one-shot vocabulary only), so
+      // "always" switches the session to AUTOMATIC mode: approval
+      // policy 'never' — stop prompting, auto-decide from now on
+      // (the harness fails closed: such requests are auto-rejected).
+      // This request is the last one decided interactively.
+      const sid = app.slices.agent.approvalReq?.agent?.session?.id
+      if (sid !== undefined) {
+        const rec = app.slices.sessions.live.get(sid)
+        if (rec) {
+          try {
+            rec.handle.agent.session.append('approval/policy', { policy: 'never' })
+            rec.policy = 'never'
+            app.slices.ui.updateStatusline()
+            rec.feed.appendNotice('已切换自动审批模式（never）：不再弹窗询问，需要审批的操作将自动拒绝（/yolo off 恢复逐项询问）')
+          } catch { /* policy switch is best-effort */ }
+        }
+      }
+      app.slices.agent.settleApproval('allowed-once')
+    } else {
+      app.slices.agent.settleApproval(raw === 'y' ? 'allowed-once' : 'rejected')
+    }
+    app.slices.agent.setApproval(null, null)
+  })
+  registerNvimNotification('dsh-questions-answered', '提问', (app, args) => {
+    const answers = (args?.[0] ?? []) as unknown[]
+    app.slices.agent.questionsResolve?.resolve({ answers })
+    app.slices.agent.setQuestions(null)
+  })
+  registerNvimNotification('dsh-questions-cancelled', '提问', (app) => {
+    const reject = app.slices.agent.questionsResolve
+    app.slices.agent.setQuestions(null)
+    reject?.reject(new Error('cancelled by user'))
+  })
+  registerNvimNotification('dsh-picker-selected', '选择', (app, args) => {
+    app.slices.agent.settlePicker((args?.[0] ?? null) as string | null)
+  })
+  registerNvimNotification('dsh-picker-cancelled', '选择', (app) => {
+    app.slices.agent.settlePicker(null)
+  })
+  registerNvimNotification('dsh-dir-selected', '目录选择', (app, args) => {
+    const picked = args?.[0] as string | null | undefined
+    // resolveDirPicker self-clears the slot — no follow-up setDirSettle needed.
+    app.slices.agent.resolveDirPicker(picked ?? null)
+  })
+  registerNvimNotification('dsh-at-query', '文件引用补全', (app, args) => {
+    const payload = (args?.[0] ?? {}) as { query?: unknown; start?: unknown }
+    const query = String(payload.query ?? '')
+    const start = Number(payload.start ?? 0)
+    return app.slices.agent.atQuery(query, start)
+  })
+  registerNvimNotification('dsh-paste-image', '图片粘贴', (app) => {
+    app.slices.agent.pasteClipboardImage()
+  })
+  registerNvimNotification('dsh-open-failed', '打开文件', (app, args) => {
+    // nvim-side open_file_tab (tabedit) failed: /dir、/deliverables、/settings
+    // all open files in a fresh tab — surface the failure instead of
+    // silently ignoring the notification (previously unhandled).
+    const path = String(args?.[0] ?? '')
+    app.notice(`⚠ 打开文件失败: ${path}`)
+  })
+
+  // -- host events this module owns (wired by boot via host-events.ts) ----
+  // Approval requests: show the floating window and decide.
+  registerHostHandler('approval/request', (app, req, next) => {
+    const request = req as ApprovalRequest
+    const proceed = next as () => unknown
+    if (app.slices.runtime.disposed) return proceed()
+    return new Promise((resolve) => {
+      let settled = false
+      const cleanup = () => {
+        request.signal?.removeEventListener?.('abort', onAbort)
+      }
+      const onAbort = () => {
+        if (settled) return
+        settled = true
+        cleanup()
+        app.slices.agent.setApproval(null, null)
+        resolve('cancelled')
+      }
+      request.signal?.addEventListener('abort', onAbort, { once: true })
+      app.slices.agent.setApproval(request, (outcome) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        app.slices.agent.setApproval(null, null)
+        resolve(outcome)
+      })
+      const sid = request.agent?.session?.id
+      const rec = sid === undefined ? undefined : app.slices.sessions.live.get(sid)
+      rec?.feed.appendNotice(`⚠ 审批请求: ${request.toolName ?? '?'}${request.reason ? ` — ${request.reason}` : ''}`)
+      // Approvals always ring — attention is required, bell toggle or not.
+      void app.luaCall('require("dsh_tui").bell()', []).catch(() => {})
+      void app.luaCall('require("dsh_tui").show_approval(...)', [{
+        toolName: request.toolName ?? '',
+        reason: request.reason ?? '',
+      }]).catch(() => {
+        if (!settled) {
+          settled = true
+          cleanup()
+          app.slices.agent.setApproval(null, null)
+          resolve('rejected')
+        }
+      })
+    })
+  })
+  // User questions: claim the host's `user-questions/request` waterfall
+  // as the interactive answerer (dsh 0.1.2-alpha.2: registerProvider was
+  // removed in favor of the scoped cordis waterfall).
+  registerHostHandler('user-questions/request', (app, request, next) => {
+    const req = request as { questions?: unknown[]; signal?: { addEventListener: (ev: string, cb: () => void, opts?: unknown) => void } }
+    const proceed = next as () => unknown
+    if (app.slices.runtime.disposed) return proceed()
+    return new Promise((resolve, reject) => {
+      app.slices.agent.setQuestions({ resolve, reject })
+      req.signal?.addEventListener('abort', () => {
+        if (app.slices.agent.questionsResolve) {
+          const r = app.slices.agent.questionsResolve
+          app.slices.agent.setQuestions(null)
+          r.reject(new Error('cancelled by caller'))
+        }
+      }, { once: true })
+      void app.luaCall('require("dsh_tui").show_questions(...)', [req.questions ?? []])
+        .catch(() => {
+          if (app.slices.agent.questionsResolve) {
+            const r = app.slices.agent.questionsResolve
+            app.slices.agent.setQuestions(null)
+            r.reject(new Error('no UI'))
+          }
+        })
+    })
+  })
+}
+
+/** Boot-phase drain (moved out of boot): input that arrived before the
+ *  first agent was ready. */
+export function drainPendingInput(app: App): void {
+  if (app.slices.agent.pendingInput.length > 0) {
+    const queued = app.slices.agent.pendingInput.splice(0)
+    for (const text of queued) app.slices.agent.send(text)
   }
 }

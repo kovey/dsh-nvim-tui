@@ -16,7 +16,13 @@
  *   commands.ts       messaging + generic slash commands
  *   market-install.ts plugin market + install progress UI
  *   deps.ts           dependency health check + one-click assembly (/deps)
- *   boot.ts           nvim spawn, notification loop, host event wiring
+ *   rpc.ts            nvim-notification registry (owners register, boot looks up)
+ *   host-events.ts    harness host-event registry (same pattern)
+ *   session-events.ts session/event pipeline (feed routing + per-type hooks)
+ *   lifecycle.ts      exit diagnostics + teardown + quit (injected before any await)
+ *   headless.ts       headless e2e dump watchdog + prompt kick
+ *   boot.ts           run-phase composition root: spawn/connect + the wiring
+ *                     loops + the boot sequence — no behavior branches
  *
  * Flow: spawn nvim (built-in TUI renders the terminal) → connect the socket →
  * hand nvim its channel id → create the initial session+agent → stream

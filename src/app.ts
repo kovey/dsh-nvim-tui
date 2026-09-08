@@ -480,14 +480,19 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
   }
   process.on('unhandledRejection', onUnhandledRejection)
   process.on('uncaughtException', onUncaughtException)
+  // Named handlers: the cleanup below must remove the SAME function identity
+  // (an inline arrow would never match → one leaked listener per re-apply).
+  const onSigterm = (): void => onSignal('SIGTERM')
+  const onSigint = (): void => onSignal('SIGINT')
+  const onSighup = (): void => onSignal('SIGHUP')
   ctx.effect(() => {
-    process.on('SIGTERM', () => onSignal('SIGTERM'))
-    process.on('SIGINT', () => onSignal('SIGINT'))
-    process.on('SIGHUP', () => onSignal('SIGHUP'))
+    process.on('SIGTERM', onSigterm)
+    process.on('SIGINT', onSigint)
+    process.on('SIGHUP', onSighup)
     return () => {
-      process.off('SIGTERM', () => onSignal('SIGTERM'))
-      process.off('SIGINT', () => onSignal('SIGINT'))
-      process.off('SIGHUP', () => onSignal('SIGHUP'))
+      process.off('SIGTERM', onSigterm)
+      process.off('SIGINT', onSigint)
+      process.off('SIGHUP', onSighup)
       process.off('unhandledRejection', onUnhandledRejection)
       process.off('uncaughtException', onUncaughtException)
       void app.teardown()
