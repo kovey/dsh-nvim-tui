@@ -18,7 +18,7 @@ import { foldUsage, billedInput, cacheHitRate, estimateCost, formatTokens, forma
 import { sniffMediaType, parseImageDataUrl, splitImageDataUrls, imageLabel } from '../lib/feed/images.js'
 import { diffTexts, fileDiffsFromMeta } from '../lib/feed/diff.js'
 import { t, setLocale, locale } from '../lib/kernel/i18n.js'
-import { matchIntent } from '../lib/nlcmd.js'
+import { matchIntent } from '../lib/commands/nlcmd.js'
 import { ageLabel, isExpired, orderSubagentChildren } from '../lib/kernel/subagent-clean.js'
 import { runningBadge } from '../lib/statusline/index.js'
 import stringWidth from 'string-width'

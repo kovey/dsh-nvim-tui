@@ -26,7 +26,7 @@ import { dispatchNvimNotification, registerNvimNotification } from '../kernel/rp
 import { wireHostEvents } from '../kernel/host-events.js'
 import { makeSessionEventHandler } from './session-events.js'
 import { resumeOrCreate } from '../sessions/index.js'
-import { drainPendingInput } from '../commands.js'
+import { drainPendingInput } from '../commands/index.js'
 import type { AppSlices, WritableSlice } from '../kernel/app.js'
 import type { App } from '../kernel/app.js'
 const W = (d: AppSlices['runtime']) => d as WritableSlice<AppSlices['runtime']>

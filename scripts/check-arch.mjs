@@ -6,7 +6,7 @@
  *  3. Legacy flat accessors (`app.<oldField>`) must not reappear anywhere.
  */
 import { readFileSync, readdirSync } from 'node:fs'
-import { join, dirname, relative } from 'node:path'
+import { join, dirname, relative, resolve } from 'node:path'
 
 /** Recursive .ts walk (src/ is now a directory tree). */
 const walkTs = (dir) => {
@@ -88,7 +88,7 @@ const STATE_OWNERS = {
   'src/sessions/index.ts': new Set(['sessions']),
   'src/subagents/index.ts': new Set(['agent']),
   'src/transcript/index.ts': new Set(['trans', 'ui']),
-  'src/commands.ts': new Set(['agent']),
+  'src/commands/index.ts': new Set(['agent']),
   'src/market/index.ts': new Set(),
   'src/deps/index.ts': new Set(),
   'src/kernel/rpc.ts': new Set(),
@@ -156,14 +156,18 @@ for (const f of walkTs(join(root, 'src/feed'))) {
 
 // 7) 业务模块依赖方向（阶段 3）：模块目录只允许外联 kernel/ 与 feed/
 //    （boot/ 是组合层，豁免）。
-const MODULE_DIRS = ['sessions', 'subagents', 'transcript', 'statusline', 'ext-api', 'deps', 'market']
+const MODULE_DIRS = ['sessions', 'subagents', 'transcript', 'statusline', 'ext-api', 'deps', 'market', 'commands']
 for (const dir of MODULE_DIRS) {
   for (const f of walkTs(join(root, 'src', dir))) {
     const src = readFileSync(f, 'utf8')
+    const own = join(root, 'src', dir)
     for (const m of src.matchAll(/from '(\.\.[^']+)'/g)) {
       const imp = m[1]
-      if (imp.startsWith('../kernel/') || imp.startsWith('../feed/')) continue
-      fail(`${relative(root, f)}: module import ${imp} crosses a module boundary (allowed: kernel/ + feed/ only)`)
+      const target = resolve(dirname(f), imp)
+      if (target.startsWith(join(root, 'src/kernel')) ||
+          target.startsWith(join(root, 'src/feed')) ||
+          target.startsWith(own)) continue
+      fail(`${relative(root, f)}: module import ${imp} crosses a module boundary (allowed: kernel/ + feed/ + own module)`)
     }
   }
 }

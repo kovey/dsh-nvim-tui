@@ -10,7 +10,7 @@ import { installStatusline } from '../lib/statusline/index.js'
 import { installSessions } from '../lib/sessions/index.js'
 import { installSubagents } from '../lib/subagents/index.js'
 import { installTranscript } from '../lib/transcript/index.js'
-import { installCommands } from '../lib/commands.js'
+import { installCommands } from '../lib/commands/index.js'
 
 const ctx = { effect: () => () => {}, get: () => undefined }
 const runtimeCtx = {
