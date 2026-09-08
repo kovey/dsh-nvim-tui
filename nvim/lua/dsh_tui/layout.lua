@@ -48,7 +48,7 @@ function L.build_input_window()
   -- The bottom edge is one continuous line: the statusline's %= gap is
   -- filled with `─` (window-local fillchars, the chat stats bar is
   -- unaffected) so the border runs from the hints all the way to ╯.
-  S.inputStatusline = '%#DshTuiBorder#╰─%#DshTuiStatus# Enter 发送 · C-cr 换行 · C-c 停止 · / 命令菜单 · C-o 面板 %#DshTuiBorder#%=─╯'
+  S.inputStatusline = '%#DshTuiBorder#╰─%#DshTuiStatus# Enter 发送 · C-cr 换行 · C-e 全屏 · C-c 停止 · / 命令菜单 · C-o 面板 %#DshTuiBorder#%=─╯'
   vim.api.nvim_win_set_option(S.input_win, 'statusline', S.inputStatusline)
   S.inputFillchars = 'stl:─,stlnc:─'
   pcall(vim.api.nvim_win_set_option, S.input_win, 'fillchars', S.inputFillchars)
