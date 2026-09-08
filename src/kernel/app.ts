@@ -146,6 +146,22 @@ export interface WorkflowRun {
   stopReason: string | undefined
 }
 
+/** One queued approval request (head renders the float; the rest wait in
+ *  order — parent + subagents can ask CONCURRENTLY). */
+export interface ApprovalEntry {
+  req: ApprovalRequest
+  settle: (outcome: string) => void
+  cancelled?: boolean
+}
+
+/** One queued user-question waterfall. */
+export interface QuestionsEntry {
+  questions: unknown[]
+  resolve: (v: { answers: unknown[] }) => void
+  reject: (e: Error) => void
+  cancelled?: boolean
+}
+
 /** Domain slices: the shared runner state, regrouped by domain. The root
  *  App keeps ONLY the kernel primitives; every other piece of state lives
  *  here and modules read/write it through `app.slices.<domain>.<field>`.
@@ -261,7 +277,18 @@ export interface AppSlices {
     readonly pendingQueueEdit: { list: 'nextTurn' | 'nextStep'; messageId: string } | null
     readonly approvalSettle: ((outcome: string) => void) | null
     readonly approvalReq: ApprovalRequest | null
+    /** Queue for CONCURRENT approval requests (parent + subagents can both
+     *  ask): the head renders the float; the rest wait in order. */
+    readonly approvalQueue: ApprovalEntry[]
     readonly questionsResolve: { resolve: (v: { answers: unknown[] }) => void; reject: (e: Error) => void } | null
+    /** Queue for CONCURRENT user-question waterfalls (same head/tail split). */
+    readonly questionsQueue: QuestionsEntry[]
+    enqueueApproval: (e: ApprovalEntry) => void
+    abortApproval: (e: ApprovalEntry) => void
+    drainApprovals: (outcome: string) => void
+    enqueueQuestions: (e: QuestionsEntry) => void
+    abortQuestions: (e: QuestionsEntry) => void
+    drainQuestions: () => void
     readonly pickerSettle: ((value: string | null) => void) | null
     readonly dirSettle: ((picked: string | null) => void) | null
     readonly bellOn: boolean

@@ -77,9 +77,10 @@ export function installLifecycle(app: App): void {
       clearInterval(app.slices.runtime.idleRefreshTimer)
       W(app.slices.runtime).idleRefreshTimer = null
     }
-    // Unblock pending interactions so the host can drain.
-    app.slices.agent.settleApproval('cancelled')
-    app.slices.agent.rejectQuestions()
+    // Unblock pending interactions so the host can drain — the QUEUES too,
+    // not just the heads (concurrent parent+subagent requests).
+    app.slices.agent.drainApprovals('cancelled')
+    app.slices.agent.drainQuestions()
     app.slices.agent.settlePicker(null)
     if (app.slices.sessions.activeId !== null) app.slices.sessions.recordState(app.slices.sessions.activeId)
     // Persist every live session before disposing its agent. Bounded: an

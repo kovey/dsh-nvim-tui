@@ -625,40 +625,25 @@ export function registerHostEventHandlers(): void {
     if (app.slices.runtime.disposed) return proceed()
     return new Promise((resolve) => {
       let settled = false
-      const cleanup = () => {
-        request.signal?.removeEventListener?.('abort', onAbort)
+      // Queue-aware entry: concurrent requests (parent + subagents) wait in
+      // order — the runner shows ONE float at a time and advances on settle.
+      const entry = {
+        req: request,
+        settle: (outcome: string) => {
+          if (settled) return
+          settled = true
+          resolve(outcome)
+        },
       }
-      const onAbort = () => {
-        if (settled) return
-        settled = true
-        cleanup()
-        app.slices.agent.setApproval(null, null)
-        resolve('cancelled')
-      }
-      request.signal?.addEventListener('abort', onAbort, { once: true })
-      app.slices.agent.setApproval(request, (outcome) => {
-        if (settled) return
-        settled = true
-        cleanup()
-        app.slices.agent.setApproval(null, null)
-        resolve(outcome)
-      })
+      request.signal?.addEventListener('abort', () => {
+        app.slices.agent.abortApproval(entry)
+      }, { once: true })
+      app.slices.agent.enqueueApproval(entry)
       const sid = request.agent?.session?.id
       const rec = sid === undefined ? undefined : app.slices.sessions.live.get(sid)
       rec?.feed.appendNotice(`⚠ 审批请求: ${request.toolName ?? '?'}${request.reason ? ` — ${request.reason}` : ''}`)
       // Approvals always ring — attention is required, bell toggle or not.
       void app.luaCall('require("dsh_tui").bell()', []).catch(() => {})
-      void app.luaCall('require("dsh_tui").show_approval(...)', [{
-        toolName: request.toolName ?? '',
-        reason: request.reason ?? '',
-      }]).catch(() => {
-        if (!settled) {
-          settled = true
-          cleanup()
-          app.slices.agent.setApproval(null, null)
-          resolve('rejected')
-        }
-      })
     })
   })
   // User questions: claim the host's `user-questions/request` waterfall
@@ -669,22 +654,12 @@ export function registerHostEventHandlers(): void {
     const proceed = next as () => unknown
     if (app.slices.runtime.disposed) return proceed()
     return new Promise((resolve, reject) => {
-      app.slices.agent.setQuestions({ resolve, reject })
+      // Queue-aware entry (same head/tail semantics as approvals).
+      const entry = { questions: req.questions ?? [], resolve, reject }
       req.signal?.addEventListener('abort', () => {
-        if (app.slices.agent.questionsResolve) {
-          const r = app.slices.agent.questionsResolve
-          app.slices.agent.setQuestions(null)
-          r.reject(new Error('cancelled by caller'))
-        }
+        app.slices.agent.abortQuestions(entry)
       }, { once: true })
-      void app.luaCall('require("dsh_tui").show_questions(...)', [req.questions ?? []])
-        .catch(() => {
-          if (app.slices.agent.questionsResolve) {
-            const r = app.slices.agent.questionsResolve
-            app.slices.agent.setQuestions(null)
-            r.reject(new Error('no UI'))
-          }
-        })
+      app.slices.agent.enqueueQuestions(entry)
     })
   })
 }

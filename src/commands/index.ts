@@ -6,7 +6,8 @@
  *
  * @module dsh-nvim-tui/commands
  */
-import type { AppSlices, WritableSlice } from '../kernel/app.js'
+import type { AppSlices, WritableSlice, QuestionsEntry } from '../kernel/app.js'
+import type { ApprovalRequest } from '../kernel/types.js'
 const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 import type { App } from '../kernel/app.js'
 import {
@@ -67,12 +68,118 @@ export function installCommands(app: App): void {
   //    through these; owner keeps the writable view) --
   const A = W(app.slices.agent)
   A.setApproval = (entry, settle) => { A.approvalReq = entry; A.approvalSettle = settle }
-  A.settleApproval = (outcome) => { const fn = A.approvalSettle; A.approvalSettle = null; fn?.(outcome) }
+
+  // ---- queue-aware approval/questions (parent + subagents can ask
+  //   CONCURRENTLY — a second request must queue, never overwrite the
+  //   first settle) ----
+  const showApprovalFloat = (req: ApprovalRequest): void => {
+    if (app.slices.runtime.disposed) return
+    void app.luaCall('require("dsh_tui").show_approval(...)', [{
+      toolName: req.toolName ?? '',
+      reason: req.reason ?? '',
+    }]).catch(() => {
+      // Float failed to open for THIS head: settle it rejected and move on.
+      if (A.approvalReq === req) A.settleApproval('rejected')
+    })
+  }
+  const advanceApproval = (): void => {
+    while (A.approvalQueue.length > 0) {
+      const next = A.approvalQueue.shift()!
+      if (next.cancelled === true) continue
+      A.approvalReq = next.req
+      A.approvalSettle = next.settle
+      showApprovalFloat(next.req)
+      return
+    }
+  }
+  A.settleApproval = (outcome) => {
+    const fn = A.approvalSettle
+    A.approvalSettle = null
+    A.approvalReq = null
+    fn?.(outcome)
+    advanceApproval()
+  }
+  A.enqueueApproval = (e) => {
+    if (A.approvalReq === null && A.approvalQueue.length === 0) {
+      A.approvalReq = e.req
+      A.approvalSettle = e.settle
+      showApprovalFloat(e.req)
+    } else {
+      A.approvalQueue.push(e)
+    }
+  }
+  A.abortApproval = (e) => {
+    e.cancelled = true
+    e.settle('cancelled')
+    if (A.approvalReq === e.req) {
+      A.approvalReq = null
+      A.approvalSettle = null
+      advanceApproval()
+    }
+  }
+  A.drainApprovals = (outcome) => {
+    A.approvalSettle?.(outcome)
+    A.approvalSettle = null
+    A.approvalReq = null
+    for (const e of A.approvalQueue) e.settle(outcome)
+    A.approvalQueue.length = 0
+  }
   A.setPickerSettle = (fn) => { A.pickerSettle = fn }
   A.settlePicker = (value) => { const fn = A.pickerSettle; A.pickerSettle = null; fn?.(value) }
   A.setQuestions = (r) => { A.questionsResolve = r }
-  A.settleQuestions = (answers) => { const r = A.questionsResolve; A.questionsResolve = null; r?.resolve({ answers }) }
-  A.rejectQuestions = () => { const r = A.questionsResolve; A.questionsResolve = null; r?.reject(new Error('UI torn down')) }
+  const showQuestionsFloat = (e: QuestionsEntry): void => {
+    if (app.slices.runtime.disposed) return
+    void app.luaCall('require("dsh_tui").show_questions(...)', [e.questions]).catch(() => {
+      if (A.questionsResolve?.resolve === e.resolve) {
+        A.questionsResolve = null
+        e.reject(new Error('no UI'))
+        advanceQuestions()
+      }
+    })
+  }
+  const advanceQuestions = (): void => {
+    while (A.questionsQueue.length > 0) {
+      const next = A.questionsQueue.shift()!
+      if (next.cancelled === true) continue
+      A.questionsResolve = { resolve: next.resolve, reject: next.reject }
+      showQuestionsFloat(next)
+      return
+    }
+  }
+  A.settleQuestions = (answers) => {
+    const r = A.questionsResolve
+    A.questionsResolve = null
+    r?.resolve({ answers })
+    advanceQuestions()
+  }
+  A.rejectQuestions = () => {
+    const r = A.questionsResolve
+    A.questionsResolve = null
+    r?.reject(new Error('UI torn down'))
+    advanceQuestions()
+  }
+  A.enqueueQuestions = (e) => {
+    if (A.questionsResolve === null && A.questionsQueue.length === 0) {
+      A.questionsResolve = { resolve: e.resolve, reject: e.reject }
+      showQuestionsFloat(e)
+    } else {
+      A.questionsQueue.push(e)
+    }
+  }
+  A.abortQuestions = (e) => {
+    e.cancelled = true
+    e.reject(new Error('cancelled by caller'))
+    if (A.questionsResolve?.resolve === e.resolve) {
+      A.questionsResolve = null
+      advanceQuestions()
+    }
+  }
+  A.drainQuestions = () => {
+    A.questionsResolve?.reject(new Error('UI torn down'))
+    A.questionsResolve = null
+    for (const e of A.questionsQueue) e.reject(new Error('UI torn down'))
+    A.questionsQueue.length = 0
+  }
   A.setDirSettle = (fn) => { A.dirSettle = fn }
   A.resolveDirPicker = (picked) => { const fn = A.dirSettle; A.dirSettle = null; fn?.(picked) }
   A.setPendingRename = (v) => { A.pendingRename = v }
@@ -85,8 +192,9 @@ export function installCommands(app: App): void {
     A.pendingSubagentFollowup = null
   }
 
-  // -- agent domain defaults (I2; subagents owns its chat part) --
   Object.assign(app.slices.agent, {
+    approvalQueue: [],
+    questionsQueue: [],
     followup: async () => {},
     queueSubagentPrompt: async () => {},
     send: () => {},
