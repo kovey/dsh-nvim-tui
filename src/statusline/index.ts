@@ -143,6 +143,11 @@ const refreshBgJobs = (app: App) => {
     if (key !== rec.committedJobsKey) {
       rec.feed.commitJobsBoard(rows)
       rec.committedJobsKey = key
+      // The committed batch is terminal forever: drop it from the cache so
+      // a LATER batch finishing does not re-commit the old board together
+      // with the new one (key changes when new ids join → whole-board
+      // duplicate commits).
+      for (const [id] of entries) cache.delete(id)
     }
   } else {
     rec.feed.setJobsBoard(rows)

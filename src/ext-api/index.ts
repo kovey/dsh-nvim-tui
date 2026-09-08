@@ -359,11 +359,13 @@ export function installExtApi(app: App): void {
         group: c.group ?? '扩展',
         fn: c.fn,
       }))
-      app.registerCommands(specs)
+      const mine = app.registerCommands(specs)
       void app.refreshCommandCatalog().catch(() => {})
       return () => {
-        const names = new Set(specs.map((s) => s.name))
-        app.commandSpecs = app.commandSpecs.filter((s) => !names.has(s.name))
+        // Ownership-checked disposal: only the specs THIS registration
+        // actually added may be removed (a rejected duplicate must never
+        // delete the pre-existing command it collided with).
+        app.commandSpecs = app.commandSpecs.filter((s) => !mine.includes(s))
         void app.refreshCommandCatalog().catch(() => {})
       }
     },
@@ -394,9 +396,13 @@ export function installExtApi(app: App): void {
         void app.luaCall('require("dsh_tui.api").rpc_event(...)', [extId, event, payload ?? null]).catch(() => {})
       },
       on: (extId, handler, opts) => {
+        // Token-guarded disposer: a second on() for the same extId REPLACES
+        // the entry — the first disposer must not delete the newcomer.
+        const token = Symbol(`luaExt:${extId}`)
         app.slices.ext.extNodeHandlers.set(extId, {
           handler,
           timeoutMs: opts?.timeoutMs ?? EXT_HANDLER_TIMEOUT_MS,
+          token,
         })
         return () => {
           app.slices.ext.extNodeHandlers.delete(extId)
@@ -562,8 +568,17 @@ export function handleDshExtRequest(app: App, method: string, args: unknown[], r
     const reply = (r: unknown): void => {
       if (answered) return
       answered = true
+      // msgpack-safe payload: undefined/functions/BigInt would make
+      // resp.send throw AFTER `answered` was set — the peer would block in
+      // vim.rpcrequest forever. Clean first, then send.
+      let payload = r
       try {
-        resp.send(r)
+        payload = JSON.parse(JSON.stringify(r))
+      } catch {
+        payload = { ok: false, error: 'ext handler returned a non-serializable value' }
+      }
+      try {
+        resp.send(payload)
       } catch { /* peer went away mid-handler: nothing to answer */ }
     }
     if (method !== 'dsh-ext') {

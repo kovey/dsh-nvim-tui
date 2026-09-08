@@ -16,7 +16,6 @@ export declare function billedInput(usage: Usage): number;
 export declare function cacheHitRate(usage: Usage, cacheReported: boolean): number | null;
 /** Estimated USD cost; undefined for unknown models or zero tokens. */
 export declare function estimateCost(modelName: string | undefined, usage: Usage): number | undefined;
-/** 512600 → '512.6k'; 1000000 → '1.00M'. */
 export declare function formatTokens(n: number): string;
 /** 102510 ms → '1m 42s'; 95000 → '1m 35s'; 234 → '234ms'. */
 export declare function formatElapsed(ms: number): string;

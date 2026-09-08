@@ -44,7 +44,7 @@ export const attachCommand = async (app: App, a: string | undefined) => {
   }
   // Non-image: a path-only @-mention (the official file-reference way —
   // the model reads the file through its tools when needed).
-  const rel = isAbsolute(path) ? path : path
+  const rel = path
   await app.luaCall('require("dsh_tui").append_input(...)', [formatMention(rel) + ' ']).catch(() => {})
   app.notice(`已引用: ${rel}（@ 路径会随消息发送，模型按需读取）`)
 }

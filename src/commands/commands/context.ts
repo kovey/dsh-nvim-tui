@@ -25,7 +25,7 @@ export const contextCommand = async (app: App): Promise<void> => {
       if (b !== undefined) {
         const used = (b.systemTokens ?? 0) + (b.toolsTokens ?? 0) + (b.messageTokens ?? 0)
         const cap = rec.contextWindow
-        app.notice(`上下文占用 ≈${formatTokens(used)}${cap !== undefined ? `) / ${formatTokens(cap)} · ${Math.round((used / cap) * 100)}%` : ''}`)
+        app.notice(`上下文占用 ≈${formatTokens(used)}${cap !== undefined ? ` / ${formatTokens(cap)} · ${Math.round((used / cap) * 100)}%` : ''}`)
         app.notice(`  system ${formatTokens(b.systemTokens ?? 0)} · tools ${formatTokens(b.toolsTokens ?? 0)} · messages ${formatTokens(b.messageTokens ?? 0)}`)
         if (b.claim !== undefined) {
           app.notice(`  claim ${formatTokens(b.claim.tokens ?? 0)} tokens（seq ${b.claim.start ?? '?'}–${b.claim.end ?? '?'}）`)
@@ -35,7 +35,7 @@ export const contextCommand = async (app: App): Promise<void> => {
     } catch {}
   }
   const usage = rec.lastUsage ?? rec.usage
-  app.notice(`上下文占用（按事件折叠）: ${usage !== undefined ? `)◧ ${formatTokens(billedInput(usage))}${rec.contextWindow !== undefined ? `/${formatTokens(rec.contextWindow)}` : ''}` : '暂无数据'}`)
+  app.notice(`上下文占用（按事件折叠）: ${usage !== undefined ? `◧ ${formatTokens(billedInput(usage))}${rec.contextWindow !== undefined ? `/${formatTokens(rec.contextWindow)}` : ''}` : '暂无数据'}`)
 }
 
 export function installContextCommand(app: App): void {

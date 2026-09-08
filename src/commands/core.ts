@@ -40,7 +40,7 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
   if ((text ?? '').trim() === '' && (images === undefined || images.length === 0)) return
   // Surface the queueing so the message doesn't look lost. (Use /btw to
   // fork a side session instead.)
-  if (rec.status === '● running') {
+  if (rec.status !== undefined && rec.status.startsWith('● running')) {
     app.slices.ui.activeFeed()?.appendNotice('已排队：当前回合结束后处理')
   }
   if (images !== undefined && images.length > 0 && (text ?? '').trim() === '') {
@@ -234,6 +234,7 @@ export const stopCommand = (app: App) => {
 
 /** Directory picker promise (Lua navigable float → 'dsh-dir-selected'). */
 export const openDirPicker = (app: App, startPath: string): Promise<string | null> => new Promise((resolve) => {
+  if (app.slices.agent.dirSettle !== null) app.slices.agent.resolveDirPicker(null)
   W(app.slices.agent).dirSettle = resolve
   void app.luaCall('require("dsh_tui").show_dir_picker(...)', [startPath ?? process.cwd()])
     .catch(() => { W(app.slices.agent).dirSettle = null; resolve(null) })
@@ -443,7 +444,7 @@ export function registerTool(app: App): void {
   if (typeof toolsSvc?.register === 'function') {
     try {
       const safeSpecs = app.commandSpecs.filter((sp) => TUI_COMMAND_WHITELIST.has(sp.name))
-      toolsSvc.register(defineTool({
+      void Promise.resolve(toolsSvc.register(defineTool({
         name: 'tui_command',
         description: [
           'Execute a TUI (terminal UI) command for the user.',
@@ -493,7 +494,9 @@ export function registerTool(app: App): void {
             return { executed: false, command: name }
           }
         },
-      }))
+      }))).catch(() => {
+        // registration rejected asynchronously: keyword routing still works
+      })
     } catch {
       // tools service absent / registration rejected: keyword routing still works
     }
@@ -533,6 +536,13 @@ export function registerNotifications(): void {
     try { app.slices.agent.onInput(raw) } catch (err) { app.notice(`⚠ 输入处理失败: ${(err as Error).message}`) }
   })
   registerNvimNotification('dsh-command', '命令', (app, args) => {
+    // A pending card INPUT claims the next submission even when it starts
+    // with '/' (the Lua side routes slash-lines to dsh-command) — route it
+    // through the same interception as dsh-input instead of executing it.
+    if (app.slices.ext.pendingCardInput !== null) {
+      try { app.slices.agent.onInput(String(args?.[0] ?? '')) } catch { /* handled inside */ }
+      return
+    }
     try { app.slices.agent.onCommand(String(args?.[0] ?? '')) } catch (err) { app.notice(`⚠ 命令失败: ${(err as Error).message}`) }
   })
   registerNvimNotification('dsh-abort', '中止', (app) => {

@@ -261,6 +261,7 @@ export interface AppSlices {
         readonly extNodeHandlers: Map<string, {
             handler: (method: string, args: unknown[]) => unknown | Promise<unknown>;
             timeoutMs: number;
+            token?: symbol;
         }>;
         readonly extStatusSegments: Map<string, {
             text: string;
@@ -450,7 +451,7 @@ export interface App {
     closeNvimWindow: () => Promise<void>;
     /** Command registry (kernel bootstrap facility: every module registers
      *  its specs at install time, so the mechanism exists from t=0). */
-    registerCommands: (specs: CommandSpec[]) => void;
+    registerCommands: (specs: CommandSpec[]) => CommandSpec[];
     commandCatalog: () => Array<{
         name: string;
         desc: string;

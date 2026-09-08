@@ -53,15 +53,19 @@ export function estimateCost(modelName: string | undefined, usage: Usage): numbe
 }
 
 /** 512600 → '512.6k'; 1000000 → '1.00M'. */
+const safeNum = (n: unknown, fallback = 0): number =>
+  typeof n === 'number' && Number.isFinite(n) ? n : fallback
+
 export function formatTokens(n: number): string {
-  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M'
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k'
-  return String(n)
+  const v = safeNum(n)
+  if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M'
+  if (v >= 1e3) return (v / 1e3).toFixed(1) + 'k'
+  return String(v)
 }
 
 /** 102510 ms → '1m 42s'; 95000 → '1m 35s'; 234 → '234ms'. */
 export function formatElapsed(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000))
+  const total = Math.max(0, Math.floor(safeNum(ms) / 1000))
   if (total < 1) return `${Math.max(0, Math.floor(ms))}ms`
   const m = Math.floor(total / 60)
   const s = total % 60

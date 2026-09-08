@@ -27,6 +27,15 @@ export function registerHostHandler(name: string, fn: HostEventHandler): void {
  *  connects; events cannot fire before any session exists). */
 export function wireHostEvents(app: App): void {
   for (const [name, fn] of handlers) {
-    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on(name, (...args: unknown[]) => fn(app, ...args)))
+    app.slices.runtime.hostDisposers.push(app.runtimeCtx.on(name, (...args: unknown[]) => {
+      // A throwing handler must not kill the host (alpha.4 fail-loud turns
+      // an unhandled rejection into process.exit) — diag-log and continue.
+      try {
+        return fn(app, ...args)
+      } catch (err) {
+        app.exitDiag('host-event-error', name, err instanceof Error ? (err.stack ?? err.message) : String(err))
+        return undefined
+      }
+    }))
   }
 }

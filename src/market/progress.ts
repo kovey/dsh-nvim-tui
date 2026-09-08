@@ -548,6 +548,11 @@ export const runPluginCliP = (
     env: { ...process.env, ...envExtra },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+  // A wedged CLI (lock wait / hung network / interactive prompt) must not
+  // hang the progress float forever: hard-stop after 5 minutes.
+  const killer = setTimeout(() => {
+    try { child.kill('SIGTERM') } catch { /* already gone */ }
+  }, 5 * 60_000)
   let out = ''
   const bump = (chunk: string): void => {
     out = (out + chunk).slice(-4000)
@@ -557,8 +562,12 @@ export const runPluginCliP = (
   }
   child.stdout.on('data', (d: Buffer) => bump(d.toString()))
   child.stderr.on('data', (d: Buffer) => bump(d.toString()))
-  child.on('error', (e) => { pg.log('无法启动 dsh CLI: ' + e.message); resolve({ code: null, tail: out }) })
-  child.on('exit', (code) => resolve({ code, tail: out }))
+  child.on('error', (e) => { clearTimeout(killer); pg.log('无法启动 dsh CLI: ' + e.message); resolve({ code: null, tail: out }) })
+  child.on('exit', (code) => {
+    clearTimeout(killer)
+    if (code === null && child.killed) pg.log('dsh CLI 超时已终止')
+    resolve({ code, tail: out })
+  })
 })
 
 /** Post-install verification + the entry-file auto-repair chain (the

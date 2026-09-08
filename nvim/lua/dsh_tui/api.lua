@@ -707,7 +707,10 @@ function API.region_reflow()
       local w = p.explicitWidth and p._w or share
       local h = math.max(1, math.min(tonumber(p.height) or 6, math.max(1, vim.o.lines - 2)))
       p.height = h
-      local bottomRow = math.max(0, inputTop - h)
+      -- SW anchor puts the float's BOTTOM-LEFT at (row, col) and the float
+      -- grows UPWARD: to sit flush ABOVE the input box the bottom edge must
+      -- be inputTop - 1 (inputTop is 0-based), i.e. row = inputTop - 1.
+      local bottomRow = math.max(0, inputTop - 1)
       local cfg = {
         relative = 'editor',
         anchor = side == 'bottom' and 'SW' or 'NW',
@@ -792,7 +795,7 @@ function API.region_claim(id, opts)
     cfg = {
       relative = 'editor',
       anchor = side == 'bottom' and 'SW' or 'NW',
-      row = side == 'bottom' and vim.o.lines - h or 0,
+      row = side == 'bottom' and vim.o.lines - 1 or 0,
       col = 0,
       width = region_clamped_width(opts.width),
       height = h,

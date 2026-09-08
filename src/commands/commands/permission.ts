@@ -24,7 +24,7 @@ export const permissionCommand = async (app: App, a: string | undefined) => {
       const current = permission.current(rec.handle.agent.session)
       for (const name of names) {
         const opt = permission.optionOf(name)
-        app.notice(`${name}${name === current ? ' ✓（当前）' : ''} · ${opt?.name ?? name}${opt?.description ? `) — ${opt.description}` : ''}`)
+        app.notice(`${name}${name === current ? ' ✓（当前）' : ''} · ${opt?.name ?? name}${opt?.description ? ` — ${opt.description}` : ''}`)
       }
       return
     }

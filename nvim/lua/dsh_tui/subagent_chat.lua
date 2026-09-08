@@ -21,7 +21,9 @@ local SAC = {}
 
 -- Single composite state, replaced as a unit when the window opens/closes
 -- (the init.lua M._subagentChat lazy alias stays in sync).
-S.subagentChat = { buf = nil, win = nil, inputBuf = nil, inputWin = nil, hist = {}, histIdx = nil, draft = nil }
+if S.subagentChat == nil then
+  S.subagentChat = { buf = nil, win = nil, inputBuf = nil, inputWin = nil, hist = {}, histIdx = nil, draft = nil }
+end
 
 local function width()
   return math.min(120, math.max(40, vim.o.columns - 6))

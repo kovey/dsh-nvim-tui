@@ -128,7 +128,8 @@ const cleanSubagentChain = async (app: App, parentId: string, childId: string): 
       }
     }
   } catch {}
-  if (truncated) {
+  if (!truncated) return false
+  {
     const ws = app.svc('workspaceRegistry')
     if (typeof ws?.archiveSession === 'function') {
       try { await ws.archiveSession(childId) } catch {}
@@ -323,9 +324,13 @@ export async function resumeOrCreate(app: App): Promise<void> {
       app.slices.sessions.historyHeaders.some((h) => h.id === state.sessionId)
       ? (state.sessionId as string)
       : null
-    const newest = [...app.slices.sessions.historyHeaders]
+    // Archived sessions stay archived: auto-resume must not resurrect them.
+    const wsSvc = app.svc('workspaceRegistry')
+    const archived = new Set(wsSvc?.archivedSessionIds ?? [])
+    const candidates = app.slices.sessions.historyHeaders.filter((h) => !archived.has(h.id))
+    const newest = [...candidates]
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0]?.id
-    const target = fromState ?? newest
+    const target = (fromState !== null && !archived.has(fromState) ? fromState : null) ?? newest
     if (target) {
       if (await resumeOrFresh(target)) app.notice(t('已自动恢复上次会话（/new 新建）'))
     } else {

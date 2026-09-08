@@ -4,7 +4,7 @@ import { t } from '../../kernel/i18n.js'
 import { existsSync } from 'node:fs'
 import { unlinkSync } from 'node:fs'
 import { readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import type { App } from '../../kernel/app.js'
 
 
@@ -15,7 +15,13 @@ export const memoryCommand = (app: App, a: string | undefined) => {
   try {
     if (a0.startsWith('delete ')) {
       const target = a0.slice(7).trim()
-      const file = join(dir, target.endsWith('.md') ? target : `${target}.md`)
+      const name = target.endsWith('.md') ? target : `${target}.md`
+      const base = resolve(dir)
+      const file = resolve(dir, name)
+      if (!file.startsWith(base + sep)) {
+        app.notice(`非法路径: ${target}（仅允许删除 .dsh/memory 内的文件）`)
+        return
+      }
       if (!existsSync(file)) {
         app.notice(`不存在: ${target}`)
         return

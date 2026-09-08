@@ -518,7 +518,9 @@ description:
   assert.deepEqual(matchIntent('任务列表'), { name: 'tasks', arg: undefined }, '任务列表 still routes to /tasks (jobs)')
   assert.deepEqual(matchIntent('help'), { name: 'help', arg: undefined }, 'exact en alias routes')
   assert.deepEqual(matchIntent('切换模型 deepseek-chat'), { name: 'model', arg: 'deepseek-chat' }, 'model pattern captures arg')
-  assert.deepEqual(matchIntent('用 deepseek-chat'), { name: 'model', arg: 'deepseek-chat' }, 'id-like model arg without 模型 keyword')
+  // 「用 <id>」曾误路由到 /model（'用 bash' 这类聊天句会持久化损坏默认
+  // 模型）——该模式已删除，裸 id 必须回落聊天。
+  assert.equal(matchIntent('用 deepseek-chat'), null, 'bare 用 + id no longer hijacks into /model')
   assert.equal(matchIntent('用中文回复我'), null, 'bare 用 + sentence is chat, not a model switch')
   assert.deepEqual(matchIntent('主题换成 vivid'), { name: 'theme', arg: 'vivid' }, 'theme alternation picks the longest prefix')
   assert.deepEqual(matchIntent('语言 英文'), { name: 'locale', arg: 'en' }, 'locale arg mapped')
@@ -2712,8 +2714,12 @@ description:
   const bot1 = await lua(`return require("dsh_tui.api").region_claim("smoke-ext", { side = "bottom", size = 4, width = 40 })`, []) as { win: number }
   const cfgBot1 = await nvim.request('nvim_win_get_config', [bot1.win])
   const inputTopRow = await lua(`return vim.api.nvim_win_get_position(require("dsh_tui").ids().inputWin)[1]`, [])
-  assert.equal(cfgBot1.row, inputTopRow - cfgBot1.height, 'bottom region sits directly above the input box')
-  assert.ok(cfgBot1.row + cfgBot1.height <= inputTopRow, 'bottom region never overlaps the input box')
+  // SW anchor: the float's BOTTOM-LEFT sits at (row, col) and it grows
+  // upward — flush above the input box means row = inputTopRow - 1.
+  assert.equal(cfgBot1.row, inputTopRow - 1, 'bottom region sits directly above the input box (SW anchor semantics)')
+  // SW geometry: the float spans [row - height + 1, row] (bottom edge AT
+  // row). Never overlapping the input box means bottom edge < inputTopRow.
+  assert.ok(cfgBot1.row < inputTopRow, 'bottom region never overlaps the input box')
   assert.equal(cfgBot1.anchor, 'SW', 'bottom region anchors SW')
   // duplicate side rejected; other side fine (per-ext per-side)
   assert.ok(String((await lua(`return require("dsh_tui.api").region_claim("smoke-ext", { side = "bottom" })`, [])).err).includes('already holds'),

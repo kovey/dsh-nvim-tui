@@ -131,7 +131,10 @@ function AM.accept()
   local cur = vim.api.nvim_win_get_cursor(S.input_win)
   local line = lines[cur[1]] or ''
   local mention = sel.mention
-  local col = math.min(cur[2], #line)
+  -- Cursor may have drifted LEFT of the token (menus stay open on cursor
+  -- moves): splice from at least the token's end, never behind `start`,
+  -- or the mention concatenates with the leftover @fragment.
+  local col = math.max(math.min(cur[2], #line), start)
   local newline = line:sub(1, start) .. mention .. line:sub(col + 1)
   lines[cur[1]] = newline
   vim.api.nvim_buf_set_lines(S.input_buf, 0, -1, false, lines)

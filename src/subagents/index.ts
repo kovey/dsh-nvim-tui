@@ -174,6 +174,13 @@ const sendToSubagent = (app: App, text: string) => {
     chat.feed.pushError(t('父会话已不存在，无法发送'))
     return
   }
+  // Validate the service BEFORE the optimistic echo: a failed send must
+  // not leave a pending-echo entry that poisons the next message's dedupe.
+  const subagentsSvc = app.svc('subagents')
+  if (typeof subagentsSvc?.[queueSubagentPromptKey] !== 'function') {
+    chat.feed.pushError(t('子代理续聊不可用（subagents 服务未装配）'))
+    return
+  }
   // Optimistic echo: render the bubble now; the matching user/message
   // replay is skipped in the session/event routing (FIFO per session).
   chat.feed.pushUser(clean, [])
@@ -181,11 +188,6 @@ const sendToSubagent = (app: App, text: string) => {
   q.push(clean)
   if (q.length > 4) q.shift()
   app.slices.ui.pendingEchoes.set(chat.childId, q)
-  const subagentsSvc = app.svc('subagents')
-  if (typeof subagentsSvc?.[queueSubagentPromptKey] !== 'function') {
-    chat.feed.pushError(t('子代理续聊不可用（subagents 服务未装配）'))
-    return
-  }
   if (app.slices.sessions.runningSubagents.has(chat.childId)) {
     chat.feed.appendNotice(t('⏳ 已排队：子代理当前回合结束后处理'))
   }
@@ -244,6 +246,10 @@ export function installSubagents(app: App): void {
   })
   registerNvimNotification('dsh-subagent-chat-closed', '子代理对话', (app) => {
     app.slices.agent.setSubagentChat(null)
+    // Closing the chat window cancels the "next input goes to this child"
+    // addressing too (the notice promises /subagents can cancel it).
+    const A = W(app.slices.agent)
+    if (A.pendingSubagentFollowup !== null) A.pendingSubagentFollowup = null
   })
   registerNvimNotification('dsh-subagent-send', '子代理发送', (app, args) => {
     try {

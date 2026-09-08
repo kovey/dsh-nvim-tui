@@ -96,6 +96,14 @@ function A.install()
         -- Self-heal: a plugin may have wiped the input surface (keymaps /
         -- hooks) while it had the window — re-assert them whenever focus
         -- returns to the input.
+        if not S.input_buf or not vim.api.nvim_buf_is_valid(S.input_buf) then
+          -- The input buffer was wiped (:bd! / hostile plugin): rebuild the
+          -- whole input surface — every submit would throw until then.
+          I.make_buffer()
+          K.install()
+          A.install_input()
+          return
+        end
         if S.input_buf and vim.api.nvim_buf_is_valid(S.input_buf) then
           local hasSubmit = false
           for _, m in ipairs(vim.api.nvim_buf_get_keymap(S.input_buf, 'i')) do
@@ -368,6 +376,10 @@ function A.boot_guard()
         if not isFloat and w ~= S.chat_win and w ~= S.input_win then
           pcall(vim.api.nvim_win_close, w, true)
         end
+        -- The window exemption extends to its BUFFER: a listed file buffer
+        -- displayed inside an exempt plugin float must not be force-deleted
+        -- from under the float.
+        if isFloat then return end
         local b = vim.api.nvim_get_current_buf()
         if API.is_ext_buf(b) then return end
         local chatBuf = S.activeId and S.chats[S.activeId] or nil

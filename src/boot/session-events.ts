@@ -57,8 +57,13 @@ export function makeSessionEventHandler(
         const data = event.data as { message?: ChatMessage } | ChatMessage | undefined
         const msg = (data as { message?: ChatMessage } | undefined)?.message ??
           (data as ChatMessage | undefined)
-        if (FeedRenderer.messageText(msg) === q[0]) {
-          q.shift()
+        // SELF-HEALING (same as the main feed): match ANYWHERE in the queue
+        // so one desync cannot poison every later message; remove only the
+        // matched entry and everything before it (FIFO order preserved).
+        const text = FeedRenderer.messageText(msg)
+        const at = q.indexOf(text)
+        if (at >= 0) {
+          q.splice(0, at + 1)
           app.slices.ui.pendingEchoes.set(owner.id, q)
           return // already rendered optimistically — no double bubble
         }
@@ -302,7 +307,10 @@ export function makeSessionEventHandler(
     // Headless e2e: first completed turn of the initial session ends the test.
     if (app.headless && event.type === 'turn/end' && owner.id === app.slices.sessions.activeId) {
       rec.feed.commitTail()
-      void rec.feed.flush().then(headlessDump)
+      void rec.feed.flush().then(headlessDump).catch((err: unknown) => {
+        app.exitDiag('headless-dump-flush', err instanceof Error ? err.message : String(err))
+        void headlessDump()
+      })
     }
   }
 }

@@ -8,7 +8,12 @@ const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 
 /** /bell [on|off] — terminal bell on turn end (approvals always ring). */
 export const bellCommand = (app: App, a: string | undefined) => {
-  if ((a ?? '').trim() !== '') W(app.slices.agent).bellOn = String(a).trim() === 'on'
+  const arg = (a ?? '').trim()
+  if (arg !== '' && arg !== 'on' && arg !== 'off') {
+    app.notice('用法: /bell [on|off]')
+    return
+  }
+  if (arg !== '') W(app.slices.agent).bellOn = arg === 'on'
   else W(app.slices.agent).bellOn = !app.slices.agent.bellOn
   app.notice(`回合结束响铃: ${app.slices.agent.bellOn ? '开' : '关'}`)
 }

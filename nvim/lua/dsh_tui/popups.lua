@@ -212,11 +212,15 @@ end
 -- ---------------------------------------------------------------------------
 -- Directory picker: navigable float. Enter descends / selects, <BS> goes up,
 -- q/Esc cancel. Selection returns via 'dsh-dir-selected'.
-S.dirWin = nil
-S.dirBuf = nil
-S.dirPath = nil
-S.dirRows = {}   -- display rows
-S.dirIdx = 1
+-- RELOAD SAFETY: these assignments run only on first load — a package
+-- reload (vim.loader / rtp rebuild) must not wipe live float handles.
+if S.dirWin == nil then
+  S.dirWin = nil
+  S.dirBuf = nil
+  S.dirPath = nil
+  S.dirRows = {}   -- display rows
+  S.dirIdx = 1
+end
 
 local function dir_entries(path)
   local ok, names = pcall(vim.fn.readdir, path)
@@ -448,7 +452,7 @@ end
 -- Live progress float (plugin install / update-all / …): the runner streams
 -- log lines + a bottom bar row; the window tails the latest lines so a long
 -- operation never looks stuck. q/Esc hide it (the operation keeps running).
-S.progress = { win = nil, buf = nil }
+if S.progress == nil then S.progress = { win = nil, buf = nil } end
 
 function P.show_progress(title, lines)
   P.close_progress()
@@ -531,10 +535,12 @@ end
 --- Session list float (/sessions): entries { {id, title, active, kind} } with
 --- FULL session ids. j/k move, <CR> selects (dsh-session-selected), <C-n> asks
 --- for a new session, q/Esc close.
-S.sessWin = nil
-S.sessBuf = nil
-S.sessEntries = {}
-S.sessIdx = 1
+if S.sessWin == nil then
+  S.sessWin = nil
+  S.sessBuf = nil
+  S.sessEntries = {}
+  S.sessIdx = 1
+end
 
 function P.show_session_list(entries)
   P.close_session_list()

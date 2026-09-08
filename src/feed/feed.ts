@@ -279,6 +279,9 @@ export class FeedRenderer {
     this.turnStartedAt = null
     this.turnMarkerBase = null
     this.calls.clear()
+    this.subagents.clear()
+    this.eventTime = 0
+    this.cardRanges.clear()
     this.toolActivity = null
     this.extCards.clear()
     this.cardHandlers.clear()
@@ -1055,6 +1058,12 @@ export class FeedRenderer {
       this.dirty = true
       return
     }
+    // Reserve the slot IMMEDIATELY: the parsing + whale winSize() below
+    // contain RPC awaits — a second flush scheduled during that window
+    // must not run concurrently (interleaved set_lines writes would
+    // corrupt the buffer ordering). The real task replaces this placeholder
+    // right before the writes; the finally below always clears it.
+    this.flushing = Promise.resolve()
     // Keep the table width cap fresh (throttled: one probe per 2s — the
     // cap only matters when an overwide table renders, and the hot
     // streaming path must not pay an RPC roundtrip per flush).
@@ -1474,6 +1483,11 @@ export class FeedRenderer {
     })()
     try {
       await this.flushing
+    } catch (err) {
+      // A failed RPC leaves the buffer stale while lastView claims the new
+      // content — reset it so the next flush rewrites in full (self-healing).
+      this.lastView = []
+      throw err
     } finally {
       this.flushing = null
       if (this.dirty) {

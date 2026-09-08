@@ -123,7 +123,19 @@ end
 
 
 
-function P.close_float()
+function P.close_float(notify_replaced)
+  -- A float being REPLACED (open_float over an existing one) settles the
+  -- runner's pending promise with a cancel — otherwise the displaced
+  -- approval/questions/picker would hang its turn forever.
+  if notify_replaced and S.float.kind and S.channel then
+    if S.float.kind == 'approval' then
+      vim.rpcnotify(S.channel, 'dsh-approval-decided', 'n')
+    elseif S.float.kind == 'questions' then
+      vim.rpcnotify(S.channel, 'dsh-questions-cancelled')
+    elseif S.float.kind == 'picker' then
+      vim.rpcnotify(S.channel, 'dsh-picker-cancelled')
+    end
+  end
   P.detach_footer()
   if S.float.win and vim.api.nvim_win_is_valid(S.float.win) then
     pcall(vim.api.nvim_win_close, S.float.win, true)
@@ -156,7 +168,7 @@ function P.float_height(lines, width)
 end
 
 function P.open_float(lines, opts)
-  P.close_float()
+  P.close_float(true)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = 'nofile'
   vim.bo[buf].bufhidden = 'wipe'

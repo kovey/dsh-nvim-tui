@@ -214,7 +214,7 @@ export interface AppSlices {
     readonly extLuaSubs: Map<string, Set<string> | 'all'>
     extNodeCleanup: (() => void | Promise<void>) | null
     readonly pendingCardInput: { mark: number; actionIdx: number; prompt: string } | null
-    readonly extNodeHandlers: Map<string, { handler: (method: string, args: unknown[]) => unknown | Promise<unknown>; timeoutMs: number }>
+    readonly extNodeHandlers: Map<string, { handler: (method: string, args: unknown[]) => unknown | Promise<unknown>; timeoutMs: number; token?: symbol }>
     readonly extStatusSegments: Map<string, { text: string; priority: number }>
     /** Owner ops: cross-domain consumers mutate ext state ONLY here. */
     setPendingCardInput: (v: { mark: number; actionIdx: number; prompt: string } | null) => void
@@ -324,7 +324,7 @@ export interface App {
   closeNvimWindow: () => Promise<void>
   /** Command registry (kernel bootstrap facility: every module registers
    *  its specs at install time, so the mechanism exists from t=0). */
-  registerCommands: (specs: CommandSpec[]) => void
+  registerCommands: (specs: CommandSpec[]) => CommandSpec[]
   commandCatalog: () => Array<{ name: string; desc: string }>
   refreshCommandCatalog: () => Promise<void>
   /** Registered command specs — the kernel registry's storage (modules
@@ -349,7 +349,8 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
   }
 
   const headless = config.headless === true || process.env.DSH_NVIM_TUI_HEADLESS === '1'
-  const watchdogMs = Number(config.watchdogMs ?? process.env.DSH_NVIM_TUI_WATCHDOG_MS ?? 120000)
+  const watchdogMsRaw = Number(config.watchdogMs ?? process.env.DSH_NVIM_TUI_WATCHDOG_MS ?? 120000)
+  const watchdogMs = Number.isFinite(watchdogMsRaw) && watchdogMsRaw > 0 ? watchdogMsRaw : 120000
   const dumpPath = config.dumpPath ?? process.env.DSH_NVIM_TUI_DUMP ??
     `/tmp/dsh-nvim-tui-e2e-${process.pid}.txt`
   const errorLogPath = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'nvim-tui-errors.log')
@@ -406,17 +407,21 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     // Command registry (kernel bootstrap facility: EVERY module registers
     // its specs at install time, so the mechanism must exist from t=0 —
     // the owner-module pattern does not apply to cross-module facilities).
-    registerCommands: (specs: CommandSpec[]) => {
+    registerCommands: (specs: CommandSpec[]): CommandSpec[] => {
       // Duplicate-name protection (internal modules register first, ext
       // commands land later at runtime): the second registrant is skipped
-      // with a notice instead of shadowing the first handler.
+      // with a notice instead of shadowing the first handler. Returns the
+      // specs ACTUALLY registered — disposers must only remove their own.
+      const accepted: CommandSpec[] = []
       for (const s of specs) {
         if (app.commandSpecs.some((e) => e.name === s.name)) {
           app.notice(`⚠ 命令 ${s.name} 已注册，忽略重复`)
           continue
         }
         app.commandSpecs.push(s)
+        accepted.push(s)
       }
+      return accepted
     },
     commandCatalog: () => app.commandSpecs.map(({ name, desc }) => ({ name, desc })),
     refreshCommandCatalog: async (): Promise<void> => {
@@ -453,6 +458,10 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
 
   app.openPicker = (title: string, items: Array<{ label: string; value: string; active?: boolean }>) =>
     new Promise<string | null>((resolve) => {
+      // Single-slot semantics: a second picker supersedes the first — settle
+      // the previous one as cancelled so its awaiter can never hang forever
+      // (the tui_command tool can open two pickers back-to-back).
+      if (app.slices.agent.pickerSettle !== null) app.slices.agent.settlePicker(null)
       app.slices.agent.setPickerSettle(resolve)
       void luaCall('require("dsh_tui").show_picker(...)', [title, items])
         .catch(() => { app.slices.agent.settlePicker(null) })

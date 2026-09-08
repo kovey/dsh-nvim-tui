@@ -50,7 +50,8 @@ function stripCellMarkup(text: string): string {
 function splitCells(line: string): string[] | null {
   const t = line.trim()
   if (!t.startsWith('|') || !t.endsWith('|')) return null
-  return t.slice(1, -1).split('|').map(stripCellMarkup)
+  // Escaped pipes (\|) are cell CONTENT, not separators.
+  return t.slice(1, -1).split(/(?<!\\)\|/).map(stripCellMarkup)
 }
 
 /** One bordered row with per-cell bold spans. */
@@ -120,7 +121,10 @@ export function renderTable(block: string[], closed: boolean, maxWidth = Infinit
     const out: string[] = []
     let cur = ''
     let curW = 0
-    for (const ch of Array.from(text ?? '')) {
+    // Grapheme clusters, not code points: ZWJ family emoji (👨‍👩‍👧‍👦) and skin
+    // tones are ONE display unit — splitting by code point tears the
+    // cluster into broken glyphs.
+    for (const { segment: ch } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text ?? '')) {
       const chW = stringWidth(ch)
       if (cur !== '' && curW + chW > w) {
         out.push(cur)
@@ -158,7 +162,11 @@ export function renderTable(block: string[], closed: boolean, maxWidth = Infinit
    * so the frame looked half-bold; uniform bold everywhere fixes that.
    */
   const row = (cells: string[]): RenderedRow[] => {
-    const segs = cells.map((t, c) => wrapText(t ?? '', widths[c] ?? 0))
+    // Ragged rows (header 2 cols, body 3 cols) must pad to the border's
+    // column count or the frame misaligns.
+    const padded = [...cells]
+    while (padded.length < cols) padded.push('')
+    const segs = padded.map((t, c) => wrapText(t ?? '', widths[c] ?? 0))
     const n = Math.max(1, ...segs.map((s) => s.length))
     const out: RenderedRow[] = []
     for (let i = 0; i < n; i++) {
