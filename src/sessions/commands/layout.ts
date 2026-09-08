@@ -3,7 +3,7 @@ import { t } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 /** /layout [default|panel] — window layout presets (bare cycles). */
-let layoutIdx = 0
+let layoutIdx = -1
 export const layoutCommand = (app: App, a: string | undefined) => {
   const order = ['default', 'panel']
   let name = (a ?? '').trim()

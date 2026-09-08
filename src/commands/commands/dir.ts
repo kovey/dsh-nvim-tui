@@ -4,13 +4,14 @@ import { t } from '../../kernel/i18n.js'
 import { isAbsolute, join } from 'node:path'
 import { openDirPicker } from '../core.js'
 import type { App } from '../../kernel/app.js'
+import { activeSessionCwd } from '../../kernel/app.js'
 
 
 /** /dir [路径] — navigable directory browser: Enter on a file opens it in a
  *  fresh nvim tab (directories descend inside the float). */
 export const dirCommand = async (app: App, a: string | undefined) => {
   const start = (a ?? '').trim()
-  const base = start === '' ? process.cwd() : (isAbsolute(start) ? start : join(process.cwd(), start))
+  const base = start === '' ? activeSessionCwd(app) : (isAbsolute(start) ? start : join(activeSessionCwd(app), start))
   const picked = await openDirPicker(app, base)
   if (picked === null) return
   const ok = await app.luaCall('return require("dsh_tui").open_file_tab(...)', [picked]).catch(() => false)

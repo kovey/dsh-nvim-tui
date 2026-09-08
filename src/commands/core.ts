@@ -14,6 +14,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { t } from '../kernel/i18n.js'
 import { matchIntent } from './nlcmd.js'
+import { activeSessionCwd } from '../kernel/app.js'
 import { readClipboardImage, splitImageDataUrls, parseImageDataUrl } from '../feed/images.js'
 import { queueSubagentPromptKey } from '../kernel/types.js'
 import type { ApprovalRequest, InboxLike, LlmService, MessageContent, SaveImageAttachment } from '../kernel/types.js'
@@ -277,7 +278,7 @@ export const atQuery = async (app: App, query: string, start = 0): Promise<void>
       const cands = await fr.list(agent, query, new AbortController().signal)
       items = (cands ?? []).map((c) => ({ path: c.path, mention: formatMention(c.path) }))
     } else {
-      items = await localFileCandidates(process.cwd(), query)
+      items = await localFileCandidates(activeSessionCwd(app), query)
     }
   } catch {}
   const sessionRef = app.svc('sessionReferenceResolver')

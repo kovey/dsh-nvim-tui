@@ -34,6 +34,16 @@ import type {
 } from './types.js'
 
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
+/** The active session's working directory (falls back to the process cwd
+ *  when no session is attached) — local-file commands must resolve against
+ *  THIS, not process.cwd(): /search can resume a session from another
+ *  project directory while the shell cwd stays put. */
+export const activeSessionCwd = (app: App): string => {
+  const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
+  const cwd = rec?.handle?.agent?.session?.header?.cwd
+  return typeof cwd === 'string' && cwd !== '' ? cwd : process.cwd()
+}
+
 export const BUILD_VERSION = '0.3.2'
 export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ')
 

@@ -6,11 +6,12 @@ import { unlinkSync } from 'node:fs'
 import { readdirSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import type { App } from '../../kernel/app.js'
+import { activeSessionCwd } from '../../kernel/app.js'
 
 
 /** /memory [delete <id>] — list / delete project memory files. */
 export const memoryCommand = (app: App, a: string | undefined) => {
-  const dir = join(process.cwd(), '.dsh', 'memory')
+  const dir = join(activeSessionCwd(app), '.dsh', 'memory')
   const a0 = a ?? ''
   try {
     if (a0.startsWith('delete ')) {

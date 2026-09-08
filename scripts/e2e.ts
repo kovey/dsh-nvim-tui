@@ -34,6 +34,10 @@ const child = spawn(dshBin, ['--profile', profile], {
   },
 })
 
+child.on('error', (e) => {
+  console.error('E2E FAIL: cannot spawn dsh (' + e.message + ') — is @deepseek-ai/dsh installed?')
+  process.exit(1)
+})
 let out = ''
 child.stdout.on('data', (d: Buffer) => { out += d.toString() })
 child.stderr.on('data', (d: Buffer) => { out += d.toString() })
@@ -59,6 +63,14 @@ if (finished === 'dump') {
   const bad = /⚠ |no API key|UNSUPPORTED_CONTENT|render flush failed|fatal:/i
   if (!/── turn ──/.test(tail)) {
     console.error('E2E FAIL: no turn rendered in dump')
+    console.error(tail.slice(0, 2000))
+    process.exit(1)
+  }
+  // The prompt's echo alone must not pass: require some assistant content
+  // AFTER the turn marker (a pure user echo means the model never answered).
+  const afterMarker = tail.slice(tail.indexOf('── turn ──') + '── turn ──'.length)
+  if (afterMarker.trim() === '') {
+    console.error('E2E FAIL: turn marker with no assistant content')
     console.error(tail.slice(0, 2000))
     process.exit(1)
   }

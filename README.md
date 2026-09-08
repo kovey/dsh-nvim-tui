@@ -93,7 +93,7 @@ dsh plugin --profile tui update --latest kovey/dsh-nvim-tui      # 官方 tui pr
 dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui # 自定义 profile
 
 # 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
-dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.14"
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.3.2"
 ```
 
 > **宿主 dsh 升级与 rc.1 适配**见 [UPGRADE.md](./UPGRADE.md)。

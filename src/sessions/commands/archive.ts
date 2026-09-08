@@ -17,6 +17,7 @@ export const archiveCommand = async (app: App, a: string | undefined): Promise<v
   }
   try {
     await ws.archiveSession(target)
+    app.slices.sessions.refreshList()
     app.notice(`已归档 ${target}（从各列表隐藏）`)
   } catch (err) {
     app.notice(`归档失败: ${(err as Error).message}`)

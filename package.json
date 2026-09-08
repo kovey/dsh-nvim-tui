@@ -12,6 +12,7 @@
   "files": [
     "lib",
     "nvim",
+    "!nvim/**/*.log",
     "docs",
     "examples",
     "cordis.patch.yml",

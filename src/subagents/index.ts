@@ -45,8 +45,9 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
     }
   }
   if (events.length === 0) {
-    app.notice(t('子代理会话无事件（可能尚未开始）'))
-    return
+    // A just-started child streams its first events moments after spawn —
+    // open the empty view anyway; the session/event routing fills it live.
+    app.notice(t('子代理会话暂无事件（空视图，事件到达后实时显示）'))
   }
   const ids = await app.luaCall('return require("dsh_tui").open_subagent_view(...)', [label])
   if (!ids || !Number.isInteger(ids.buf) || !Number.isInteger(ids.win)) {

@@ -1657,6 +1657,16 @@ description:
   // 9g2. file-change diff blocks: LCS hunks, add/del-only, caps, i18n labels
   const editDiff = diffTexts('a\nb\nc\nd', 'a\nB\nc\nd')
   assert.equal(editDiff.stats.added, 1, 'diff counts the added line')
+  // Tail-of-file edits (regression: the old DP indexing was off by one row
+  // AND column — last-row/last-column cells read out of bounds as NaN and
+  // tail deletions collapsed into whole-file replaces).
+  const tailEdit = diffTexts('a\nb\nc', 'a\nb')
+  assert.equal(tailEdit.stats.removed, 1, 'tail deletion counts 1 removed line')
+  assert.equal(tailEdit.stats.added, 0, 'tail deletion adds nothing')
+  assert.ok(tailEdit.lines.includes('- c'), 'tail deletion renders the removed line')
+  const swapEdit = diffTexts('x\ny', 'y\nx')
+  assert.equal(swapEdit.stats.removed + swapEdit.stats.added, 2, 'two-line swap counts 1+1')
+
   assert.equal(editDiff.stats.removed, 1, 'diff counts the removed line')
   assert.ok(editDiff.lines.includes('- b'), 'removed line rendered with −')
   assert.ok(editDiff.lines.includes('+ B'), 'added line rendered with +')
@@ -2294,6 +2304,14 @@ description:
   assert.deepEqual([...parsed.data], [...pngBytes], 'data url decoded to bytes')
   assert.equal(parseImageDataUrl('data:image/svg+xml;base64,AAAA'), null, 'unsupported media type rejected')
   assert.equal(parseImageDataUrl('not-a-data-url'), null, 'plain text rejected')
+  // Sticky-regex regression: the /g flag once leaked lastIndex across calls
+  // — a second parse of the SAME url returned null, and a short url parsed
+  // after a long one was dropped.
+  const url1 = `data:image/png;base64,${pngBytes.toString('base64')}`
+  assert.ok(parseImageDataUrl(url1) !== null, 'first parse ok')
+  assert.ok(parseImageDataUrl(url1) !== null, 'second parse of the same url still ok (no sticky lastIndex)')
+  assert.ok(parseImageDataUrl(`data:image/png;base64,${pngBytes.toString('base64')}`) !== null, 'short url after long url parses')
+
   const split = splitImageDataUrls(`你好 data:image/png;base64,${pngBytes.toString('base64')} 再见`)
   assert.equal(split.text, '你好 再见', 'data url stripped from prompt text')
   assert.equal(split.images.length, 1, 'one image extracted from paste')

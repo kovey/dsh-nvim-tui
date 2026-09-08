@@ -8,6 +8,7 @@ import { imageLabel } from '../../feed/images.js'
 import { openDirPicker } from '../core.js'
 import { formatMention } from '../core.js'
 import type { App } from '../../kernel/app.js'
+import { activeSessionCwd } from '../../kernel/app.js'
 
 
 /** /attach [path] — image → durable attachment; file/dir → @-mention.
@@ -15,10 +16,10 @@ import type { App } from '../../kernel/app.js'
 export const attachCommand = async (app: App, a: string | undefined) => {
   let path: string | null = (a ?? '').trim()
   if (path === '') {
-    path = await openDirPicker(app, process.cwd())
+    path = await openDirPicker(app, activeSessionCwd(app))
     if (path === null) return
   }
-  const abs = isAbsolute(path) ? path : join(process.cwd(), path)
+  const abs = isAbsolute(path) ? path : join(activeSessionCwd(app), path)
   // Detect on the BYTES: readImageFile reads the file and sniffs the
   // format (extension fallback); it throws for non-images, which is how
   // we tell "image attachment" from "@ path mention" below.

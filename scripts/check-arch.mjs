@@ -34,6 +34,10 @@ const LEGACY_SENTINELS = [
 const appSrc = readFileSync(join(root, 'src/kernel/app.ts'), 'utf8')
 const ifaceStart = appSrc.indexOf('/** The complete cross-module surface')
 const ifaceEnd = appSrc.indexOf('/** Build the App object.')
+if (ifaceStart === -1 || ifaceEnd === -1 || ifaceStart >= ifaceEnd) {
+  fail('arch-check: App interface markers missing (comment text changed?) — refusing to run on an empty slice')
+  process.exit(1)
+}
 const iface = appSrc.slice(ifaceStart, ifaceEnd)
 if (!iface.includes('slices: AppSlices')) fail('App interface lost the slices member')
 for (const s of LEGACY_SENTINELS) {

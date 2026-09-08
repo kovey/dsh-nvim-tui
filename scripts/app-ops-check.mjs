@@ -3,6 +3,8 @@
  * EVERY op declared on the slices must be a real function (Object.assign
  * injection is invisible to tsc — this catches missing implementations).
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createApp } from '../lib/kernel/app.js'
 import { installRuntime } from '../lib/boot/boot.js'
 import { installExtApi } from '../lib/ext-api/index.js'
@@ -27,13 +29,30 @@ installSubagents(app)
 installTranscript(app)
 installCommands(app)
 
-const OP_LISTS = {
-  'runtime': ['setChatWin', 'setReasoning', 'spinnerSet', 'spinnerStep'],
-  'ext': ['setPendingCardInput', 'fireExtReady'],
-  'agent': ['setApproval', 'settleApproval', 'setPickerSettle', 'settlePicker',
-    'setQuestions', 'settleQuestions', 'rejectQuestions', 'setDirSettle',
-    'resolveDirPicker', 'setPendingRename', 'setPendingQueueEdit',
-    'setSubagentView', 'setSubagentChat', 'clearPendings'],
+// OP_LISTS is DERIVED from the AppSlices declaration (lib/kernel/app.d.ts):
+// every non-readonly FUNCTION member of a slice is an owner op — a new op
+// added to the interface is automatically covered, and a missing Object.assign
+// injection is caught without a hand-maintained list.
+const OP_LISTS = {}
+{
+  const dts = readFileSync(join(root, 'lib/kernel/app.d.ts'), 'utf8')
+  const ifaceStart = dts.indexOf('interface AppSlices')
+  const ifaceEnd = dts.indexOf('/** Writable view', ifaceStart)
+  const iface = dts.slice(ifaceStart, ifaceEnd)
+  // split into domain blocks: "  runtime: {", "  sessions: {", ...
+  const domRe = /^  (\w+): \{/gm
+  let m
+  const doms = []
+  while ((m = domRe.exec(iface)) !== null) doms.push([m[1], m.index])
+  for (let d = 0; d < doms.length; d++) {
+    const [name, start] = doms[d]
+    const end = d + 1 < doms.length ? doms[d + 1][1] : iface.length
+    const block = iface.slice(start, end)
+    // op members: name(args): returnType  — skip readonly state fields
+    const ops = []
+    for (const om of block.matchAll(/^    (?!readonly )(\w+)\(/gm)) ops.push(om[1])
+    OP_LISTS[name] = ops
+  }
 }
 let failed = 0
 for (const [dom, ops] of Object.entries(OP_LISTS)) {
@@ -57,4 +76,5 @@ if (app.slices.runtime.spinnerIndex !== 2) { console.error('✗ spinnerStep modu
 app.slices.runtime.spinnerStep(3)
 if (app.slices.runtime.spinnerIndex !== 0) { console.error('✗ spinnerStep wraps'); failed++ }
 if (failed > 0) process.exit(1)
-console.log('✓ app-ops-check: 19 domain ops all injected, roundtrips sane')
+const totalOps = Object.values(OP_LISTS).reduce((a, l) => a + l.length, 0)
+console.log(`✓ app-ops-check: ${totalOps} domain ops all injected (derived from AppSlices), roundtrips sane`)

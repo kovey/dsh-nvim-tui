@@ -4,6 +4,7 @@ import { t } from '../../kernel/i18n.js'
 import { isAbsolute, join } from 'node:path'
 import { openDirPicker } from '../core.js'
 import type { App } from '../../kernel/app.js'
+import { activeSessionCwd } from '../../kernel/app.js'
 
 
 /** /lines [路径] — lightweight file viewer: read-only float with the file's
@@ -13,10 +14,10 @@ export const linesCommand = async (app: App, a: string | undefined) => {
   const arg = (a ?? '').trim()
   let path: string | null = arg
   if (path === '') {
-    path = await openDirPicker(app, process.cwd())
+    path = await openDirPicker(app, activeSessionCwd(app))
     if (path === null) return
   }
-  const abs = isAbsolute(path) ? path : join(process.cwd(), path)
+  const abs = isAbsolute(path) ? path : join(activeSessionCwd(app), path)
   const content = await app.slices.ui.readFileSnapshot(abs)
   if (content === null) {
     app.notice(`无法读取 ${abs}（不存在 / 目录 / 二进制 / 超过 256KB）`)
