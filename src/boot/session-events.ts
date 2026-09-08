@@ -157,7 +157,7 @@ export function makeSessionEventHandler(
       }
       // 识图临时切换恢复：图片回合（在切换之后启动的回合）结束 → 切回
       // 原模型。排在图片回合之后入队的普通回合不受影响（switchAt 判定）。
-      if (rec.visionTmp !== null && (rec.lastTurnStartAt ?? 0) > rec.visionTmp.switchAt) {
+      if (rec.visionTmp !== null && (rec.lastTurnStartAt ?? 0) >= rec.visionTmp.switchAt) {
         const prev = rec.visionTmp.prev
         rec.visionTmp = null
         rec.modelRef.current = prev

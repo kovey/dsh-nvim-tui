@@ -394,6 +394,10 @@ export interface AppSlices {
                 value: string;
             }>) => void;
         } | null) => void;
+        /** Clear the transient input-flow state (rename/queue-edit prompts,
+         *  pending images, subagent followup) — session switches use it so a
+         *  half-finished flow never leaks into the next session. */
+        clearPendings: () => void;
     };
 }
 /** Writable view of one slice — owners cast to it inside their own

@@ -33,7 +33,7 @@ const OP_LISTS = {
   'agent': ['setApproval', 'settleApproval', 'setPickerSettle', 'settlePicker',
     'setQuestions', 'settleQuestions', 'rejectQuestions', 'setDirSettle',
     'resolveDirPicker', 'setPendingRename', 'setPendingQueueEdit',
-    'setSubagentView', 'setSubagentChat'],
+    'setSubagentView', 'setSubagentChat', 'clearPendings'],
 }
 let failed = 0
 for (const [dom, ops] of Object.entries(OP_LISTS)) {

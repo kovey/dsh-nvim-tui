@@ -103,7 +103,7 @@ const STATE_FIELDS = {
   ui: ['pendingFileSnaps','renderedDiffCalls','pendingEchoes'],
   ext: ['extApi','extReadyResolve','extSessionSubs','extLuaSubs','extNodeCleanup','pendingCardInput','extNodeHandlers','extStatusSegments'],
   trans: ['workflowRuns'],
-  agent: ['pendingInput','pendingImages','pendingRename','pendingQueueEdit','approvalSettle','approvalReq','questionsResolve','pickerSettle','dirSettle','bellOn','subagentView','subagentChat','pendingSubagentFollowup'],
+  agent: ['pendingInput','pendingImages','pendingRename','pendingQueueEdit','approvalSettle','approvalReq','questionsResolve','pickerSettle','dirSettle','bellOn','subagentView','subagentChat','pendingSubagentFollowup','livePopup'],
 }
 for (const [file, owned] of Object.entries(STATE_OWNERS)) {
   const src = readFileSync(join(root, file), 'utf8')

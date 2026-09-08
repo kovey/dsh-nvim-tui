@@ -16,6 +16,7 @@ import { t } from '../kernel/i18n.js'
 import type { InboxLike, SessionEvent } from '../kernel/types.js'
 import type { App, SessionRec } from '../kernel/app.js'
 import { registerHostHandler } from '../kernel/host-events.js'
+import { hiddenGlance } from './commands/glance.js'
 import { installWhaleCommand } from './commands/whale.js'
 import { installDensityCommand } from './commands/density.js'
 import { installGlanceCommand } from './commands/glance.js'
@@ -186,19 +187,21 @@ const updateStatusline = (app: App) => {
   }
   const usage = rec?.usage
   const cacheRate = usage ? cacheHitRate(usage, rec?.cacheReported === true) : null
-  if (cacheRate !== null) right.push(escapeStatusline(`缓存 ${Math.round(cacheRate * 100)}%`))
+  if (!hiddenGlance.has('cache') && cacheRate !== null) right.push(escapeStatusline(`缓存 ${Math.round(cacheRate * 100)}%`))
   // Context = the LATEST step's billed input vs the context window
   // (the session total is a different number — shown as Σ).
   const last = rec?.lastUsage
   const lastBilled = last ? billedInput(last) : 0
-  if (rec?.contextWindow && lastBilled > 0) {
+  if (!hiddenGlance.has('context') && rec?.contextWindow && lastBilled > 0) {
     const ratio = Math.min(1, lastBilled / rec.contextWindow)
     right.push(escapeStatusline(`上下文 ${Math.round(ratio * 100)}%`))
-    right.push(escapeStatusline(`◧ ${formatTokens(lastBilled)}/${formatTokens(rec.contextWindow)}`))
-  } else if (lastBilled > 0) {
-    right.push(escapeStatusline(`◧ ${formatTokens(lastBilled)}`))
   }
-  if (usage) {
+  if (!hiddenGlance.has('tokens') && lastBilled > 0) {
+    right.push(escapeStatusline(rec?.contextWindow
+      ? `◧ ${formatTokens(lastBilled)}/${formatTokens(rec.contextWindow)}`
+      : `◧ ${formatTokens(lastBilled)}`))
+  }
+  if (!hiddenGlance.has('total') && usage) {
     const total = billedInput(usage) + usage.output
     if (total > 0) right.push(escapeStatusline(`Σ ${formatTokens(total)}`))
   }
@@ -251,8 +254,8 @@ const updateStatusline = (app: App) => {
     const g = rec.goal
     right.push(escapeStatusline(`🎯 ${g.phase === 'active' ? '' : g.phase + ' '}${g.maxGoalRounds > 0 ? `${Math.min(g.roundsStarted ?? 0, g.maxGoalRounds)}/${g.maxGoalRounds}` : (g.roundsStarted ?? 0)}`))
   }
-  if (rec?.createdAt) right.push(escapeStatusline(formatElapsed(Date.now() - rec.createdAt)))
-  if (rec?.model && usage) {
+  if (!hiddenGlance.has('elapsed') && rec?.createdAt) right.push(escapeStatusline(formatElapsed(Date.now() - rec.createdAt)))
+  if (!hiddenGlance.has('cost') && rec?.model && usage) {
     const cost = estimateCost(rec.model, usage)
     if (cost !== undefined) right.push(escapeStatusline(`$${cost.toFixed(2)}`))
   }

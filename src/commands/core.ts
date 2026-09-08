@@ -14,7 +14,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { t } from '../kernel/i18n.js'
 import { matchIntent } from './nlcmd.js'
-import { readClipboardImage, splitImageDataUrls } from '../feed/images.js'
+import { readClipboardImage, splitImageDataUrls, parseImageDataUrl } from '../feed/images.js'
 import { queueSubagentPromptKey } from '../kernel/types.js'
 import type { ApprovalRequest, InboxLike, LlmService, MessageContent, SaveImageAttachment } from '../kernel/types.js'
 import type { AppSlices, WritableSlice } from '../kernel/app.js'
@@ -37,6 +37,7 @@ import { skillsCommand } from './commands/skills.js'
  */
 export const followup = async (app: App, rec: SessionRec, text: string, images?: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }> | string>) => {
   if (app.slices.runtime.disposed || rec === undefined) return
+  if ((text ?? '').trim() === '' && (images === undefined || images.length === 0)) return
   // Surface the queueing so the message doesn't look lost. (Use /btw to
   // fork a side session instead.)
   if (rec.status === '● running') {
@@ -77,6 +78,11 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
       rec.visionTmp = { prev: sel, switchAt: Date.now() }
       app.notice(`📎 图片消息: 临时切换官方识图模型 ${sel.provider}/${visionModel}（回合结束自动切回 ${sel.provider}/${sel.model}）`)
       app.slices.ui.updateStatusline()
+    } else if (rec.visionTmp !== null) {
+      // Another image message queued while an image turn is still pending:
+      // extend the switch window so the restore happens after THIS turn too
+      // (otherwise the second image turn runs on the restored text model).
+      rec.visionTmp.switchAt = Date.now()
     }
     const max = attachments.imageLimits?.maxImagesPerMessage ?? 4
     if (images.length > max) {
@@ -85,9 +91,26 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
     }
     try {
       for (const img of images) {
-        content.push({ type: 'image', attachment: await attachments.saveImage(img as SaveImageAttachment) })
+        // Already-durable attachment refs (queued via /attach) pass through;
+        // raw images (clipboard / parsed data URLs) are saved here.
+        const existing = (img as { attachment?: unknown } | undefined)?.attachment
+        if (existing !== undefined) {
+          content.push({ type: 'image', attachment: existing })
+          continue
+        }
+        const saved = await attachments.saveImage(img as SaveImageAttachment)
+        content.push({ type: 'image', attachment: saved })
       }
     } catch (err) {
+      // Roll the temporary vision switch back so a failed attach never
+      // leaves the session parked on the vision model.
+      if (rec.visionTmp !== null) {
+        const prev = rec.visionTmp.prev
+        rec.modelRef.current = prev
+        rec.model = prev.model
+        rec.visionTmp = null
+        app.slices.ui.updateStatusline()
+      }
       app.notice(`图片附加失败: ${(err as Error).message}`)
       return
     }
@@ -154,9 +177,16 @@ export const send = (app: App, text: string) => {
     return
   }
   // Pasted data URLs become image attachments; the URL text is stripped.
+  // URLs are parsed into the SaveImageAttachment contract ({data,mediaType})
+  // BEFORE followup — the attachments service receives bytes, never strings.
   const { text: clean, images } = splitImageDataUrls(text)
+  const parsed: Array<SaveImageAttachment> = []
+  for (const url of images) {
+    const p = parseImageDataUrl(url)
+    if (p !== null) parsed.push(p)
+  }
   // Clipboard images queued via <C-v> ride along with the submitted text.
-  const all = [...images, ...app.slices.agent.pendingImages]
+  const all = [...parsed, ...app.slices.agent.pendingImages]
   W(app.slices.agent).pendingImages = []
   void followup(app, rec, clean, all)
 }
@@ -402,7 +432,7 @@ export const TUI_COMMAND_WHITELIST = new Set([
   '/goal', '/memory', '/status', '/context', '/cost', '/queue',
   '/deliverables', '/workflow', '/locale', '/whale', '/bell', '/skills',
   '/dir', '/lines', '/history', '/btw', '/model', '/effort', '/plan',
-  '/jobs', '/tasks', '/settings',
+  '/tasks', '/settings',
 ])
 
 /** Register the agent-side tui_command routing tool (whitelisted UI/safe

@@ -3,7 +3,7 @@ import { t } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 const GLANCE_SEGMENTS = ['cache', 'context', 'tokens', 'cost', 'elapsed', 'total']
-const hiddenGlance = new Set<string>()
+export const hiddenGlance = new Set<string>()
 
 export const glanceCommand = (app: App, a: string | undefined) => {
   if (!a) {

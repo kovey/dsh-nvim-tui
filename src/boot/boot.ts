@@ -124,7 +124,11 @@ export async function boot(app: App): Promise<void> {
     }
 
     // 2) wiring — three thin loops, all behavior lives in owner modules.
-    app.slices.runtime.nvim!.on('disconnect', () => void app.quit(0))
+    app.slices.runtime.nvim!.on('disconnect', () => {
+      // A teardown-initiated socket EOF must not re-trigger quit: the runner
+      // row can be reloaded (hmr) while dsh keeps running.
+      if (!app.slices.runtime.disposed) void app.quit(0)
+    })
     // dsh-ext bus: nvim plugins issue vim.rpcrequest(channel, 'dsh-ext', …)
     // and the runner answers from the extId dispatch table (luaExt.on).
     // Handler + bounded-response semantics live in ext-api.ts.

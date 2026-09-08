@@ -277,6 +277,10 @@ export interface AppSlices {
     setSubagentChat: (v: { childId: string; parentId: string; label: string; feed: FeedRenderer } | null) => void
     readonly livePopup: { kind: 'jobs' | 'todo'; update: (items: Array<{ label: string; value: string }>) => void } | null
     setLivePopup: (v: { kind: 'jobs' | 'todo'; update: (items: Array<{ label: string; value: string }>) => void } | null) => void
+    /** Clear the transient input-flow state (rename/queue-edit prompts,
+     *  pending images, subagent followup) — session switches use it so a
+     *  half-finished flow never leaks into the next session. */
+    clearPendings: () => void
   }
 }
 

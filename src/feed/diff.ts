@@ -136,7 +136,7 @@ export function diffTexts(before: string | null, after: string | null, opts: Dif
   const m = A.length
   const n = B.length
   const dp = new Int32Array((m + 1) * (n + 1))
-  const at = (i: number, j: number): number => (i + 1) * (n + 1) + (j + 1)
+  const at = (i: number, j: number): number => i * (n + 1) + j
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
       dp[at(i, j)] = A[i - 1] === B[j - 1]
@@ -149,7 +149,7 @@ export function diffTexts(before: string | null, after: string | null, opts: Dif
   let j = n
   while (i > 0 && j > 0) {
     if (A[i - 1] === B[j - 1]) { ops.push(0); i--; j-- }
-    else if (dp[at(i - 1, j)] >= dp[at(i, j - 1)]) { ops.push(1); i-- }
+    else if (dp[at(i - 1, j)] > dp[at(i, j - 1)]) { ops.push(1); i-- }
     else { ops.push(2); j-- }
   }
   while (i > 0) { ops.push(1); i-- }

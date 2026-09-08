@@ -147,6 +147,17 @@ export const resumeSession = async (app: App, id: string) => {
 /** Terminal title: active session title + model (OSC 2 via nvim). */
 
 export const switchTo = async (app: App, id: string) => {
+  // Transient input-flow state is session-scoped: switching mid-flow must
+  // not leak it into the new session (queued edits / rename prompts /
+  // pending images / card inputs / subagent followups).
+  const hadPending = app.slices.agent.pendingImages.length > 0 ||
+    app.slices.agent.pendingRename !== null ||
+    app.slices.agent.pendingQueueEdit !== null ||
+    app.slices.agent.pendingSubagentFollowup !== null ||
+    app.slices.ext.pendingCardInput !== null
+  if (hadPending) app.notice(t('已切换会话（未完成的输入操作已取消）'))
+  app.slices.agent.clearPendings()
+  app.slices.ext.setPendingCardInput(null)
   WSS(app.slices.sessions).activeId = id
   await app.lua.setActive(id)
   app.slices.ui.ensureSpinner()

@@ -1,8 +1,9 @@
 /** dsh_tui deps module SERVICES: the health-check machinery (shared by
  *  the /deps command and the install path). */
-import { appendFileSync, existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { App, AppSlices } from '../kernel/app.js'
@@ -130,10 +131,25 @@ function loaderEntryConfig<T = Record<string, unknown>>(app: App, id: string): T
 /** Does the package exist inside the dsh install (hoisted or nested pnpm)?
  *  The install root derives from the dsh bin path; tests override it via
  *  `DSH_NVIM_TUI_INSTALL_ROOT`. */
+/** Locate the dsh install root by walking UP from this bundle until an
+ *  ancestor owns node_modules/ — robust for npm-global
+ *  (…/lib/node_modules) and pnpm layouts alike (counting dirname layers
+ *  broke on npm-global: bin.js sits four levels deeper than the root). */
+const findInstallRoot = (): string | undefined => {
+  let dir = dirname(fileURLToPath(import.meta.url)) // lib/deps
+  for (let i = 0; i < 10; i++) {
+    if (existsSync(join(dir, 'node_modules'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) return undefined
+    dir = parent
+  }
+  return undefined
+}
+
 export function packageExists(pkg: string, file: string): boolean {
   try {
-    const installRoot = process.env.DSH_NVIM_TUI_INSTALL_ROOT ??
-      dirname(dirname(dirname(dirname(realpathSync(process.argv[1] ?? '')))))
+    const installRoot = process.env.DSH_NVIM_TUI_INSTALL_ROOT ?? findInstallRoot()
+    if (installRoot === undefined) return false
     const pkgName = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : pkg.split('/')[0]
     const rel = pkgName + '/' + file
     const candidates = [

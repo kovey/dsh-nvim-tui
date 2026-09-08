@@ -9,7 +9,10 @@
  * @module dsh-nvim-tui/kernel/ext-types
  */
 import type { SessionEvent } from './types.js';
-/** Nvim execution layer: the whitelisted raw editor surface. */
+/** Nvim execution layer: the FULL-TRUST raw editor surface. There is NO
+ *  method whitelist — any dsh plugin holding the service can run arbitrary
+ *  nvim code (vim.fn.system, vim.cmd…). Treat ctx.get('nvim-tui') as
+ *  equivalent to a shell on the user's machine; only load trusted plugins. */
 export interface ExtNvimLayer {
     /** nvim_* API request (msgpack-RPC). Optional timeout rejects instead of
      *  wedging the caller — nvim keeps executing, so calls must be

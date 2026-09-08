@@ -78,6 +78,12 @@ export function installCommands(app: App): void {
   A.setPendingRename = (v) => { A.pendingRename = v }
   A.setLivePopup = (v) => { A.livePopup = v }
   A.setPendingQueueEdit = (v) => { A.pendingQueueEdit = v }
+  A.clearPendings = () => {
+    A.pendingRename = null
+    A.pendingQueueEdit = null
+    A.pendingImages = []
+    A.pendingSubagentFollowup = null
+  }
 
   // -- agent domain defaults (I2; subagents owns its chat part) --
   Object.assign(app.slices.agent, {

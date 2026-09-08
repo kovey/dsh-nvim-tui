@@ -69,6 +69,8 @@ export function readImageFile(path: string, _knownMediaType?: string | null): Sa
   return { data: new Uint8Array(raw), mediaType, name: basename(resolved) }
 }
 
+// NOTE: no /g flag — used with .exec AND .replace; a sticky regex would
+// corrupt repeated parses (lastIndex leaks across calls).
 const DATA_URL_RE = /data:(image\/png|image\/jpeg|image\/webp|image\/gif);base64,([A-Za-z0-9+/=\s]+)/
 
 /**

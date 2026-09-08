@@ -3,7 +3,7 @@
 import { t } from '../../kernel/i18n.js'
 import { isAbsolute, join } from 'node:path'
 import { readImageFile } from '../../feed/images.js'
-import { sniffMediaType } from '../../feed/images.js'
+
 import { imageLabel } from '../../feed/images.js'
 import { openDirPicker } from '../core.js'
 import { formatMention } from '../core.js'
@@ -19,8 +19,14 @@ export const attachCommand = async (app: App, a: string | undefined) => {
     if (path === null) return
   }
   const abs = isAbsolute(path) ? path : join(process.cwd(), path)
-  const media = sniffMediaType(abs as unknown as Uint8Array)
-  if (media !== null) {
+  // Detect on the BYTES: readImageFile reads the file and sniffs the
+  // format (extension fallback); it throws for non-images, which is how
+  // we tell "image attachment" from "@ path mention" below.
+  let img: Awaited<ReturnType<typeof readImageFile>> | null = null
+  try {
+    img = await readImageFile(abs)
+  } catch { /* not a readable image → fall through to @-mention */ }
+  if (img !== null) {
     const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
     const attachments = app.svc('attachments')
     if (!rec || typeof attachments?.saveImage !== 'function') {
@@ -28,7 +34,6 @@ export const attachCommand = async (app: App, a: string | undefined) => {
       return
     }
     try {
-      const img = await readImageFile(abs, media)
       const ref = await attachments.saveImage(img)
       app.slices.agent.pendingImages.push({ type: 'image', attachment: ref })
       app.notice(`📎 图片已附加: ${imageLabel(ref)}（随下一条消息发送）`)
