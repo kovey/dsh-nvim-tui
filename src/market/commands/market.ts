@@ -94,7 +94,7 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
     const up = depKey !== undefined && updates.has(depKey) ? ' ↑' : ''
     const desc = (locale() === 'en' ? e.descEn : e.descZh) || e.descEn || ''
     return {
-      label: `★${e.stars}${mark}${up} · ${e.name} · ${desc.replace(/\s+/g, ' ').slice(0, 32)}`,
+      label: `★ ${e.stars}${mark}${up}  ·  ${e.name} · ${desc.replace(/\s+/g, ' ').slice(0, 32)}`,
       value: e.name,
     }
   })
