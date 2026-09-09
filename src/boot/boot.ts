@@ -19,9 +19,11 @@
  * @module dsh-nvim-tui/boot
  */
 import { spawnNvim, connectNvim } from '../kernel/bridge.js'
+import { join } from 'node:path'
 import { EXT_API_VERSION, announceReady, handleDshExtRequest } from '../ext-api/index.js'
 import { installLifecycle } from '../kernel/lifecycle.js'
 import { installHeadless } from '../kernel/headless.js'
+import { flushTtyInput, resetTerminalModes } from '../kernel/term.js'
 import { dispatchNvimNotification, registerNvimNotification } from '../kernel/rpc.js'
 import { wireHostEvents } from '../kernel/host-events.js'
 import { makeSessionEventHandler } from './session-events.js'
@@ -43,6 +45,7 @@ export function installRuntime(app: App): void {
   R.setReasoning = (open, win) => { R.reasoningOpen = open; R.reasoningWinId = win }
   R.spinnerSet = (timer) => { R.spinnerTimer = timer }
   R.spinnerStep = (mod) => { R.spinnerIndex = (R.spinnerIndex + 1) % mod }
+  R.setRestartPending = (v) => { R.restartPending = v }
   Object.assign(app.slices.runtime, {
     nvim: null,
     child: null,
@@ -58,6 +61,7 @@ export function installRuntime(app: App): void {
     spinnerIndex: 0,
     childExitDuringBoot: null,
     idleRefreshTimer: null,
+    restartPending: false,
     boot: async () => {},
   })
   registerNvimNotification('dsh-quit', '退出', (app) => app.quit(0))
@@ -84,6 +88,13 @@ export async function boot(app: App): Promise<void> {
   headlessCtl.startWatchdog()
 
   try {
+    // Terminal hygiene BEFORE the child claims the tty: a crashed/force-killed
+    // previous instance may have left kitty keyboard protocol / alt screen /
+    // mouse modes enabled AND its unconsumed query responses queued in the
+    // tty input — the next nvim reads those bytes as keystrokes (garbage in
+    // the input box, or a wedged startup). Flush the queue, then reset modes.
+    flushTtyInput()
+    resetTerminalModes()
     const spawned = await spawnNvim({
       extraArgs: app.headless ? ['--headless'] : [],
       isolateXdg: app.headless, // sandbox/CI: private XDG dirs for the child
@@ -117,12 +128,29 @@ export async function boot(app: App): Promise<void> {
     console.warn = silent
     console.error = silent
 
-    const nvim = await connectNvim(spawned.sockPath)
+    const nvim = await connectNvim(spawned.sockPath, {
+      child: spawned.child,
+      stderrLog: join(spawned.dir, 'nvim-stderr.log'),
+    })
     if (app.slices.runtime.disposed) return
     W(app.slices.runtime).nvim = nvim
     const channelId = await nvim.channelId
     if (app.slices.runtime.disposed) return
     W(app.slices.runtime).channelIdValue = channelId
+    // The --cmd preload (package.preload['dsh_tui'] = …) runs during nvim
+    // STARTUP, but the --listen socket accepts and answers RPC BEFORE
+    // startup finishes — a fast connect+attach races it and fails with
+    // "module 'dsh_tui' not found" (a bare nvim with no chat box; the
+    // /restart successor lost this race reliably because its handshake
+    // runs warm). Wait, bounded, until the preload is installed.
+    for (let i = 0; i < 50; i++) {
+      const ready = await app.luaCall(
+        'return package.preload["dsh_tui"] ~= nil or package.loaded["dsh_tui"] ~= nil', [])
+        .catch(() => false)
+      if (ready === true) break
+      if (app.slices.runtime.disposed) return
+      await app.sleep(100)
+    }
     await app.luaCall('require("dsh_tui").attach(...)', [channelId])
     if (app.slices.runtime.disposed) return
     // Extension handshake: agree on the API major version (a mismatch

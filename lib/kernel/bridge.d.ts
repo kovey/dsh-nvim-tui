@@ -34,6 +34,8 @@ export declare function spawnNvim({ extraArgs, onExit, loadUserConfig, isolateXd
  * We create the socket ourselves (with an error handler), hand it to
  * `attach({reader, writer})`, and await `nvim.channelId` for API readiness.
  */
-export declare function connectNvim(sockPath: string, { timeoutMs }?: {
+export declare function connectNvim(sockPath: string, { timeoutMs, child, stderrLog }?: {
     timeoutMs?: number;
+    child?: ReturnType<typeof spawn> | null;
+    stderrLog?: string | null;
 }): Promise<NeovimClient>;

@@ -178,6 +178,9 @@ export interface AppSlices {
         readonly spinnerTimer: ReturnType<typeof setInterval> | null;
         readonly spinnerIndex: number;
         readonly idleRefreshTimer: ReturnType<typeof setInterval> | null;
+        /** /restart requested: the successor spawns in quit() AFTER the old
+         *  nvim fully released the terminal and the session logs flushed. */
+        readonly restartPending: boolean;
         /** Child exit observed while boot is still connecting (startup config
          *  error): recorded so boot's catch exits non-zero instead of 0. */
         readonly childExitDuringBoot: {
@@ -190,6 +193,7 @@ export interface AppSlices {
         setReasoning: (open: boolean, win: number | null) => void;
         spinnerSet: (timer: ReturnType<typeof setInterval> | null) => void;
         spinnerStep: (mod: number) => void;
+        setRestartPending: (v: boolean) => void;
     };
     /** Sessions, history, active-session state + subagent registry. */
     sessions: {

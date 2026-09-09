@@ -82,6 +82,32 @@
   「API key 凭证」段：路由→凭证引用、配置状态、凭证文件路径与配置方式。
   e2e 三路径实测：key 存在不引导、key 缺失首次引导块+标记、二次启动仅
   单行提醒。
+- **/restart 终端抢占根修（2026-09-09）**：旧实现确认后立即 spawn 新 dsh 且
+  `detached: true`，共四个缺陷叠加：(1) 新旧两个 nvim 并发持有终端，旧实例
+  退出时的 alternate screen 恢复与 kitty keyboard protocol 关闭打在新实例的
+  tui 协商上；(2) detached 后继落入独立孤儿进程组，旧 dsh 一退出 shell 立即
+  判定前台作业结束、抢回终端（打印提示符、开始读键盘）——zsh 与后继 nvim
+  抢键盘输入，kitty 编码序列被原样回显成 `[108;1:3u` 乱码、提示符画进 TUI；
+  (3) nvim 的 `--listen` socket 在 `--cmd` 预载执行**之前**就应答 RPC——
+  握手快时 attach 撞上 `module 'dsh_tui' not found`，后继只剩裸 nvim（无
+  聊天框、只有 `~` 填充行）；(4) 旧 nvim 优雅退出失败走 SIGTERM/SIGKILL
+  时，closeNvimWindow 在 SIGKILL 实际生效前就返回，spawn 早于旧进程死亡。
+  修复四层：① `/restart` 只置 `runtime.restartPending`，`quit()` 在
+  `closeNvimWindow`（**完整等待**旧 nvim 死亡，含逐级 kill 后的 exit 事件）
+  + `teardown`（会话落盘）之后才拉起后继；② 后继经 `sleep 2` 延迟接管，
+  **setsid 开新会话**（免疫 shell 作业组信号），而**旧 dsh 进程不退场**——
+  作为 shell 前台作业的占位者存活到后继进程树退出为止（shell 持续等待、
+  不打印提示符、不抢终端；后继退出时旧进程随即退出，提示符正常回归）；
+  ③ boot 在 attach 前**有界轮询** `package.preload['dsh_tui']` 就位——nvim
+  的 `--listen` socket 在 `--cmd` 预载执行前就应答 RPC，握手快时 attach
+  撞上 `module 'dsh_tui' not found`（后继只剩裸 nvim，无聊天框、只有 `~`
+  填充行）；④ 新增 `kernel/term.ts`：启动/重启前 `flushTtyInput`（tcflush
+  清掉上一个死 nvim 遗留未消费的终端查询应答字节——它们会被下一个 nvim
+  当按键吞掉）+ `resetTerminalModes`（重置 alt screen、kitty keyboard
+  protocol、modifyOtherKeys、bracketed paste、focus/mouse 追踪等模式）；
+  另为 nvim 启动失败增加 stderr 捕获（临时目录 nvim-stderr.log）与快速
+  失败诊断。模拟终端（查询应答）与 script pty 全链路实测：首实例挂载 →
+  /restart → 旧 nvim 完全退出 → 后继存活、preload 就位、TUI 完整挂载。
 - **测试可信度**：smoke graceful-exit 不再静默放行（kill 路径硬失败）；
   面板宽度断言改为开面板前取样；`npm run smoke` 先构建；e2e 校验 harness 退出码。
 - **优雅退出根修（REVIEW §8 专项排查）**：winbar `OptionSet` 重断言在 nvim 退出
