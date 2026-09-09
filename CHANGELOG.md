@@ -41,8 +41,12 @@
   可选服务不再假成功；refreshHistory 存储失败可见。
 - **会话生命周期**：ensureLiveSession 并发去重；rename 后台恢复会话完成/取消后
   dispose；后台恢复不再触碰全局视图状态。
-- **测试可信度**：smoke graceful-exit 不再静默放行（SIGTERM kill 路径显式 ⚠ 警告，见 REVIEW §8 已知问题）；
+- **测试可信度**：smoke graceful-exit 不再静默放行（kill 路径硬失败）；
   面板宽度断言改为开面板前取样；`npm run smoke` 先构建；e2e 校验 harness 退出码。
+- **优雅退出根修（REVIEW §8 专项排查）**：winbar `OptionSet` 重断言在 nvim 退出
+  拆除阶段与选项重置形成永不收敛的循环（nvim 保持响应但永不退出，`:qa!`/`cquit`
+  均中招，输入窗口自愈重建后必现）；新增 `QuitPre` 统一置 `S.quitting`（覆盖
+  用户 `:qa!`/ZZ 路径）+ 重断言在退出时让位。
 - **文档**：README 识图桥章节重写为官方识图模型自动切换；REQUIREMENTS 入库并随包
   发布（修复发布包内链接失效）；180ms→450ms、app-ops-check 动态派生、目录结构
   等陈旧项批量同步。

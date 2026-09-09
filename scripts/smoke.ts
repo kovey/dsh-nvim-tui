@@ -2849,15 +2849,13 @@ description:
     new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
   ])
   if (exitInfo === null) {
-    // Known issue (REVIEW-2025-09 §8): in some environments nvim does not
-    // exit within 3s of :qa! (dsh_tui's window guards / floats may fight the
-    // quit teardown). Pre-review this kill path passed SILENTLY ("Caught
-    // deadly signal SIGTERM" + green SMOKE PASS) — now it is at least
-    // impossible to miss, but a hard failure would block the whole suite on
-    // an environment quirk unrelated to the regression this check guards.
+    // A hang here IS a regression: the winbar OptionSet re-assert used to
+    // fight nvim's quit-time option reset forever (nvim stayed responsive
+    // but never finished exiting) — QuitPre now sets S.quitting and the
+    // re-assert stands down. Pre-review this kill path passed SILENTLY.
     child.kill()
     await new Promise((r) => setTimeout(r, 200))
-    log('⚠ WARN: nvim did not exit gracefully after :qa! — killed with SIGTERM (see REVIEW-2025-09 §8)')
+    throw new Error('nvim did not exit gracefully after :qa! (killed with SIGTERM) — winbar/OptionSet quit regression?')
   } else {
     assert.equal(exitInfo.code, 0, 'graceful :qa! exits with code 0')
     assert.equal(exitInfo.signal, null, 'no signal on graceful exit')

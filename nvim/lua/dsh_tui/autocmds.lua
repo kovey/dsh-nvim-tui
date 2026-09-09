@@ -82,6 +82,15 @@ end
 
 --- The global autocmd layer (once per start()).
 function A.install()
+  -- ANY quit (user :qa!/ZZ/… or the runner's dsh-quit) must stand the
+  -- self-heal down: during exit nvim resets window options and our
+  -- re-asserters (winbar OptionSet → scheduled window write) would keep
+  -- the reset cycle from settling — the exit hangs forever (REVIEW §8).
+  -- S.quitting was previously only set by the runner's R.quit(); QuitPre
+  -- covers every user-initiated path too.
+  vim.api.nvim_create_autocmd('QuitPre', {
+    callback = function() S.quitting = true end,
+  })
   -- Window navigation preserves the mode: <C-w>↑/<C-w>↓ into the input no
   -- longer yanks it back to insert (an explicit user choice — the input
   -- CAN stay in normal mode). Every flow that NEEDS insert mode starts it
@@ -246,6 +255,13 @@ function A.install()
   vim.api.nvim_create_autocmd('OptionSet', {
     pattern = 'winbar',
     callback = function()
+      -- During quit, nvim resets window-local options; re-asserting winbar
+      -- here schedules a write into the tearing-down window — the reset /
+      -- re-assert cycle never settles and the EXIT HANGS (nvim stays RPC
+      -- responsive but never finishes quitting; smoke's graceful-exit
+      -- check caught it as a permanent SIGTERM kill). Stand down on any
+      -- quit (QuitPre below sets S.quitting for user-initiated quits too).
+      if S.quitting then return end
       if S.inputWinbar ~= nil then
         vim.schedule(function()
           pcall(function() vim.wo[S.input_win].winbar = S.inputWinbar end)
