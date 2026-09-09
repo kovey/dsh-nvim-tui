@@ -1,6 +1,7 @@
 /** dsh_tui command: /settings — one command per file (self-registering,
  *  wired by the commands module index). */
 import { t } from '../../kernel/i18n.js'
+import { apiKeyConfigured, keyRefForProvider, credentialsPath } from '../../kernel/apikey.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -66,7 +67,20 @@ export const settingsCommand = async (app: App, a: string | undefined) => {
       ns?: unknown; value?: unknown; user?: unknown; revision?: number; applies?: unknown
     }>
     const docPath = await settings.prepareDocument?.().catch(() => undefined)
-    const lines = ['settings 文档: ' + (settings.documentPath ?? docPath ?? '（非文件）') + ' · 可写: ' + (settings.writable ? '是' : '否'), '']
+    // API-key credential section: presence check mirrors the llm adapters
+    // (credentials seam → ambient env), never prints the value.
+    const keyProvider = app.slices.agent.currentSelection().provider
+    const keyRef = keyRefForProvider(keyProvider)
+    const keyOk = await apiKeyConfigured(app, keyProvider)
+    const lines = [
+      '🔑 API key 凭证',
+      `${t('provider 路由')}: ${keyProvider} → ${t('凭证引用')} ${keyRef}`,
+      `${t('状态')}: ${keyOk ? '✓' : '⚠'} ${keyOk ? t('已配置') : t('未配置')}`,
+      `${t('凭证文件')}: ${credentialsPath()}（refs: ${keyRef}: <key>）`,
+      `${t('环境变量')}: export ${keyRef}=<key> · ${t('官方 Models 页面（web）也可写入凭证库')}`,
+      '',
+      'settings 文档: ' + (settings.documentPath ?? docPath ?? '（非文件）') + ' · 可写: ' + (settings.writable ? '是' : '否'), '',
+    ]
     let total = 0
     for (const d of desc) {
       lines.push(`▸ ${String(d.ns ?? '(unnamed)')}${d.applies !== undefined ? ` · ${String(d.applies)}` : ''}${d.revision !== undefined ? ` · rev ${d.revision}` : ''}`)

@@ -28,6 +28,7 @@ import { makeSessionEventHandler } from './session-events.js'
 import { resumeOrCreate } from '../sessions/index.js'
 import { drainPendingInput } from '../commands/index.js'
 import { restoreGlance } from '../statusline/commands/glance.js'
+import { maybeOnboard } from './onboarding.js'
 import type { AppSlices, WritableSlice } from '../kernel/app.js'
 import type { App } from '../kernel/app.js'
 const W = (d: AppSlices['runtime']) => d as WritableSlice<AppSlices['runtime']>
@@ -189,6 +190,8 @@ export async function boot(app: App): Promise<void> {
     // 3) boot sequence.
     await resumeOrCreate(app)
     if (app.slices.runtime.disposed) return
+    // First-launch onboarding: missing API key → one-shot guide block.
+    await maybeOnboard(app)
     drainPendingInput(app)
     app.exitDiag('boot-complete', `active=${app.slices.sessions.activeId}`)
     announceReady(app)

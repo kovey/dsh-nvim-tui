@@ -75,6 +75,9 @@ export interface ServiceMap {
   sessionPersistence: SessionPersistenceService
   agentPresets: AgentPresetsService
   workspaceRegistry: WorkspacesService
+  /** Credential-reference seam: resolve(envRefName) → { value } | undefined
+   *  (provider-owned key storage; the official Models page writes it). */
+  credentials: { resolve?: (ref: string) => Promise<{ value?: unknown } | undefined> }
 }
 
 /** One slash command: metadata for /help + the completion catalog, plus the

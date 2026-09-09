@@ -72,6 +72,16 @@
   显式应用）；子代理输入与全屏编辑器 insert 模式 `<C-o>` Nop（防内置
   i_CTRL-O 吞下一键）。smoke 6g 升级为真实按键断言（jumplist 键不换
   buffer、面板不打开、内容完好、焦点不丢）。
+- **首次启动 API key 引导（2026-09-09）**：boot 增加 `maybeOnboard`——
+  按当前 provider 的凭证引用（deepseek→DEEPSEEK_API_KEY 等）镜像宿主 llm
+  适配器的判定（credentials seam resolve → 环境变量）检查 key；未配置时
+  首次启动在聊天区渲染一次性引导块（环境变量 export / 凭证文件
+  ~/.dsh/.credentials.yaml 的 refs 段 / 官方 Models 页面三种方式），标记
+  落盘 `~/.dsh/nvim-tui-onboarded.json`（`DSH_NVIM_TUI_ONBOARD_FILE` 可
+  覆盖，供测试）；后续启动仅单行提醒不重复引导。/settings 概览新增
+  「API key 凭证」段：路由→凭证引用、配置状态、凭证文件路径与配置方式。
+  e2e 三路径实测：key 存在不引导、key 缺失首次引导块+标记、二次启动仅
+  单行提醒。
 - **测试可信度**：smoke graceful-exit 不再静默放行（kill 路径硬失败）；
   面板宽度断言改为开面板前取样；`npm run smoke` 先构建；e2e 校验 harness 退出码。
 - **优雅退出根修（REVIEW §8 专项排查）**：winbar `OptionSet` 重断言在 nvim 退出
