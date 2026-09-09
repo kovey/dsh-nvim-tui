@@ -3,7 +3,15 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [未发布（全面审查修复批）](https://github.com/kovey/dsh-nvim-tui/compare/v0.3.3...main)
+## [v0.3.4（2026-09-09）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.4)
+
+覆盖提交：
+[`1f36ecd`](https://github.com/kovey/dsh-nvim-tui/commit/1f36ecd) ·
+[`c3ff1b2`](https://github.com/kovey/dsh-nvim-tui/commit/c3ff1b2) ·
+[`c1cdd58`](https://github.com/kovey/dsh-nvim-tui/commit/c1cdd58) ·
+[`284c9fe`](https://github.com/kovey/dsh-nvim-tui/commit/284c9fe) ·
+[`d065e7f`](https://github.com/kovey/dsh-nvim-tui/commit/d065e7f) ·
+[`6e629ab`](https://github.com/kovey/dsh-nvim-tui/commit/6e629ab)
 
 覆盖：docs/REVIEW-2025-09.md 全面代码审查报告的 TOP15 修复清单（7 🔴 / 33 🟠 精选）。
 
