@@ -10,7 +10,9 @@ export interface DepReport {
     fixId?: string;
 }
 export declare const dshHome: () => string;
-/** The profile patch path: profile whose bundles include dsh-nvim-tui. */
+/** The profile patch path: profile whose bundles include dsh-nvim-tui.
+ *  The RUNNING profile wins when detectable — writing another profile's
+ *  patch would never hot-reload into this process. */
 export declare function findProfilePatchPath(): string | null;
 /** Structural row ids already present in the patch file (comments ignored). */
 export declare function readPatchRowIds(path: string): Set<string>;

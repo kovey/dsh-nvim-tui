@@ -39,7 +39,7 @@ export const depsCommand = async (app: App, s: AppSlices['agent'], a: string | u
   const warned = reports.filter((r) => r.status === 'warn').length
   lines.push(`小结: ✓ ${reports.length - missing - warned} · ✗ ${missing} · ⚠ ${warned}`)
   if (fixable > 0) {
-    lines.push(`可一键装配 ${fixable} 项: /deps install（写入 profile patch，loader 热重载）`)
+    lines.push(`可一键装配 ${fixable} 项: /deps install（写入 patch · 等待热重载 · 必要时自动重启）`)
   }
   await app.luaCall('require("dsh_tui").show_lines_float(...)', ['依赖体检', lines]).catch(() => {})
 }

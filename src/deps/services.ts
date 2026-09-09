@@ -81,9 +81,23 @@ export interface DepReport {
 
 export const dshHome = () => process.env.DSH_HOME ?? join(homedir(), '.dsh')
 
-/** The profile patch path: profile whose bundles include dsh-nvim-tui. */
+/** Resolve the running profile name from the dsh process argv. */
+function runningProfileName(): string | undefined {
+  const argv = process.argv
+  const idx = argv.indexOf('--profile')
+  if (idx >= 0 && argv[idx + 1] !== undefined && !argv[idx + 1].startsWith('-')) return argv[idx + 1]
+  const eq = argv.find((a) => a.startsWith('--profile='))
+  if (eq !== undefined) return eq.slice('--profile='.length)
+  return undefined
+}
+
+/** The profile patch path: profile whose bundles include dsh-nvim-tui.
+ *  The RUNNING profile wins when detectable — writing another profile's
+ *  patch would never hot-reload into this process. */
 export function findProfilePatchPath(): string | null {
   const profilesDir = join(dshHome(), 'profiles')
+  const prefer = runningProfileName()
+  let fallback: string | null = null
   try {
     for (const name of readdirSync(profilesDir)) {
       const pkgPath = join(profilesDir, name, 'package.json')
@@ -93,12 +107,14 @@ export function findProfilePatchPath(): string | null {
           dsh?: { profile?: { bundles?: string[] } }
         }
         if ((pkg.dsh?.profile?.bundles ?? []).includes('dsh-nvim-tui')) {
-          return join(profilesDir, name, 'cordis.patch.yml')
+          const patch = join(profilesDir, name, 'cordis.patch.yml')
+          if (prefer !== undefined && name === prefer) return patch
+          if (fallback === null) fallback = patch
         }
       } catch {}
     }
   } catch {}
-  return null
+  return fallback
 }
 
 /** Structural row ids already present in the patch file (comments ignored). */
@@ -167,6 +183,42 @@ export function packageExists(pkg: string, file: string): boolean {
 // ---------------------------------------------------------------------------
 
 const svcOk = (app: App, key: string): boolean => app.runtimeCtx.get(key) !== undefined
+
+/** Service keys the host-plugin checks watch (readiness poll after assembly). */
+const HOST_SVC_KEYS: Record<string, string> = {
+  'agent-presets': 'agentPresets',
+  'cordis-host-runner': 'dynamicCordisRunner',
+  'file-reference': 'fileReferences',
+  workspace: 'workspaceRegistry',
+  'plugin-inventory': 'pluginInventory',
+  'message-feedback': 'messageFeedback',
+  'session-reference': 'sessionReferenceResolver',
+  'session-stats': 'sessionStats',
+  'code-runtime': 'codeRuntime',
+  'subagent-model-selection-settings': 'subagentModelSelection',
+}
+
+/** Is a just-assembled fix live yet (HMR re-composed the loader rows)? */
+function fixLive(app: App, fixId: string): boolean {
+  if (fixId === 'search-override') {
+    const cfg = loaderEntryConfig<{ openAt?: string }>(app, 'session-query-sqlite')
+    return cfg?.openAt !== undefined && cfg.openAt !== 'never'
+  }
+  const key = HOST_SVC_KEYS[fixId]
+  return key === undefined || svcOk(app, key)
+}
+
+/** Poll the just-written rows until live (HMR) or the deadline passes.
+ *  Returns the ids that are still not live. */
+async function waitFixLive(app: App, fixIds: string[], timeoutMs: number): Promise<string[]> {
+  let pending = fixIds.filter((id) => !fixLive(app, id))
+  const deadline = Date.now() + timeoutMs
+  while (pending.length > 0 && Date.now() < deadline) {
+    await app.sleep(700)
+    pending = pending.filter((id) => !fixLive(app, id))
+  }
+  return pending
+}
 
 export async function checkAll(app: App, s: AppSlices['agent'], patchPath: string | null): Promise<DepReport[]> {
   const patchIds = patchPath === null ? new Set<string>() : readPatchRowIds(patchPath)
@@ -278,6 +330,7 @@ export const installCommand = async (app: App, s: AppSlices['agent']): Promise<v
   const ids = readPatchRowIds(patchPath)
   const appended: string[] = []
   const skipped: string[] = []
+  const assembledIds: string[] = []
   const insertBlocks: string[] = []
   const topBlocks: string[] = []
   for (const r of targets) {
@@ -291,6 +344,7 @@ export const installCommand = async (app: App, s: AppSlices['agent']): Promise<v
       continue
     }
     appended.push(r.label)
+    assembledIds.push(fixId)
     ids.add(rowId)
     if (fixId === 'search-override') topBlocks.push(tpl.yaml)
     else insertBlocks.push(tpl.yaml)
@@ -308,8 +362,17 @@ export const installCommand = async (app: App, s: AppSlices['agent']): Promise<v
       block += '\n# [nvim-tui /deps] 自动装配（覆盖型）\n' + topBlocks.join('\n') + '\n'
     }
     appendFileSync(patchPath, block)
-    app.notice(`已装配 ${appended.length} 项（写入 ${patchPath.replace(dshHome(), '~')}，loader 热重载中；若服务未立即就绪请重启 dsh）`)
+    app.notice(`已装配 ${appended.length} 项（写入 ${patchPath.replace(dshHome(), '~')}，loader 热重载中…）`)
     if (skipped.length > 0) app.notice(`跳过已存在的行: ${skipped.join('、')}`)
+    // 一步到位：等 HMR 把新行组合进来；等不到就自动重启（重启后服务必然就绪）。
+    const pending = await waitFixLive(app, assembledIds, 6000)
+    if (pending.length === 0) {
+      app.notice(`✓ 装配完成 · ${appended.length} 项服务已全部就绪（免重启）`)
+    } else {
+      app.notice(`装配已写入，但 ${pending.length} 项服务需重启生效 — 正在自动重启 dsh…`)
+      app.slices.runtime.setRestartPending(true)
+      setTimeout(() => void app.quit(0), 300)
+    }
   } catch (err) {
     app.notice(`装配失败: ${(err as Error).message}`)
   }
