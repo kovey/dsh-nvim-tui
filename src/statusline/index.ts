@@ -42,16 +42,23 @@ const foldEvent = (app: App, rec: SessionRec, event: SessionEvent) => {
   } else if (event.type === 'approval/policy') {
     rec.policy = event.data?.policy ?? rec.policy
   } else if (event.type === 'todo/write') {
-    const todos = event.data?.todos ?? []
-    const count = (st: string) => todos.filter((t) => t.status === st).length
+    // Flushed view (same as the feed's pinned panel): completed items that
+    // already landed in a committed board stay out of the counts — the host
+    // re-sends the whole standing list, so this is the only bounded view.
+    // Defensive: foldEvent may run on a rec whose feed is not attached yet.
+    const all = event.data?.todos ?? []
+    const visible = rec.feed?.todoVisibleItems !== undefined
+      ? rec.feed.todoVisibleItems(all)
+      : all
+    const count = (st: string) => visible.filter((t) => t.status === st).length
     rec.todos = { completed: count('completed'), inProgress: count('in_progress'), pending: count('pending') }
-    rec.todosItems = todos
+    rec.todosItems = visible
     if (rec.id === app.slices.sessions.activeId) app.slices.ui.updateStatusline()
     // LIVE todo popup: re-render the open /todo float in place.
     const pop = app.slices.agent.livePopup
     if (pop != null && pop.kind === 'todo') {
       const marks: Record<string, string> = { pending: '○', in_progress: '◐', completed: '✓' }
-      pop.update(todos.map((it) => ({ label: `  ${marks[it.status] ?? '·'} ${it.content}`, value: it.content })))
+      pop.update(visible.map((it) => ({ label: `  ${marks[it.status] ?? '·'} ${it.content}`, value: it.content })))
     }
   }
 }

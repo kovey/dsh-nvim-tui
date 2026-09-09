@@ -180,15 +180,18 @@ export class FeedRenderer {
   /** cardId → rendered extmark range (markId + buffer rows). */
   cardRanges: Map<string, { markId: number; startRow: number; endRow: number }>
   cardNs: number | null
-  /** Pinned todo panel (todo/write): while ANY item is incomplete the
-   *  standing list renders at the BOTTOM of the view (above the thinking
-   *  row, never displaced by streaming content); once every item is ✓ the
-   *  block COMMITS into base (ordinary chat content). Incomplete state at
-   *  turn/end commits as the turn's final state. */
+  /** Pinned todo panel (todo/write): while ANY visible item is incomplete
+   *  the standing list renders at the BOTTOM of the view (above the
+   *  thinking row, never displaced by streaming content); once every item
+   *  is ✓ the block COMMITS into base (ordinary chat content) and stays
+   *  pinned across turns like the jobs board. */
   todoLiveRows: string[]
-  /** Last COMMITTED all-✓ todo key (per turn): repeated identical
-   *  todo_write re-emissions must not stack duplicate committed blocks. */
-  lastTodoKey: string
+  /** Todo items already FLUSHED into a committed all-✓ board (by content).
+   *  The host's todo_write re-sends the COMPLETE standing list every time —
+   *  without this set every later board/commit re-lists the old completed
+   *  items and the lists grow without bound. Re-opened items (any
+   *  non-completed status) leave the set and come back. */
+  committedTodos: Set<string>
   /** Pinned jobs board (setJobsBoard): same bottom-pinned slot — updates
    *  replace live; commitJobsBoard lands the FINAL state (all jobs
    *  terminal) into base. */
@@ -258,7 +261,7 @@ export class FeedRenderer {
     this.cardHandlers = new Map()
     this.cardRanges = new Map()
     this.todoLiveRows = []
-    this.lastTodoKey = ''
+    this.committedTodos = new Set()
     this.jobsLiveRows = []
     this.jobsLiveKey = ''
     this.cardNs = null
@@ -286,7 +289,7 @@ export class FeedRenderer {
     this.extCards.clear()
     this.cardHandlers.clear()
     this.todoLiveRows = []
-    this.lastTodoKey = ''
+    this.committedTodos = new Set()
     this.jobsLiveRows = []
     this.jobsLiveKey = ''
     if (this.ticker !== null) clearTimeout(this.ticker)
@@ -360,6 +363,15 @@ export class FeedRenderer {
   pushWorkflow(line: string): void {
     this.base.push('', line)
     this.schedule()
+  }
+
+  /** Visible standing-todo items for one todo/write payload: completed
+   *  items that were already FLUSHED into a committed board are hidden —
+   *  the host re-sends the whole standing list on every write, and without
+   *  the flush every later board/commit would re-list them (unbounded
+   *  growth). Non-completed items always show. */
+  todoVisibleItems(todos: Array<{ content: string; status: string }>): Array<{ content: string; status: string }> {
+    return todos.filter((td) => td.status !== 'completed' || !this.committedTodos.has(td.content))
   }
 
   /** Pinned jobs board (the /tasks counterpart in the chat): while ANY
@@ -808,35 +820,39 @@ export class FeedRenderer {
         this.schedule()
         break
       case 'todo/write': {
-        // Standing todo list (todo_write): while ANY item is incomplete the
-        // block is PINNED at the bottom of the view (the thinking row stays
-        // the bottom-most line below it) — across turns, like the jobs
-        // board; once every item is ✓ the block COMMITS into base as
-        // ordinary chat content (one-shot per identical list). Empty todos
-        // clear the pinned slot without committing.
+        // Standing todo list (todo_write): while ANY visible item is
+        // incomplete the block is PINNED at the bottom of the view (the
+        // thinking row stays the bottom-most line below it) — across turns,
+        // like the jobs board; once every visible item is ✓ the block
+        // COMMITS into base as ordinary chat content. Empty todos clear the
+        // pinned slot without committing.
         const todos = event.data?.todos ?? []
+        // Re-opened items leave the flushed set: a re-planned task shows
+        // again and its completion commits again.
+        for (const td of todos) {
+          if (td.status !== 'completed') this.committedTodos.delete(td.content)
+        }
+        const visible = this.todoVisibleItems(todos)
         const rows: string[] = []
-        if (todos.length > 0) {
-          const count = (st: string) => todos.filter((td) => td.status === st).length
+        if (visible.length > 0) {
+          const count = (st: string) => visible.filter((td) => td.status === st).length
           const done = count('completed')
           const doing = count('in_progress')
           const pending = count('pending')
-          rows.push('', `${t('📋 待办')} ${todos.length} ${t('项')} · ${done} ${t('完成')} · ${doing} ${t('进行中')} · ${pending} ${t('待办')}`)
-          for (const td of todos) {
+          rows.push('', `${t('📋 待办')} ${visible.length} ${t('项')} · ${done} ${t('完成')} · ${doing} ${t('进行中')} · ${pending} ${t('待办')}`)
+          for (const td of visible) {
             const mark = td.status === 'completed' ? '✓' : td.status === 'in_progress' ? '…' : '·'
             rows.push(`  ${mark} ${td.content}`)
           }
         }
-        const allDone = todos.length > 0 && todos.every((td) => td.status === 'completed')
+        const allDone = visible.length > 0 && visible.every((td) => td.status === 'completed')
         if (allDone) {
-          // One-shot per identical list: repeated re-emissions (models
-          // repeat the whole list) skip the duplicate commit — the key
-          // spans turns so a stale re-emission cannot re-commit later.
-          const key = rows.join('\n')
-          if (key !== this.lastTodoKey) {
-            this.base.push(...rows)
-            this.lastTodoKey = key
-          }
+          // The board lands in the transcript, then the list is FLUSHED:
+          // later whole-list re-sends skip these completed items (an
+          // identical re-emission yields an empty visible list → the
+          // pinned slot clears without a duplicate commit).
+          this.base.push(...rows)
+          for (const td of visible) this.committedTodos.add(td.content)
           this.todoLiveRows = []
         } else {
           this.todoLiveRows = rows

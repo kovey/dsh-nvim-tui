@@ -9,6 +9,7 @@
 local S = require('dsh_tui.state')
 local I = require('dsh_tui.input')
 local B = require('dsh_tui.buffer')
+local PC = require('dsh_tui.popup_core')
 local FI = {}
 
 local function is_open()
@@ -84,6 +85,13 @@ function FI.open()
   S.fullInput = { win = win, buf = buf }
   vim.api.nvim_buf_set_keymap(buf, 'n', '<CR>', '<Cmd>lua require("dsh_tui").full_input_submit()<CR>', { noremap = true })
   vim.api.nvim_buf_set_keymap(buf, 'n', 'q', '<Cmd>lua require("dsh_tui").full_input_close()<CR>', { noremap = true })
+  -- <C-o> is inert in the fullscreen editor: unmapped it would enter the
+  -- builtin i_CTRL-O pending state and swallow the NEXT key as a normal
+  -- command (<C-o>q = discard the draft, <C-o>i = insert text). Nop it.
+  vim.api.nvim_buf_set_keymap(buf, 'i', '<C-o>', '<Nop>', { noremap = true })
+  -- Normal mode too: the float inherits the jumplist — <C-o>/<C-i>/<C-^>
+  -- must not swap the editor into another buffer (draft stays visible).
+  PC.lock_jump_keys(buf)
   vim.cmd('startinsert')
 end
 

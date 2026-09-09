@@ -113,6 +113,7 @@ function AM.set(items, start)
       vim.bo[buf].bufhidden = 'wipe'
       vim.bo[buf].swapfile = false
       vim.b[buf].ministatusline_disable = true
+      require('dsh_tui.popup_core').lock_jump_keys(buf) -- floats inherit the jumplist: no buffer swaps
       S.atBuf = buf
       S.atWin = vim.api.nvim_open_win(buf, false,
         CM.win_config(math.min(MAX_H, #S.atItems), 30,

@@ -618,6 +618,71 @@ description:
   reasonLines = await nvim.request('nvim_buf_get_lines', [reasonB.reasoningBuf, 0, -1, false])
   assert.ok(reasonLines.some((l: string) => l.startsWith('── thinking end')), 'panel footer on close')
 
+  // 6g. reasoning panel toggle guard + popup jumplist Nop: <C-o> works from
+  // the TUI's own windows (chat/input), but inside any float a REAL keypress
+  // must neither open the panel nor swap the popup into another buffer (the
+  // float inherits the jumplist — a bare <C-o> used to jump the popup to the
+  // input buffer: content gone, popup keys dead, second <C-o> opens the
+  // panel via the input buffer's mapping).
+  await lua('vim.api.nvim_set_current_win(require("dsh_tui").ids().chatWin)', [])
+  await lua('require("dsh_tui").toggle_reasoning()', [])
+  assert.equal(await lua('return require("dsh_tui")._reasoningOpen', []), true, 'toggle from the chat window opens the panel')
+  await lua('require("dsh_tui").toggle_reasoning()', [])
+  assert.equal(await lua('return require("dsh_tui")._reasoningOpen', []), false, 'toggle from the chat window closes the panel')
+  // Inside a picker float (focused): inert, focus stays, float survives.
+  await lua('require("dsh_tui").show_picker(...)', ['浮窗守卫', [{ label: '选项A', value: 'a' }]])
+  await new Promise((r) => setTimeout(r, 100))
+  const pickerWin = await lua('return require("dsh_tui")._float.win', [])
+  assert.ok(Number.isInteger(pickerWin), 'picker float open with focus')
+  await lua('vim.api.nvim_set_current_win(require("dsh_tui")._float.win)', [])
+  await lua('require("dsh_tui").toggle_reasoning()', [])
+  assert.equal(await lua('return require("dsh_tui")._reasoningOpen', []), false, 'toggle is a NO-OP inside a picker float')
+  assert.equal(await lua('return vim.api.nvim_win_is_valid(require("dsh_tui")._float.win)', []), true, 'picker stays open (no focus steal)')
+  assert.equal(await lua('return vim.api.nvim_get_current_win()', []), pickerWin, 'focus stays in the picker float')
+  // REAL keypress: <C-o>/<C-i>/<C-^> must not swap the popup's buffer.
+  const guardPickerBuf = await lua('return vim.api.nvim_win_get_buf(require("dsh_tui")._float.win)', [])
+  await nvim.request('nvim_input', ['<C-o>'])
+  await nvim.request('nvim_input', ['<C-i>'])
+  await nvim.request('nvim_input', ['<C-^>'])
+  await new Promise((r) => setTimeout(r, 150))
+  assert.equal(await lua('return vim.api.nvim_win_get_buf(require("dsh_tui")._float.win)', []), guardPickerBuf, 'jumplist keys cannot swap the popup buffer')
+  assert.equal(await lua('return require("dsh_tui")._reasoningOpen', []), false, 'real <C-o> keypress does not open the panel in a popup')
+  assert.equal(await lua('return vim.api.nvim_get_current_win()', []), pickerWin, 'focus still in the popup after the keypresses')
+  const guardPickerLines = await nvim.request('nvim_buf_get_lines', [guardPickerBuf, 0, -1, false])
+  assert.ok(guardPickerLines.some((l: string) => l.includes('选项A')), 'popup content intact after jumplist keys')
+  await lua('require("dsh_tui").picker_cancel()', [])
+  await new Promise((r) => setTimeout(r, 100))
+
+  // The user-reported case: the /sessions list float with REAL keypresses.
+  await lua('require("dsh_tui").show_session_list(...)', [[
+    { id: 'session-aaaa', title: '会话甲', active: true, kind: 'live' },
+    { id: 'session-bbbb', title: '会话乙', active: false, kind: 'live' },
+  ]])
+  await new Promise((r) => setTimeout(r, 150))
+  const sessBuf6 = await lua('return require("dsh_tui")._sessBuf', [])
+  await nvim.request('nvim_input', ['<C-o>'])
+  await nvim.request('nvim_input', ['<C-i>'])
+  await new Promise((r) => setTimeout(r, 150))
+  assert.equal(await lua('return vim.api.nvim_win_get_buf(require("dsh_tui")._sessWin)', []), sessBuf6, '<C-o>/<C-i> cannot swap the session list buffer')
+  assert.equal(await lua('return require("dsh_tui")._reasoningOpen', []), false, 'session list: <C-o> does not open the panel')
+  const sessLines6 = await nvim.request('nvim_buf_get_lines', [sessBuf6, 0, -1, false])
+  assert.ok(sessLines6.some((l: string) => l.includes('会话甲')), 'session list content intact after jumplist keys')
+  await lua('require("dsh_tui").close_session_list()', [])
+  await new Promise((r) => setTimeout(r, 100))
+
+  // Fullscreen editor: normal-mode jumplist keys must not swap the draft.
+  await lua('require("dsh_tui").full_input_toggle()', [])
+  await new Promise((r) => setTimeout(r, 150))
+  const fiBuf6 = await lua('return require("dsh_tui")._fullInput.buf', [])
+  await lua('vim.cmd("stopinsert")', []) // normal mode inside the editor
+  await nvim.request('nvim_input', ['<C-o>'])
+  await nvim.request('nvim_input', ['<C-i>'])
+  await new Promise((r) => setTimeout(r, 150))
+  assert.equal(await lua('return vim.api.nvim_win_get_buf(require("dsh_tui")._fullInput.win)', []), fiBuf6, 'fullscreen editor buffer survives jumplist keys')
+  assert.equal(await lua('return require("dsh_tui")._reasoningOpen', []), false, 'fullscreen editor: <C-o> does not open the panel')
+  await lua('require("dsh_tui").full_input_close()', [])
+  await new Promise((r) => setTimeout(r, 100))
+
   // tool records go to the panel too; chat shows only the live activity line
   feedB.applyEvent({ type: 'tool/call', time: 5600, data: { turn: 1, step: 1, callId: 'c-1', name: 'bash', arguments: '{"cmd":"ls"}' } })
   await new Promise((r) => setTimeout(r, 100))
@@ -703,6 +768,31 @@ description:
   await new Promise((r) => setTimeout(r, 250))
   tLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
   assert.equal(tLines.filter((l: string) => l.startsWith('📋 待办')).length, 1, 'empty todo/write clears the pinned slot (only the committed block remains)')
+
+  // 6a2c. FLUSHED todos: a later whole-list re-send that still carries the
+  // committed completed items must not re-pin/re-commit them — the board
+  // shows only the new item (lists stay bounded after the commit).
+  feedB.applyEvent({ type: 'todo/write', time: 7072, data: { todos: [
+    { content: '功能实现', status: 'completed' },
+    { content: '补测试', status: 'completed' },
+    { content: '新任务', status: 'in_progress' },
+  ] } })
+  await new Promise((r) => setTimeout(r, 250))
+  tLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(tLines[tLines.length - 2], '📋 待办 1 项 · 0 完成 · 1 进行中 · 0 待办', 'flushed completed items stay out of the pinned board')
+  assert.equal(tLines[tLines.length - 1], '  … 新任务', 'pinned board shows only the new item')
+  // Completing it commits ONLY the new item — the flushed ones never repeat.
+  feedB.applyEvent({ type: 'todo/write', time: 7073, data: { todos: [
+    { content: '功能实现', status: 'completed' },
+    { content: '补测试', status: 'completed' },
+    { content: '新任务', status: 'completed' },
+  ] } })
+  await new Promise((r) => setTimeout(r, 250))
+  tLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(tLines.filter((l: string) => l === '📋 待办 1 项 · 1 完成 · 0 进行中 · 0 待办').length, 1, 'second completion commits only the new item')
+  assert.equal(tLines.filter((l: string) => l === '  ✓ 功能实现').length, 1, 'flushed items are never re-committed')
+  assert.equal(tLines.filter((l: string) => l === '  ✓ 新任务').length, 1, 'the new item commits exactly once')
+  assert.ok(!tLines[tLines.length - 1]?.startsWith('📋'), 'pinned slot cleared after the all-✓ commit')
   const jobsRows1 = ['', '⚙ 任务 2 项 · 1 运行中', '  ⏳ lint', '  · test']
   feedB.setJobsBoard(jobsRows1)
   feedB.applyEvent({ type: 'assistant/chunk', time: 7080, data: { chunk: { type: 'reasoning-delta', text: '任务跑着' } } })

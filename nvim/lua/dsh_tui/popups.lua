@@ -120,6 +120,7 @@ function P.open_subagent_view(title)
   for _, k in ipairs({ 'i', 'a', 'o', 'O', 'I', 'A', 'r', 'R', 's', 'S', 'c', 'C', 'd', 'D', 'x', 'X', 'p', 'P', '<Insert>', ':' }) do
     vim.keymap.set('n', k, '<Nop>', { buffer = buf })
   end
+  PC.lock_jump_keys(buf) -- jumplist keys must not swap the popup's buffer
   vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_subagent_view()<CR>', { buffer = buf })
   vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_subagent_view()<CR>', { buffer = buf })
   vim.keymap.set('n', 'G', '<Cmd>lua require("dsh_tui").subagent_view_jump("last")<CR>', { buffer = buf })

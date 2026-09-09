@@ -157,15 +157,18 @@ export declare class FeedRenderer {
         endRow: number;
     }>;
     cardNs: number | null;
-    /** Pinned todo panel (todo/write): while ANY item is incomplete the
-     *  standing list renders at the BOTTOM of the view (above the thinking
-     *  row, never displaced by streaming content); once every item is ✓ the
-     *  block COMMITS into base (ordinary chat content). Incomplete state at
-     *  turn/end commits as the turn's final state. */
+    /** Pinned todo panel (todo/write): while ANY visible item is incomplete
+     *  the standing list renders at the BOTTOM of the view (above the
+     *  thinking row, never displaced by streaming content); once every item
+     *  is ✓ the block COMMITS into base (ordinary chat content) and stays
+     *  pinned across turns like the jobs board. */
     todoLiveRows: string[];
-    /** Last COMMITTED all-✓ todo key (per turn): repeated identical
-     *  todo_write re-emissions must not stack duplicate committed blocks. */
-    lastTodoKey: string;
+    /** Todo items already FLUSHED into a committed all-✓ board (by content).
+     *  The host's todo_write re-sends the COMPLETE standing list every time —
+     *  without this set every later board/commit re-lists the old completed
+     *  items and the lists grow without bound. Re-opened items (any
+     *  non-completed status) leave the set and come back. */
+    committedTodos: Set<string>;
     /** Pinned jobs board (setJobsBoard): same bottom-pinned slot — updates
      *  replace live; commitJobsBoard lands the FINAL state (all jobs
      *  terminal) into base. */
@@ -209,6 +212,18 @@ export declare class FeedRenderer {
     pushDiff(header: string, lines: string[]): void;
     pushSubagent(line: string): void;
     pushWorkflow(line: string): void;
+    /** Visible standing-todo items for one todo/write payload: completed
+     *  items that were already FLUSHED into a committed board are hidden —
+     *  the host re-sends the whole standing list on every write, and without
+     *  the flush every later board/commit would re-list them (unbounded
+     *  growth). Non-completed items always show. */
+    todoVisibleItems(todos: Array<{
+        content: string;
+        status: string;
+    }>): Array<{
+        content: string;
+        status: string;
+    }>;
     /** Pinned jobs board (the /tasks counterpart in the chat): while ANY
      *  job is running/stopping the board renders at the BOTTOM of the view
      *  (above the thinking row); identical content is a no-op. */

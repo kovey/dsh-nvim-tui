@@ -51,6 +51,11 @@ function SE.ensure_reasoning(id)
       '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>', { noremap = true })
     vim.api.nvim_buf_set_keymap(buf, 'n', '<Esc>',
       '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>', { noremap = true })
+    -- The panel can take focus (<C-w>w cycling): <C-o> closes it (mapped
+    -- above), but <C-i>/<C-^> must not swap the panel into another buffer
+    -- (the float inherited the jumplist).
+    vim.keymap.set('n', '<C-i>', '<Nop>', { buffer = buf })
+    vim.keymap.set('n', '<C-^>', '<Nop>', { buffer = buf })
     PC.lock_display_keys(buf) -- reasoning panel is display-only
     vim.api.nvim_buf_set_name(buf, 'dsh-reasoning-' .. tostring(id))
     S.reasoningBufs[id] = buf
@@ -72,7 +77,19 @@ function SE.reasoning_panel_geometry()
 end
 
 --- Open/close the reasoning panel (a popup hugging the right edge). <C-o>.
+--- FLOAT GUARD: the toggle only responds from the TUI's own split windows
+--- (chat / input / the panel itself). From inside any OTHER float (subagent
+--- chat input, pickers, approvals, fullscreen editor…) it would open the
+--- panel behind/over the popup and I.focus() would yank focus into the main
+--- input — the popup's content and keys are the user's context, so the
+--- press is a NO-OP there.
 function SE.toggle_reasoning()
+  local cur = vim.api.nvim_get_current_win()
+  local inPanel = S.reasoningWin ~= nil and vim.api.nvim_win_is_valid(S.reasoningWin)
+    and cur == S.reasoningWin
+  if cur ~= S.chat_win and cur ~= S.input_win and not inPanel then
+    return
+  end
   if S.reasoningWin and vim.api.nvim_win_is_valid(S.reasoningWin) then
     pcall(vim.api.nvim_win_close, S.reasoningWin, true)
     S.reasoningWin = nil

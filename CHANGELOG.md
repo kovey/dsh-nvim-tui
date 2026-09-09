@@ -55,6 +55,23 @@
   实时刷新；全部 ✓ 时一次性提交终态入转录（去重键跨回合，重复重放不再堆叠）；
   空列表只清钉住槽不入转录。smoke 断言同步更新（turn/end 不再提交、跨回合
   钉住、空列表清槽）。
+- **待办落盘即清空（2026-09-09）**：宿主 `todo_write` 每次整表重发且常保留
+  旧已完成项，导致面板与逐次提交的列表无限增长。修复：全部 ✓ 提交入转录后
+  这些完成项进入 flushed 集合——后续整表重发不再显示、不再重复提交；重新
+  打开（非 completed 状态）的项自动回归。状态栏计数与 /todo 浮窗同步使用
+  flushed 视图。任务侧已由上一批 F4 的 `committedJobKeys` 保证同语义（
+  jobs.list 永久返回终态任务，提交后不再混入新批次面板）。
+- **弹窗内禁用 <C-o> 开面板（2026-09-09）**：光标在弹窗（/todo、/sessions、
+  子代理对话…）里按 `<C-o>` 会破坏弹窗——根因两层：① 浮窗创建时继承了焦点
+  窗口的 jumplist，裸 `<C-o>` 走默认跳转把浮窗 buffer 换成输入 buffer（内容
+  丢失、弹窗键位失效），随后再按 `<C-o>` 命中的是输入 buffer 的面板映射 →
+  面板在浮窗后打开且 `I.focus()` 抢走焦点；② 子代理输入弹窗曾显式映射
+  `<C-o>` → toggle。修复：`toggle_reasoning` 加浮窗守卫（仅 chat/input/面板
+  自身可触发）；`popup_core.lock_jump_keys` 对所有弹窗 buffer Nop
+  `<C-o>`/`<C-i>`/`<C-^>`（`lock_popup_buffer` 内置 + 子代理视图/对话转录
+  显式应用）；子代理输入与全屏编辑器 insert 模式 `<C-o>` Nop（防内置
+  i_CTRL-O 吞下一键）。smoke 6g 升级为真实按键断言（jumplist 键不换
+  buffer、面板不打开、内容完好、焦点不丢）。
 - **测试可信度**：smoke graceful-exit 不再静默放行（kill 路径硬失败）；
   面板宽度断言改为开面板前取样；`npm run smoke` 先构建；e2e 校验 harness 退出码。
 - **优雅退出根修（REVIEW §8 专项排查）**：winbar `OptionSet` 重断言在 nvim 退出

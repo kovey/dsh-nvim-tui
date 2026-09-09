@@ -5,7 +5,9 @@
 --- lower editable input row sends user messages to the child through the
 --- runner (`dsh-subagent-send`). Enter sends, <C-CR> inserts a newline,
 --- <Up>/<Down> cycle per-window history, Esc/<C-c> close back to the main
---- input, <C-o> still toggles the reasoning panel.
+--- input. <C-o> is INERT inside the popup (Nop) — the reasoning panel
+--- toggle belongs to the main chat/input windows only, and the builtin
+--- i_CTRL-O would otherwise swallow the next key as a normal-mode command.
 ---
 --- Geometry: one centered rounded float for the transcript; a second rounded
 --- input float directly below it (its top border fills the row under the
@@ -123,6 +125,9 @@ function SAC.open(title)
   vim.bo[buf].swapfile = false
   vim.b[buf].ministatusline_disable = true
   PC.lock_display_keys(buf)
+  -- Floats inherit the jumplist: <C-o>/<C-i>/<C-^> must never swap this
+  -- popup into another buffer (content loss + dead keys, see popup_core).
+  PC.lock_jump_keys(buf)
 
   local w = width()
   local h = height()
@@ -173,7 +178,7 @@ function SAC.open(title)
     zindex = 46,
   }
   if vim.fn.has('nvim-0.10') == 1 then
-    icfg.footer = '[Enter] 发送 · [Esc] 关闭 · [C-o] 面板'
+    icfg.footer = '[Enter] 发送 · [Esc] 关闭'
     icfg.footer_pos = 'left'
   end
   local inputWin = vim.api.nvim_open_win(inputBuf, true, icfg)
@@ -194,8 +199,12 @@ function SAC.open(title)
   vim.api.nvim_buf_set_keymap(inputBuf, 'i', '<C-c>', close_cmd, { noremap = true })
   vim.keymap.set('i', '<Up>', function() require('dsh_tui').subagent_chat_history(-1) end, { buffer = inputBuf })
   vim.keymap.set('i', '<Down>', function() require('dsh_tui').subagent_chat_history(1) end, { buffer = inputBuf })
-  local reason_cmd = '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>'
-  vim.api.nvim_buf_set_keymap(inputBuf, 'i', '<C-o>', reason_cmd, { noremap = true })
+  -- <C-o> must NOT toggle the panel from inside the popup (it would open
+  -- behind the float and steal focus to the main input). Nop it so the
+  -- builtin i_CTRL-O does not swallow the next key as a normal command.
+  vim.api.nvim_buf_set_keymap(inputBuf, 'i', '<C-o>', '<Nop>', { noremap = true })
+  -- Normal mode too: the input float inherits the jumplist — no buffer swaps.
+  PC.lock_jump_keys(inputBuf)
 
   S.subagentChat = { buf = buf, win = win, inputBuf = inputBuf, inputWin = inputWin, hist = {}, histIdx = nil, draft = nil }
   refresh_input_frame()

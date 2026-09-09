@@ -12,6 +12,21 @@ local EDIT_KEYS = {
   '<C-a>', '<C-x>',
 }
 
+--- Jumplist / buffer-swap keys a float must silence: nvim COPYs the focused
+--- window's jumplist into a new float, so a bare <C-o>/<C-i> inside a popup
+--- jumps the FLOAT into another buffer — the popup's content is replaced,
+--- its buffer-local keys stop applying, and a second <C-o> can even fire the
+--- input buffer's panel-toggle mapping. <C-^> swaps the alternate buffer the
+--- same way. These keys are ALWAYS Nop'd on popups.
+local JUMP_KEYS = { '<C-o>', '<C-i>', '<C-^>' }
+
+--- Nop the jumplist/buffer-swap keys on a buffer (see JUMP_KEYS).
+function P.lock_jump_keys(buf)
+  for _, k in ipairs(JUMP_KEYS) do
+    vim.keymap.set('n', k, '<Nop>', { buffer = buf })
+  end
+end
+
 --- Interactive popups are read-only: lock the buffer and Nop the edit keys so
 --- an accidental i/x/dd can neither change the content nor raise a raw E21.
 --- (Buffers re-rendered by the API toggle 'modifiable' around set_lines.)
@@ -20,6 +35,7 @@ function P.lock_popup_buffer(buf)
   for _, k in ipairs(EDIT_KEYS) do
     vim.keymap.set('n', k, '<Nop>', { buffer = buf })
   end
+  P.lock_jump_keys(buf)
 end
 
 --- Display-only buffers (chat / reasoning) are written by the renderer through

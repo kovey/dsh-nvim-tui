@@ -183,6 +183,7 @@ local function open_menu()
   vim.bo[buf].swapfile = false
   vim.bo[buf].undolevels = -1
   vim.b[buf].ministatusline_disable = true
+  require('dsh_tui.popup_core').lock_jump_keys(buf) -- floats inherit the jumplist: no buffer swaps
   S.cmdBuf = buf
   S.cmdWin = vim.api.nvim_open_win(buf, false,
     CM.win_config(math.min(MAX_H, #S.cmdMatches), 30, { noautocmd = true, title = true }))
