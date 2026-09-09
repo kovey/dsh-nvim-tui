@@ -80,8 +80,9 @@ export function apply(ctx: Context, _config: unknown = {}): void {
   disposers.push(tui.luaExt.on('git-panel', async (method, args) => {
     switch (method) {
       case 'commits': {
-        // 演示原生执行层 + 嵌套调用（安全）。
-        const out = await tui.nvim.call('systemlist', [['git', 'log', '--oneline', '-5']])
+        // Arbitrary execution goes through the DECLARED unrestricted surface
+        // (nvim.lua / nvim.ex) — nvim.call's whitelist is read-only.
+        const out = await tui.nvim.lua('return vim.fn.systemlist(...)', [['git', 'log', '--oneline', '-5']])
         return out
       }
       case 'status': return 'ok'

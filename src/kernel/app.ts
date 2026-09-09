@@ -128,6 +128,10 @@ export interface SessionRec {
   /** Committed batch identity (id:status 排序拼接)：终态板提交一次后，30s
    *  心跳重新拉到的同一批终态任务不得再次提交。 */
   committedJobsKey: string
+  /** id:status of every job already committed to the chat flow — the merge
+   *  skips them so a LATER batch finishing cannot re-commit the old board
+   *  (pre-review: cache.delete was undone by the next heartbeat's merge). */
+  committedJobKeys: Set<string>
   runningSince?: number | null
   /** tool/call events whose tool/result has not arrived yet (live-turn
    *  orphan detection for the duplicate-dsh-tools scheduler crash). */
@@ -183,6 +187,9 @@ export interface AppSlices {
     readonly spinnerTimer: ReturnType<typeof setInterval> | null
     readonly spinnerIndex: number
     readonly idleRefreshTimer: ReturnType<typeof setInterval> | null
+    /** Child exit observed while boot is still connecting (startup config
+     *  error): recorded so boot's catch exits non-zero instead of 0. */
+    readonly childExitDuringBoot: { code: number | null; signal: string | null } | null
     boot: () => Promise<void>
     /** Owner ops: cross-domain consumers mutate runtime state ONLY here. */
     setChatWin: (id: number | null) => void
@@ -201,6 +208,7 @@ export interface AppSlices {
     readonly childParent: Map<string, { parentId: string; label: string }>
     refreshHistory: () => Promise<void>
     refreshList: () => void
+    disposeLiveSession: (id: string) => Promise<void>
     readState: () => unknown
     recordState: (id: string) => void
     createSession: (cwdPath?: string) => Promise<void>
@@ -273,7 +281,7 @@ export interface AppSlices {
     commandSpecs: CommandSpec[]
     readonly pendingInput: string[]
     readonly pendingImages: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }>>
-    readonly pendingRename: { kind: 'workspace'; id: string } | { kind: 'session'; id: string } | null
+    readonly pendingRename: { kind: 'workspace'; id: string } | { kind: 'session'; id: string; background?: boolean } | null
     readonly pendingQueueEdit: { list: 'nextTurn' | 'nextStep'; messageId: string } | null
     readonly approvalSettle: ((outcome: string) => void) | null
     readonly approvalReq: ApprovalRequest | null
@@ -305,10 +313,10 @@ export interface AppSlices {
     settlePicker: (value: string | null) => void
     setQuestions: (r: { resolve: (v: { answers: unknown[] }) => void; reject: (e: Error) => void } | null) => void
     settleQuestions: (answers: unknown[]) => void
-    rejectQuestions: () => void
+    rejectQuestions: (reason?: string) => void
     setDirSettle: (fn: ((picked: string | null) => void) | null) => void
     resolveDirPicker: (picked: string | null) => void
-    setPendingRename: (v: { kind: 'workspace'; id: string } | { kind: 'session'; id: string } | null) => void
+    setPendingRename: (v: { kind: 'workspace'; id: string } | { kind: 'session'; id: string; background?: boolean } | null) => void
     setPendingQueueEdit: (v: { list: 'nextTurn' | 'nextStep'; messageId: string } | null) => void
     setSubagentView: (v: { childId: string; feed: FeedRenderer } | null) => void
     setSubagentChat: (v: { childId: string; parentId: string; label: string; feed: FeedRenderer } | null) => void
@@ -501,7 +509,13 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
       if (app.slices.agent.pickerSettle !== null) app.slices.agent.settlePicker(null)
       app.slices.agent.setPickerSettle(resolve)
       void luaCall('require("dsh_tui").show_picker(...)', [title, items])
-        .catch(() => { app.slices.agent.settlePicker(null) })
+        .catch(() => {
+          // Identity-checked failure settle: a STALE picker's failed open
+          // must not cancel its successor (pre-review: the unconditional
+          // settlePicker(null) settled picker #2 when picker #1's luaCall
+          // rejected late — the user's #2 choice was silently discarded).
+          if (app.slices.agent.pickerSettle === resolve) app.slices.agent.settlePicker(null)
+        })
     })
 
   app.openLivePicker = (title: string, items: Array<{ label: string; value: string }>) => ({

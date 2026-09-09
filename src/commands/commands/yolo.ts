@@ -8,7 +8,13 @@ import type { App } from '../../kernel/app.js'
 export const yoloCommand = (app: App, a: string | undefined) => {
   const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) return
-  const policy = a === 'on' ? 'never' : a === 'off' ? 'ask' : rec.policy === 'never' ? 'ask' : 'never'
+  const arg = (a ?? '').trim()
+  if (arg !== '' && arg !== 'on' && arg !== 'off') {
+    // Invalid args used to silently TOGGLE — surface the usage instead.
+    app.notice(t('用法: /yolo [on|off]'))
+    return
+  }
+  const policy = arg === 'on' ? 'never' : arg === 'off' ? 'ask' : rec.policy === 'never' ? 'ask' : 'never'
   try {
     rec.handle.agent.session.append('approval/policy', { policy })
     rec.policy = policy

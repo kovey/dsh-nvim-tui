@@ -2,11 +2,11 @@
  * dsh-nvim-tui extension API — the PUBLIC service surface this bundle
  * exports to other dsh plugins via `ctx.provide('nvim-tui', …)`.
  *
- * P0 scope: service mount + readiness lifecycle (ready/teardown), the
+ * Scope: service mount + readiness lifecycle (ready/teardown), the
  * whitelisted nvim execution layer (request / call / lua / ex), TUI-scoped
- * event subscriptions, and the active-session / input plumbing. UI
- * primitives (card/float/picker/notice/statuslineSegment), the ext RPC bus
- * and Lua-side hooks land in later phases.
+ * event subscriptions, the active-session / input plumbing, UI primitives
+ * (card/float/picker/notice/statuslineSegment), the ext RPC bus (luaExt)
+ * and Lua-side hooks — all implemented in this module.
  *
  * Fault isolation: every consumer callback is guarded — a throwing
  * subscriber surfaces as a feed notice + error-log line and never breaks
@@ -181,12 +181,15 @@ export function installExtApi(app: App): void {
     'fnameescape', 'expand', 'fnamemodify', 'getcwd', 'stdpath', 'glob', 'globpath',
     'has', 'exists', 'getenv', 'executable', 'filereadable', 'isdirectory',
     'getftime', 'getfsize', 'tempname', 'bufname', 'bufnr', 'line', 'col',
-    'winwidth', 'winheight', 'winnr', 'tabpagenr', 'systemlist', 'trim',
+    'winwidth', 'winheight', 'winnr', 'tabpagenr', 'trim',
     'strwidth', 'strdisplaywidth', 'keys', 'values', 'len', 'string', 'type',
+    // NOT whitelisted: systemlist — it executes an arbitrary command and
+    // contradicted the read-only contract (arbitrary exec lives behind
+    // nvim.lua / nvim.ex, declared by capabilities.unrestrictedExec).
   ])
   const nvimLayer: ExtNvimLayer = {
     request: (method, args = [], opts) => {
-      if (!method.startsWith('nvim_')) return Promise.reject(new Error(`nvim.request 仅接受 nvim_* API 方法（收到: ${method}）`))
+      if (typeof method !== 'string' || !method.startsWith('nvim_')) return Promise.reject(new Error(`nvim.request 仅接受 nvim_* API 方法（收到: ${String(method)}）`))
       if (app.slices.runtime.nvim === null) return Promise.reject(new Error('nvim not connected'))
       const p = app.slices.runtime.nvim.request(method, args as never[]) as Promise<unknown>
       if (opts?.timeoutMs === undefined) return p
@@ -214,6 +217,11 @@ export function installExtApi(app: App): void {
     version: EXT_API_VERSION,
     ready: new Promise<void>((resolve) => {
       WE.extReadyResolve = resolve
+      // Survive runner-row reloads: fireExtReady drains the module-scope
+      // waiter list, so a SECOND apply's promise resolves together with the
+      // first one. (Previously nothing pushed here — every await tui.ready
+      // hung forever.)
+      readyWaiters.push(resolve)
     }),
     capabilities: () => ({
       headless: app.headless,
@@ -394,7 +402,10 @@ export function installExtApi(app: App): void {
     },
 
     registerCommands: (cmds) => {
-      const specs = cmds.map((c) => ({
+      // Never let a malformed external entry (missing name/fn) blow up the
+      // caller synchronously — skip it like the duplicate-name path does.
+      const valid = (cmds ?? []).filter((c) => c != null && typeof c.name === 'string' && c.name.trim() !== '' && typeof c.fn === 'function')
+      const specs = valid.map((c) => ({
         name: `/${c.name.replace(/^\//, '')}`,
         desc: c.desc,
         usage: c.usage ?? '',
@@ -447,7 +458,12 @@ export function installExtApi(app: App): void {
           token,
         })
         return () => {
-          app.slices.ext.extNodeHandlers.delete(extId)
+          // Token-guarded disposal: a second on() for the same extId
+          // REPLACES the entry — the first disposer must not delete the
+          // newcomer (the token identity check makes that real).
+          if (app.slices.ext.extNodeHandlers.get(extId)?.token === token) {
+            app.slices.ext.extNodeHandlers.delete(extId)
+          }
         }
       },
     },

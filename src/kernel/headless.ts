@@ -40,6 +40,7 @@ export function installHeadless(app: App): {
     await app.quit(0)
   }
   const startWatchdog = (): void => {
+    if (!app.headless) return
     watchdog = setTimeout(() => {
       if (app.headless) void dumpAndQuit()
     }, app.watchdogMs)

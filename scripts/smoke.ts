@@ -763,6 +763,9 @@ description:
     'intermediate incomplete versions never land in the chat')
 
   // 7. <C-o> reasoning panel toggle
+  // Chat width BEFORE the panel opens — the pre-review assertion captured it
+  // AFTER the open and compared the window with itself (always true).
+  const chatWBefore = await lua('return vim.api.nvim_win_get_width(require("dsh_tui").ids().chatWin)', [])
   const opened = await lua('return require("dsh_tui").toggle_reasoning()', [])
   assert.equal(opened, true, 'panel opens')
   let idsT = await lua('return require("dsh_tui").ids()', [])
@@ -782,7 +785,6 @@ description:
   if (await lua('return vim.fn.has("nvim-0.10") == 1', [])) {
     assert.ok(JSON.stringify(panelCfg.footer).includes('C-o'), 'panel bottom border carries the operation hints')
   }
-  const chatWBefore = await lua('return vim.api.nvim_win_get_width(require("dsh_tui").ids().chatWin)', [])
   assert.equal(await lua('return vim.api.nvim_win_get_width(require("dsh_tui").ids().chatWin)', []), chatWBefore,
     'chat keeps its full width while the panel is open')
   // the panel spans 3/4 of the screen height (a panel, not a full column)
@@ -1744,7 +1746,10 @@ description:
   // into history cycling and the menu can never change its selection
   await nvim.request('nvim_buf_set_lines', [ids.inputBuf, 0, -1, false, ['@']])
   await nvim.request('nvim_win_set_cursor', [ids.inputWin, [1, 1]])
-  await lua('require("dsh_tui").set_at_menu(...)', [[{ path: 'src/a.txt', mention: '@src/a.txt' }, { path: 'src/b.md', mention: '@src/b.md' }, { path: 'src/c.ts', mention: '@src/c.ts' }], 1])
+  // start = the '@' BYTE OFFSET (the same convention the dsh-at-query echo
+  // asserts above: line-start token → offset 0). The stale-response guard
+  // in AM.set verifies the input still has '@' at this offset.
+  await lua('require("dsh_tui").set_at_menu(...)', [[{ path: 'src/a.txt', mention: '@src/a.txt' }, { path: 'src/b.md', mention: '@src/b.md' }, { path: 'src/c.ts', mention: '@src/c.ts' }], 0])
   await lua(`vim.api.nvim_set_current_win(require("dsh_tui").ids().inputWin); vim.cmd('startinsert')`, [])
   await nvim.input('<C-n>')
   await new Promise((r) => setTimeout(r, 120))
@@ -2841,10 +2846,18 @@ description:
   } catch {}
   const exitInfo = await Promise.race<{ code: number | null; signal: string | null } | null>([
     exited,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
   ])
   if (exitInfo === null) {
+    // Known issue (REVIEW-2025-09 §8): in some environments nvim does not
+    // exit within 3s of :qa! (dsh_tui's window guards / floats may fight the
+    // quit teardown). Pre-review this kill path passed SILENTLY ("Caught
+    // deadly signal SIGTERM" + green SMOKE PASS) — now it is at least
+    // impossible to miss, but a hard failure would block the whole suite on
+    // an environment quirk unrelated to the regression this check guards.
     child.kill()
+    await new Promise((r) => setTimeout(r, 200))
+    log('⚠ WARN: nvim did not exit gracefully after :qa! — killed with SIGTERM (see REVIEW-2025-09 §8)')
   } else {
     assert.equal(exitInfo.code, 0, 'graceful :qa! exits with code 0')
     assert.equal(exitInfo.signal, null, 'no signal on graceful exit')

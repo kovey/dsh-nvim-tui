@@ -100,6 +100,11 @@ function A.install()
           -- The input buffer was wiped (:bd! / hostile plugin): rebuild the
           -- whole input surface — every submit would throw until then.
           I.make_buffer()
+          -- Mount the fresh buffer into the input window — pre-review the
+          -- rebuild left the new buffer UNATTACHED: the window kept showing
+          -- the wiped foreign buffer and <CR> submit mapped to an invisible
+          -- buffer (the self-heal was a no-op for its own scenario).
+          vim.api.nvim_win_set_buf(S.input_win, S.input_buf)
           K.install()
           A.install_input()
           return
@@ -362,7 +367,7 @@ function A.boot_guard()
       -- same-cycle check would misread our own floats as normal windows and
       -- close them. By the scheduled tick the config is final.
       vim.schedule(function()
-        if S.bootGuardUntil == nil or vim.uv.now() > S.bootGuardUntil then return end
+        if S.bootGuardUntil == nil or (vim.uv or vim.loop).now() > S.bootGuardUntil then return end
         local w = vim.api.nvim_get_current_win()
         -- Only police the TUI's own tab: windows the window-ownership guard
         -- relocated into a fresh tab belong to the plugin and stay put.

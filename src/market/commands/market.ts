@@ -142,7 +142,11 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
   if (act === 'uninstall') {
     // entry.name is the catalog's owner/repo — the SELF is identified by
     // the loader entry's dependency name (options.name), not the repo key.
-    const isSelf = togglable.some((le) => le.options?.name === 'dsh-nvim-tui')
+    // Check the UNFILTERED matching set: togglable has already excluded the
+    // self rows, so searching there made this guard permanently false
+    // (pre-review) and allowed `dsh plugin remove dsh-nvim-tui` to unload
+    // the running TUI.
+    const isSelf = matching.some((le) => le.options?.name === 'dsh-nvim-tui')
     if (isSelf) {
       app.notice('不能卸载正在运行的 TUI 插件自身')
       return

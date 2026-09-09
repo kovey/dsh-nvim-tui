@@ -1,9 +1,11 @@
 /** dsh_tui command: /image — one command per file (self-registering,
  *  wired by the commands module index). */
 import { t } from '../../kernel/i18n.js'
+import { isAbsolute, join } from 'node:path'
 import { readImageFile } from '../../feed/images.js'
 import { readClipboardImage } from '../../feed/images.js'
 import { followup } from '../core.js'
+import { activeSessionCwd } from '../../kernel/app.js'
 import type { AppSlices, WritableSlice } from '../../kernel/app.js'
 import type { App } from '../../kernel/app.js'
 
@@ -29,7 +31,11 @@ export const imageCommand = (app: App, a: string | undefined) => {
   let image
   if (m !== null && m[1] !== undefined) {
     try {
-      image = readImageFile(m[1])
+      // Relative paths resolve against the ACTIVE SESSION's cwd, not
+      // process.cwd() (pre-review: /image ignored the kernel contract that
+      // every local-file command joins activeSessionCwd).
+      const abs = isAbsolute(m[1]) ? m[1] : join(activeSessionCwd(app), m[1])
+      image = readImageFile(abs)
     } catch (err) {
       app.notice(`读取图片失败: ${(err as Error).message}`)
       return

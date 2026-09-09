@@ -329,7 +329,12 @@ export const onInput = (app: App, text: string): void => {
     const target = app.slices.agent.pendingRename
     W(app.slices.agent).pendingRename = null
     const name = text.trim()
-    if (name === '') { app.notice(t('已取消重命名（空输入）')); return }
+    if (name === '') {
+      app.notice(t('已取消重命名（空输入）'))
+      // A background-resumed session (rename row action) must not linger.
+      if (target.kind === 'session' && target.background === true) void app.slices.sessions.disposeLiveSession(target.id)
+      return
+    }
     void (async () => {
       try {
         if (target.kind === 'workspace') {
@@ -345,9 +350,12 @@ export const onInput = (app: App, text: string): void => {
           if (live === undefined) { app.notice(t('会话已不在线（可能已退出或未成功恢复），无法重命名')); return }
           sessionTitle.rename(live, name)
           app.notice(t('会话标题已更新'))
+          // Release the temporary live session the row action resumed.
+          if (target.background === true) void app.slices.sessions.disposeLiveSession(target.id)
         }
       } catch (err) {
         app.notice(`重命名失败: ${(err as Error).message}`)
+        if (target.kind === 'session' && target.background === true) void app.slices.sessions.disposeLiveSession(target.id)
       }
     })()
     return
@@ -436,10 +444,14 @@ export const onCommand = (app: App, line: string): void => {
 
 export const TUI_COMMAND_WHITELIST = new Set([
   '/help', '/sessions', '/subagents', '/panel', '/plugins', '/todo',
-  '/goal', '/memory', '/status', '/context', '/cost', '/queue',
+  '/goal', '/status', '/context', '/cost', '/queue',
   '/deliverables', '/workflow', '/locale', '/whale', '/bell', '/skills',
   '/dir', '/lines', '/history', '/btw', '/model', '/effort', '/plan',
-  '/tasks', '/settings',
+  '/tasks',
+  // NOT whitelisted: /settings (agent could rewrite settings.yaml via
+  // `/settings set <ns> <key> <value>`), /memory (agent could delete
+  // project memory via `/memory delete <id>`) — the tool contract says
+  // destructive actions stay out of reach.
 ])
 
 /** Register the agent-side tui_command routing tool (whitelisted UI/safe
@@ -579,17 +591,20 @@ export function registerNotifications(): void {
     } else {
       app.slices.agent.settleApproval(raw === 'y' ? 'allowed-once' : 'rejected')
     }
-    app.slices.agent.setApproval(null, null)
+    // NOTE: settleApproval already clears the head and advanceApproval()
+    // promotes the next queued entry — an unconditional setApproval(null,
+    // null) here used to WIPE the freshly-promoted settle, hanging every
+    // concurrent (parent + subagent) approval after the first.
   })
   registerNvimNotification('dsh-questions-answered', '提问', (app, args) => {
     const answers = (args?.[0] ?? []) as unknown[]
-    app.slices.agent.questionsResolve?.resolve({ answers })
-    app.slices.agent.setQuestions(null)
+    // settleQuestions resolves the head AND advanceQuestions() promotes the
+    // next queued entry — the old inline resolve + setQuestions(null) left
+    // concurrent questions stuck forever.
+    app.slices.agent.settleQuestions(answers)
   })
   registerNvimNotification('dsh-questions-cancelled', '提问', (app) => {
-    const reject = app.slices.agent.questionsResolve
-    app.slices.agent.setQuestions(null)
-    reject?.reject(new Error('cancelled by user'))
+    app.slices.agent.rejectQuestions('cancelled by user')
   })
   registerNvimNotification('dsh-picker-selected', '选择', (app, args) => {
     app.slices.agent.settlePicker((args?.[0] ?? null) as string | null)

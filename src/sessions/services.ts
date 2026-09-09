@@ -11,12 +11,20 @@ import type { AgentHandle, SessionEvent } from '../kernel/types.js'
 import type { App, AppSlices, ModelRef, WritableSlice } from '../kernel/app.js'
 const WSS = (d: AppSlices['sessions']) => d as WritableSlice<AppSlices['sessions']>
 
-export const attachSession = async (app: App, handle: AgentHandle, modelRef: ModelRef) => {
+export const attachSession = async (app: App, handle: AgentHandle, modelRef: ModelRef, opts?: { background?: boolean }) => {
   const id = handle.agent.session.id
   const ids = await app.lua.ensureChat(id)
-  app.slices.runtime.setChatWin(ids.chatWin)
+  // Background resume (row actions like rename) must NOT touch the global
+  // view state — the active session owns the visible chat/reasoning
+  // pointers; writing them here used to point the active view at the
+  // background session's buffers.
+  if (opts?.background !== true) {
+    app.slices.runtime.setChatWin(ids.chatWin)
+  }
   const rids = await app.lua.ensureReasoning(id)
-  app.slices.runtime.setReasoning(rids?.reasoningOpen === true, (rids?.reasoningWin ?? null) as number | null)
+  if (opts?.background !== true) {
+    app.slices.runtime.setReasoning(rids?.reasoningOpen === true, (rids?.reasoningWin ?? null) as number | null)
+  }
   const feed = new FeedRenderer(app.slices.runtime.nvim!, ids.chatBuf, ids.chatWin, {
     idsProvider: () => app.luaCall('return require("dsh_tui").ensure_chat(...)', [id]),
     activeChecker: () => id === app.slices.sessions.activeId,
@@ -44,6 +52,7 @@ export const attachSession = async (app: App, handle: AgentHandle, modelRef: Mod
     todosItems: [],
     jobsCache: new Map(),
     committedJobsKey: '',
+    committedJobKeys: new Set(),
     pendingToolCalls: new Map(),
     visionTmp: null,
     lastTurnStartAt: 0,
@@ -108,8 +117,24 @@ export const createSession = async (app: App, cwdPath?: string) => {
  *  row actions (e.g. rename) that need a live session but must not move the
  *  user away from the current chat. Returns the live id, or undefined. */
 
-export const ensureLiveSession = async (app: App, id: string): Promise<string | undefined> => {
-  if (app.slices.sessions.live.has(id)) return id
+/** In-flight resume dedupe: a concurrent second caller for the same id must
+ *  await the SAME resume instead of racing a second agents.resume past the
+ *  live.has check (pre-review: double live records, a leaked first
+ *  AgentHandle, and two FeedRenderers writing the same buffers). */
+const resuming = new Map<string, Promise<string | undefined>>()
+
+export const ensureLiveSession = (app: App, id: string): Promise<string | undefined> => {
+  if (app.slices.sessions.live.has(id)) return Promise.resolve(id)
+  const inflight = resuming.get(id)
+  if (inflight !== undefined) return inflight
+  const p = doResumeSession(app, id).finally(() => {
+    if (resuming.get(id) === p) resuming.delete(id)
+  })
+  resuming.set(id, p)
+  return p
+}
+
+const doResumeSession = async (app: App, id: string): Promise<string | undefined> => {
   const selection = app.slices.agent.currentSelection()
   const modelRef = { current: selection, assembled: void 0 }
   const handle = await app.runtimeCtx.agents.resume({
@@ -122,7 +147,7 @@ export const ensureLiveSession = async (app: App, id: string): Promise<string | 
       installModelSelection(agentCtx, modelRef as unknown as Parameters<typeof installModelSelection>[1])
     },
   })
-  const sid = await attachSession(app, handle, modelRef)
+  const sid = await attachSession(app, handle, modelRef, { background: true })
   const rec = app.slices.sessions.live.get(sid)!
   const events = app.slices.trans.sessionEvents(handle.agent.session)
   rec.feed.appendNotice(`history replay: ${events.length} events`)
@@ -133,6 +158,24 @@ export const ensureLiveSession = async (app: App, id: string): Promise<string | 
   }
   app.slices.sessions.refreshList()
   return sid
+}
+
+/** Dispose one live session that is NOT the active view (background-resumed
+ *  sessions must not accumulate forever — each holds an agent handle, a feed
+ *  and nvim chat/reasoning buffers). */
+export const disposeLiveSession = async (app: App, id: string): Promise<void> => {
+  if (id === app.slices.sessions.activeId) return
+  const rec = app.slices.sessions.live.get(id)
+  if (rec === undefined) return
+  app.slices.sessions.live.delete(id)
+  try {
+    await rec.handle.dispose()
+  } catch (err) {
+    app.exitDiag('disposeLiveSession', (err as Error).message)
+  }
+  // Reclaim the chat buffer on the nvim side (runner-side LRU close_chat).
+  void app.luaCall('return require("dsh_tui").close_chat(...)', [id]).catch(() => {})
+  app.slices.sessions.refreshList()
 }
 
 

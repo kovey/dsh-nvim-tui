@@ -3,6 +3,50 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [未发布（全面审查修复批）](https://github.com/kovey/dsh-nvim-tui/compare/v0.3.3...main)
+
+覆盖：docs/REVIEW-2025-09.md 全面代码审查报告的 TOP15 修复清单（7 🔴 / 33 🟠 精选）。
+
+- **修正 v0.3.3 的失实声明**：「live 会话 LRU 软上限 16」实际从未生效——session.lua
+  中 `SE.close_chat` 因结构损坏（`toggle_reasoning` 丢失 `end`，函数被嵌套定义）
+  从未导出，且 runner 侧无任何调用者。本批修复 `session.lua` 结构并落地
+  `close_chat` + rename 后台恢复会话的 dispose 调用链。
+- **并发审批/提问队列修复**：`dsh-approval-decided` 在 `settleApproval` 后无条件
+  `setApproval(null,null)` 抹掉刚晋升的排队审批（并发父+子代理第二个审批永久挂起）；
+  questions 处理器绕过 `settleQuestions`/`advanceQuestions`（同族挂起）。均修复。
+- **ext-api 公共面修复**：`tui.ready` 永不 resolve（`fireExtReady` 置 null 不调用，
+  readyWaiters 无人 push）——官方示例插件初始化链静默瘫痪；`luaExt.on` disposer
+  无视 token 误删新 handler；`nvim.request`/`registerCommands` 入参守卫；
+  执行层白名单契约三方对齐（`systemlist` 移出只读白名单，任意执行走 nvim.lua/ex）。
+- **/rewind 数据安全**：数字参数从末尾计数颠倒为从开头计数（`/rewind 2` 曾删光
+  除最后 2 条外全部历史），数字路径补确认弹窗；重建后 ✎ diff 块因去重缓存未随
+  feed.clear 失效而消失的问题修复。
+- **渲染修复**：diff 区域内的表格上下文行不再被表格检测抢先消费；ExtCard.update
+  按上次合并态叠加（连续部分更新不再静默丢字段）；jobs 板去重不再被心跳重填抵消
+  （旧板重复提交聊天流）；`??`→`||` 修复 0ms 假耗时。
+- **进程生死竞态**：boot 每个 await 后检查 disposed（teardown 撞 spawn 窗口不再
+  产生 ghost nvim/泄漏定时器）；nvim 启动失败退出码从 0 修正为非 0（fatal 改走
+  stderr）；`nvim.channelId` 握手加超时；headless watchdog 提前布防；openPicker
+  失败结算按身份校验。
+- **安全/确认**：tui_command 白名单移除 `/settings`、`/memory`（破坏性参数路径）；
+  `/quit` `/exit` `/restart` 加确认，nlcmd 删除单字符 `q` 路由；`/memory delete`
+  加确认；market 自卸载保护修复（过滤顺序致保护恒假）。
+- **Lua 前端**：`vim.uv` → `(vim.uv or vim.loop)`（0.9 崩溃）；input buffer 自愈
+  重建补窗口挂载；top/bottom region q/Esc 显式传 side；at_menu 陈旧响应守卫；
+  full_input footer 0.10 守卫；region_claim pcall + `{err}` 契约；reasoning 兜底
+  走 ensure_reasoning（不再泄漏幽灵 buffer）。
+- **命令层**：yolo 自然语言路由带固定参数（方向不再 50% 反）+ 无效参数报用法；
+  /model 复用 /models 目录（真实选择器 + provider/model 校验）；/image 相对路径
+  按 activeSessionCwd 解析；/new 无参走目录选择器（兑现 README 承诺）；workspace
+  可选服务不再假成功；refreshHistory 存储失败可见。
+- **会话生命周期**：ensureLiveSession 并发去重；rename 后台恢复会话完成/取消后
+  dispose；后台恢复不再触碰全局视图状态。
+- **测试可信度**：smoke graceful-exit 不再静默放行（SIGTERM kill 路径显式 ⚠ 警告，见 REVIEW §8 已知问题）；
+  面板宽度断言改为开面板前取样；`npm run smoke` 先构建；e2e 校验 harness 退出码。
+- **文档**：README 识图桥章节重写为官方识图模型自动切换；REQUIREMENTS 入库并随包
+  发布（修复发布包内链接失效）；180ms→450ms、app-ops-check 动态派生、目录结构
+  等陈旧项批量同步。
+
 ## [v0.3.3（2026-09-08）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.3)
 
 覆盖提交：

@@ -10,7 +10,7 @@ import { activeSessionCwd } from '../../kernel/app.js'
 
 
 /** /memory [delete <id>] — list / delete project memory files. */
-export const memoryCommand = (app: App, a: string | undefined) => {
+export const memoryCommand = async (app: App, a: string | undefined) => {
   const dir = join(activeSessionCwd(app), '.dsh', 'memory')
   const a0 = a ?? ''
   try {
@@ -27,6 +27,13 @@ export const memoryCommand = (app: App, a: string | undefined) => {
         app.notice(`不存在: ${target}`)
         return
       }
+      // Deleting a memory file is irreversible and had NO confirmation —
+      // confirm before the unlink.
+      const ok = await app.openPicker(t('确认删除记忆'), [
+        { label: `确认删除 .dsh/memory/${name}`, value: 'yes' },
+        { label: t('取消'), value: 'no' },
+      ])
+      if (ok !== 'yes') return
       unlinkSync(file)
       app.notice(`已删除 ${target}`)
       return

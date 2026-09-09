@@ -82,6 +82,22 @@ end
 
 --- Candidates from the runner (dsh-at-query response). start = '@' offset.
 function AM.set(items, start)
+  -- Stale-response guard: the runner's answer raced the user's edits. The
+  -- menu only opens when the cursor's line still has the '@' token at the
+  -- reported offset (pre-review: any late response reopened the menu over a
+  -- draft whose '@' was gone, and accept() then spliced the mention over
+  -- the user's typed text).
+  start = start or 0
+  local curLine = ''
+  if S.input_win and vim.api.nvim_win_is_valid(S.input_win)
+    and S.input_buf and vim.api.nvim_buf_is_valid(S.input_buf) then
+    local cur = vim.api.nvim_win_get_cursor(S.input_win)
+    curLine = (vim.api.nvim_buf_get_lines(S.input_buf, cur[1] - 1, cur[1], false)[1]) or ''
+  end
+  if start > #curLine or curLine:sub(start + 1, start + 1) ~= '@' then
+    AM.close()
+    return
+  end
   S.atItems = items or {}
   S.atIdx = 1
   S.atTop = 1

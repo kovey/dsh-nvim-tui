@@ -55,6 +55,26 @@ const finished = await new Promise<'dump' | 'exit' | 'timeout'>((resolve) => {
 })
 
 if (finished === 'dump') {
+  // The dump proves the UI rendered, NOT that the harness exited cleanly:
+  // wait for the child and fail on any non-zero exit (pre-review: a harness
+  // crash right after the dump still printed E2E PASS).
+  const exited: Promise<number | null> = new Promise((resolve) => {
+    if (child.exitCode !== null) { resolve(child.exitCode); return }
+    child.once('exit', (code) => resolve(code))
+  })
+  const exitCode = await Promise.race<number | null | 'hung'>([
+    exited,
+    new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 15000)),
+  ])
+  if (exitCode === 'hung') {
+    child.kill('SIGKILL')
+    console.error('E2E FAIL: harness did not exit within 15s after writing the dump')
+    process.exit(1)
+  }
+  if (exitCode !== 0) {
+    console.error(`E2E FAIL: harness exited with code ${exitCode} after the dump\n` + out.slice(-3000))
+    process.exit(1)
+  }
   const dump = fs.readFileSync(dumpPath, 'utf8')
   // Judge only the LAST turn (the prompt's turn): anything before the final
   // '── turn ──' is preamble/history.

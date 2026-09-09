@@ -103,6 +103,10 @@ export interface SessionRec {
     /** Committed batch identity (id:status 排序拼接)：终态板提交一次后，30s
      *  心跳重新拉到的同一批终态任务不得再次提交。 */
     committedJobsKey: string;
+    /** id:status of every job already committed to the chat flow — the merge
+     *  skips them so a LATER batch finishing cannot re-commit the old board
+     *  (pre-review: cache.delete was undone by the next heartbeat's merge). */
+    committedJobKeys: Set<string>;
     runningSince?: number | null;
     /** tool/call events whose tool/result has not arrived yet (live-turn
      *  orphan detection for the duplicate-dsh-tools scheduler crash). */
@@ -167,6 +171,12 @@ export interface AppSlices {
         readonly spinnerTimer: ReturnType<typeof setInterval> | null;
         readonly spinnerIndex: number;
         readonly idleRefreshTimer: ReturnType<typeof setInterval> | null;
+        /** Child exit observed while boot is still connecting (startup config
+         *  error): recorded so boot's catch exits non-zero instead of 0. */
+        readonly childExitDuringBoot: {
+            code: number | null;
+            signal: string | null;
+        } | null;
         boot: () => Promise<void>;
         /** Owner ops: cross-domain consumers mutate runtime state ONLY here. */
         setChatWin: (id: number | null) => void;
@@ -211,6 +221,7 @@ export interface AppSlices {
         }>;
         refreshHistory: () => Promise<void>;
         refreshList: () => void;
+        disposeLiveSession: (id: string) => Promise<void>;
         readState: () => unknown;
         recordState: (id: string) => void;
         createSession: (cwdPath?: string) => Promise<void>;
@@ -333,6 +344,7 @@ export interface AppSlices {
         } | {
             kind: 'session';
             id: string;
+            background?: boolean;
         } | null;
         readonly pendingQueueEdit: {
             list: 'nextTurn' | 'nextStep';
@@ -389,7 +401,7 @@ export interface AppSlices {
             reject: (e: Error) => void;
         } | null) => void;
         settleQuestions: (answers: unknown[]) => void;
-        rejectQuestions: () => void;
+        rejectQuestions: (reason?: string) => void;
         setDirSettle: (fn: ((picked: string | null) => void) | null) => void;
         resolveDirPicker: (picked: string | null) => void;
         setPendingRename: (v: {
@@ -398,6 +410,7 @@ export interface AppSlices {
         } | {
             kind: 'session';
             id: string;
+            background?: boolean;
         } | null) => void;
         setPendingQueueEdit: (v: {
             list: 'nextTurn' | 'nextStep';

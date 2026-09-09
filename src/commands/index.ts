@@ -152,10 +152,10 @@ export function installCommands(app: App): void {
     r?.resolve({ answers })
     advanceQuestions()
   }
-  A.rejectQuestions = () => {
+  A.rejectQuestions = (reason = 'UI torn down') => {
     const r = A.questionsResolve
     A.questionsResolve = null
-    r?.reject(new Error('UI torn down'))
+    r?.reject(new Error(reason))
     advanceQuestions()
   }
   A.enqueueQuestions = (e) => {

@@ -12,7 +12,15 @@ export const workspaceCommand = async (app: App, a: string | undefined): Promise
     return
   }
   const arg = (a ?? '').trim()
+  // Optional-service guard: a missing create/delete must NEVER masquerade
+  // as success ("已添加" after await undefined) — pre-review it did.
+  const canCreate = typeof ws.create === 'function'
+  const canDelete = typeof ws.delete === 'function'
   if (arg.startsWith('add ')) {
+    if (!canCreate) {
+      app.notice(t('workspaceRegistry 未实现 create（服务版本过旧）'))
+      return
+    }
     const [path, ...rest] = arg.slice(4).trim().split(/\s+/)
     if (path === undefined || path === '') {
       app.notice(t('用法: /workspace add <目录> [标题]'))
@@ -28,6 +36,10 @@ export const workspaceCommand = async (app: App, a: string | undefined): Promise
     return
   }
   if (arg.startsWith('delete ')) {
+    if (!canDelete) {
+      app.notice(t('workspaceRegistry 未实现 delete（服务版本过旧）'))
+      return
+    }
     const id = arg.slice(7).trim()
     try {
       const ok = await ws.delete?.(id)
@@ -52,6 +64,10 @@ export const workspaceCommand = async (app: App, a: string | undefined): Promise
   const sel = await app.openPicker(t('工作区管理'), rows)
   if (sel === null) return
   if (sel === 'act:new') {
+    if (!canCreate) {
+      app.notice(t('workspaceRegistry 未实现 create（服务版本过旧）'))
+      return
+    }
     const dir = await app.slices.agent.openDirPicker(process.cwd())
     if (dir === null || dir === '') return
     try {
@@ -76,6 +92,10 @@ export const workspaceCommand = async (app: App, a: string | undefined): Promise
     return
   }
   if (act === 'delete') {
+    if (!canDelete) {
+      app.notice(t('workspaceRegistry 未实现 delete（服务版本过旧）'))
+      return
+    }
     const ok = await app.openPicker(t('确认删除工作区'), [
       { label: `确认删除 ${w.title}（会话保留为未分组）`, value: 'yes' },
       { label: t('取消'), value: 'no' },

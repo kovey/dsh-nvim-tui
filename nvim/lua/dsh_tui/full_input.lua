@@ -71,10 +71,15 @@ function FI.open()
     style = 'minimal',
     title = ' 全屏输入 ',
     title_pos = 'center',
-    footer = '[Enter 换行]  [Esc 命令模式]  [回车 发送]  [q 丢弃]',
-    footer_pos = 'center',
     zindex = 40,
   }
+  -- footer/footer_pos are nvim 0.10+; every other footer usage guards with
+  -- has('nvim-0.10') — this one was the single unguarded site (0.9 <C-e>
+  -- crashed on the unknown key).
+  if vim.fn.has('nvim-0.10') == 1 then
+    cfg.footer = '[Enter 换行]  [Esc 命令模式]  [回车 发送]  [q 丢弃]'
+    cfg.footer_pos = 'center'
+  end
   local win = vim.api.nvim_open_win(buf, true, cfg)
   S.fullInput = { win = win, buf = buf }
   vim.api.nvim_buf_set_keymap(buf, 'n', '<CR>', '<Cmd>lua require("dsh_tui").full_input_submit()<CR>', { noremap = true })

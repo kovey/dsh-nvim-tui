@@ -370,7 +370,7 @@ function M.start()
   -- dashboard, filetree, …) open a window in our freshly built layout. Close
   -- any NON-floating window that is not part of the TUI in the SAME event
   -- cycle, so their UI never gets a frame. Active for a few seconds only.
-  S.bootGuardUntil = vim.uv.now() + 3000
+  S.bootGuardUntil = (vim.uv or vim.loop).now() + 3000
   S.mainTab = vim.api.nvim_get_current_tabpage()
   A.boot_guard()
   -- Some plugins open windows asynchronously after VimEnter (dashboards…).

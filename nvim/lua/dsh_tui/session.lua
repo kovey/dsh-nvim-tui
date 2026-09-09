@@ -80,9 +80,16 @@ function SE.toggle_reasoning()
   else
     local buf = S.activeId and S.reasoningBufs[S.activeId]
     if not (buf and vim.api.nvim_buf_is_valid(buf)) then
-      buf = vim.api.nvim_create_buf(false, true)
-      B.chat_buffer_options(buf)
-      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { '·· 思考与工具记录（<C-o> 收起）' })
+      if S.activeId then
+        -- Canonical path: registers the buffer, locks the display keys and
+        -- names it — a fallback-created ghost buffer would leak and stay
+        -- editable (runner's idsProvider would never see it either).
+        buf = SE.ensure_reasoning(S.activeId).reasoningBuf
+      else
+        buf = vim.api.nvim_create_buf(false, true)
+        B.chat_buffer_options(buf)
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, { '·· 思考与工具记录（<C-o> 收起）' })
+      end
     end
     local cfg = SE.reasoning_panel_geometry()
     cfg.border = 'rounded'
@@ -102,9 +109,12 @@ function SE.toggle_reasoning()
   -- The reasoning panel participates in the region docks (LAST on the
   -- right — the deliberately claimed ext regions keep the top): re-lay.
   require('dsh_tui.api').region_reflow()
-  --- Evict one session's chat buffer (runner-side LRU reclamation): close
+  return S.reasoningOpen
+end
+
+--- Evict one session's chat buffer (runner-side LRU reclamation): close
 --- any window showing it, wipe the buffer, drop the registry entry.
-function S.close_chat(id)
+function SE.close_chat(id)
   local buf = S.chats[id]
   if buf and vim.api.nvim_buf_is_valid(buf) then
     for _, win in ipairs(vim.api.nvim_list_wins()) do
@@ -115,10 +125,6 @@ function S.close_chat(id)
     pcall(vim.api.nvim_buf_delete, buf, { force = true })
   end
   S.chats[id] = nil
-end
-
-return S
-.reasoningOpen
 end
 
 --- Switch the visible chat to this session (the runner owns the entry list).

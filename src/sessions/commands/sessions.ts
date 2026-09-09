@@ -71,13 +71,17 @@ export const sessionsCommand = async (app: App): Promise<void> => {
       return
     }
     if (act === 'rename') {
+      let background = false
       if (app.runtimeCtx.sessions.get(sid) === undefined) {
         // Persisted-only session: resume it in the background — sessionTitle
         // .rename requires the exact LIVE session object, but renaming must
-        // NOT switch the active view.
+        // NOT switch the active view. The background flag makes the rename
+        // completion DISPOSE the temporary live session (pre-review it
+        // accumulated forever).
         await ensureLiveSession(app, sid)
+        background = true
       }
-      app.slices.agent.setPendingRename({ kind: 'session', id: sid })
+      app.slices.agent.setPendingRename({ kind: 'session', id: sid, background })
       app.notice(t('下一条输入将作为该会话的新标题（空输入取消）'))
       return
     }

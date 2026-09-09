@@ -15,7 +15,7 @@ import type { App, AppSlices, WritableSlice } from '../kernel/app.js'
 import { registerNvimNotification } from '../kernel/rpc.js'
 import {
   attachSession, createSession, resumeSession, switchTo, selectSession,
-  forkSession, welcomeLines, updateTitle,
+  forkSession, welcomeLines, updateTitle, disposeLiveSession,
 } from './services.js'
 import { installSessionsCommand } from './commands/sessions.js'
 import { installWorkspaceCommand } from './commands/workspace.js'
@@ -237,7 +237,14 @@ export function installSessions(app: App): void {
           app.slices.sessions.historyById.set(h.id, { ...h, title: cachedTitle(h) ?? h.title })
         }
       }
-    } catch {}
+    } catch (err) {
+      // A storage read failure must be VISIBLE: silently keeping stale/empty
+      // history made /sessions look like "all sessions vanished" and boot
+      // would quietly create a fresh session (pre-review: bare catch {}).
+      const e = err instanceof Error ? err : new Error(String(err))
+      app.exitDiag('refreshHistory-failed', e.message)
+      app.notice(`会话历史加载失败: ${e.message}（/sessions 列表可能不完整）`)
+    }
   }
 
   app.slices.sessions.refreshList = () => {
@@ -264,6 +271,7 @@ export function installSessions(app: App): void {
   app.slices.sessions.switchTo = (id) => switchTo(app, id)
   app.slices.sessions.selectSession = (id) => selectSession(app, id)
   app.slices.sessions.forkSession = (directive) => forkSession(app, directive)
+  app.slices.sessions.disposeLiveSession = (id) => disposeLiveSession(app, id)
   // -- the 10 slash commands, one file each (self-registering) --
   installSessionsCommand(app)
   installWorkspaceCommand(app)

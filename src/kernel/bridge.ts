@@ -156,10 +156,21 @@ export async function connectNvim(sockPath: string, { timeoutMs = 10000 }: { tim
       continue
     }
     const nvim = attach({ reader: socket, writer: socket })
+    // channelId resolves once nvim_get_api_info answered. A user plugin
+    // that blocks the child's event loop during startup (a synchronous
+    // heavy config) would hang this await FOREVER with no watchdog —
+    // bound the handshake and retry the connection like any other startup
+    // hiccup. (Pre-review: only the retry LOOP had a deadline.)
+    let handshakeTimer: ReturnType<typeof setTimeout> | undefined
+    const handshakeTimeout = new Promise<never>((_, reject) => {
+      handshakeTimer = setTimeout(() => reject(new Error('nvim channelId handshake timeout')), Math.min(Math.max(0, deadline - Date.now()), 3000))
+    })
     try {
-      await nvim.channelId // resolves once nvim_get_api_info answered
+      await Promise.race([nvim.channelId, handshakeTimeout])
+      clearTimeout(handshakeTimer)
       return nvim
     } catch (err) {
+      clearTimeout(handshakeTimer)
       lastErr = err as Error
       socket.destroy()
       await sleep(100)

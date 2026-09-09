@@ -55,6 +55,7 @@ export function installRuntime(app: App): void {
     hostDisposers: [],
     spinnerTimer: null,
     spinnerIndex: 0,
+    childExitDuringBoot: null,
     idleRefreshTimer: null,
     boot: async () => {},
   })
@@ -75,8 +76,11 @@ export async function boot(app: App): Promise<void> {
   installLifecycle(app)
   // Headless e2e plumbing: installed up-front so the session/event wiring
   // below can reference dumpAndQuit before any event lands (the old order
-  // declared it after the wiring — a TDZ landmine).
+  // declared it after the wiring — a TDZ landmine). The watchdog is armed
+  // BEFORE the first await: a hung boot (nvim connect / resume replay)
+  // must still dump-and-quit in e2e instead of waiting forever.
   const headlessCtl = installHeadless(app)
+  headlessCtl.startWatchdog()
 
   try {
     const spawned = await spawnNvim({
@@ -88,9 +92,21 @@ export async function boot(app: App): Promise<void> {
         // A child exit we initiated (teardown/:qa!) must not re-trigger
         // quit(); only a spontaneous nvim death closes the UI.
         app.exitDiag('nvim-exit', `code=${code}`, `signal=${signal}`, `disposed=${app.slices.runtime.disposed}`)
-        if (!app.slices.runtime.disposed) void app.quit(0)
+        if (!app.slices.runtime.disposed) {
+          // Boot is still connecting (startup config error, spawn failure):
+          // do NOT pre-empt with quit(0) — the pending connect will fail and
+          // boot's catch must exit NON-ZERO. (Pre-review: onExit's quit(0)
+          // set quitting=true, so the catch's quit(1) became a no-op and
+          // every startup failure exited 0.)
+          if (app.slices.runtime.nvim === null) {
+            W(app.slices.runtime).childExitDuringBoot = { code, signal }
+            return
+          }
+          void app.quit(0)
+        }
       },
     })
+    if (app.slices.runtime.disposed) return
     W(app.slices.runtime).child = spawned.child
 
     // nvim now owns the terminal; keep our own process silent so DSH
@@ -101,10 +117,13 @@ export async function boot(app: App): Promise<void> {
     console.error = silent
 
     const nvim = await connectNvim(spawned.sockPath)
+    if (app.slices.runtime.disposed) return
     W(app.slices.runtime).nvim = nvim
     const channelId = await nvim.channelId
+    if (app.slices.runtime.disposed) return
     W(app.slices.runtime).channelIdValue = channelId
     await app.luaCall('require("dsh_tui").attach(...)', [channelId])
+    if (app.slices.runtime.disposed) return
     // Extension handshake: agree on the API major version (a mismatch
     // surfaces as a boot notice).
     void app.luaCall('require("dsh_tui.api").handshake(...)', [EXT_API_VERSION])
@@ -169,7 +188,7 @@ export async function boot(app: App): Promise<void> {
 
     // 3) boot sequence.
     await resumeOrCreate(app)
-    headlessCtl.startWatchdog()
+    if (app.slices.runtime.disposed) return
     drainPendingInput(app)
     app.exitDiag('boot-complete', `active=${app.slices.sessions.activeId}`)
     announceReady(app)
@@ -178,8 +197,12 @@ export async function boot(app: App): Promise<void> {
     // After teardown started, in-flight RPC writes can fail with EPIPE —
     // that is the shutdown race, not a product failure.
     if (app.slices.runtime.disposed) return
-    app.exitDiag('fatal', err instanceof Error ? (err.stack ?? err.message) : String(err))
-    console.error('[dsh-nvim-tui] fatal:', err)
+    const bootExit = app.slices.runtime.childExitDuringBoot
+    app.exitDiag('fatal', err instanceof Error ? (err.stack ?? err.message) : String(err),
+      bootExit !== null ? `nvim exited during boot: code=${bootExit.code} signal=${bootExit.signal}` : '')
+    // console.error is hijacked to silent after spawn (the child owns the
+    // terminal) — a boot fatal MUST still reach the user/CI: stderr direct.
+    process.stderr.write(`[dsh-nvim-tui] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`)
     void app.quit(1)
   }
 }

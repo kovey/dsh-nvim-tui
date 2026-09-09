@@ -142,6 +142,7 @@ export declare class FeedRenderer {
     extCards: Map<string, {
         start: number;
         length: number;
+        merged: ExtCardOpts;
     }>;
     extCardSeq: number;
     /** Interactive cards (P4-③): cardId → action surface. */

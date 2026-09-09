@@ -9,18 +9,21 @@
  * @module dsh-nvim-tui/kernel/ext-types
  */
 import type { SessionEvent } from './types.js';
-/** Nvim execution layer: the FULL-TRUST raw editor surface. There is NO
- *  method whitelist — any dsh plugin holding the service can run arbitrary
- *  nvim code (vim.fn.system, vim.cmd…). Treat ctx.get('nvim-tui') as
- *  equivalent to a shell on the user's machine; only load trusted plugins. */
+/** Nvim execution layer. `request` accepts nvim_* API methods only and
+ *  `call` is restricted to a READ-ONLY vim.fn whitelist (no execution
+ *  primitives); ARBITRARY execution lives behind `lua` / `ex` (declared by
+ *  capabilities.unrestrictedExec). Any dsh plugin holding the service can
+ *  run arbitrary nvim code through those two — treat ctx.get('nvim-tui')
+ *  as equivalent to a shell on the user's machine; only load trusted
+ *  plugins. */
 export interface ExtNvimLayer {
     /** nvim_* API request (msgpack-RPC). Optional timeout rejects instead of
      *  wedging the caller — nvim keeps executing, so calls must be
-     *  idempotence-safe. */
+     *  idempotence-safe. Non-nvim_* methods reject. */
     request(method: string, args?: unknown[], opts?: {
         timeoutMs?: number;
     }): Promise<unknown>;
-    /** vim.fn call. */
+    /** vim.fn call — read-only whitelist only (exec primitives reject). */
     call(fn: string, args?: unknown[]): Promise<unknown>;
     /** Arbitrary Lua evaluation (escape hatch; prefer the typed layers). */
     lua(code: string, args?: unknown[]): Promise<unknown>;

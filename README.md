@@ -52,8 +52,7 @@ dsh --profile nvim-tui
   [docs/EXT-API.md](docs/EXT-API.md)）
 - **引用与补全**：`@` 文件引用 + **@session 会话引用**（官方规范 mention）；
   `/` 补全菜单含全部命令 + 技能条目
-- **多模态识图**：原生 image 直发，或经 `dsh-vision-bridge` 本地 OCR 转文字；
-  `<C-v>` 剪贴板读图、`/image <路径>`、粘贴 data URL
+- **多模态识图**：原生 image 直发；模型不支持 image 时**自动临时切换官方识图模型**（deepseek-v4-flash-vision-exp 等），回合结束切回；`<C-v>` 剪贴板读图、`/image <路径>`、粘贴 data URL
 - **文件变更 diff**：每个改动文件的工具调用（write/edit/replace/patch/fs 等）
   自动对比改动前后内容，`✎ 新增/修改/删除 路径 (+N −M)` 高亮块渲染进聊天流
   （绿色 `+` / 红色 `-` / 上下文行，大文件自动截断）——每轮改了什么都一目了然
@@ -265,23 +264,19 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 
 图片经 harness 的 durable attachment 管线发送——TUI 读字节 →
 `attachments.saveImage()` 校验并落库 → 用户消息携带稳定 `image` 块 →
-LLM 适配器在请求时解析为 data URL。两条能力路径：
+LLM 适配器在请求时解析为 data URL。能力路径：
 
-1. **原生识图**：模型目录声明 `inputModalities: [text, image]`，且网关对模型
-   透传 `image_url`（自建 text-only 网关会以
-   `unknown variant image_url, expected text` 拒绝）；
-2. **识图桥**（text-only 模型/网关推荐）：装配 `dsh-vision-bridge`（提供
-   `visionBridge` 服务），图片在进入模型前经本地 macOS Vision OCR
-   （`~/.dsh/scripts/feishu-ocr`，零成本离线；可选远程视觉模型兜底）转成
-   文字描述注入，模型读文字"看图"。此时模型目录应保持 `[text]`，否则桥会
-   按"原生识图"跳过转换。
+1. **原生识图**：当前模型声明 `inputModalities: [text, image]` 且网关透传
+   `image_url` → 直接发送；
+2. **官方识图模型自动切换**：当前模型不含 image 模态时，TUI 临时切换到
+   目录中声明的官方识图模型（`deepseek-v4-flash-vision-exp` /
+   `deepseek-vl2` / `deepseek-vl`，按此顺序探测），**回合结束自动切回**原
+   模型（连续图片消息会延长切换窗口）。目录中没有任何带 image 模态的模型
+   时发送前 fail fast，明确报错而不是让回合死在适配器里
+   （`UNSUPPORTED_CONTENT`）。
 
-发送前 TUI 会预检：模型原生识图 → 直发；有识图桥 → 提示"经识图桥转成文字
-描述后发送"；两者皆无 → 明确报错而不是让回合死在适配器里。
-
-> 旧会话遗留：装桥之前失败发送留下的带图消息会永久留在会话历史里，导致该会话
-> 后续每轮都被适配器拒绝——用 `/rewind` 回退到带图消息之前即可修复（新会话
-> 不会再产生这类残留）。
+> 注：早期版本的 `dsh-vision-bridge` OCR 桥路径已移除（v0.3.2），识别统一走
+> 官方识图模型。旧会话遗留的带图失败消息仍可用 `/rewind` 回退修复。
 
 ## 会话管理
 
@@ -313,7 +308,7 @@ LLM 适配器在请求时解析为 data URL。两条能力路径：
   **TTFT / tok/s**（读官方 sessionStats 投影）· 会话时长 · 预估成本
   （内置公开定价表，未知模型诚实降级不显示）· provider 路由 · ⏳ 排队计数 ·
   ⚙ 运行中 jobs · 📋 待办计数 · `⇢` 子代理寻址；running 时带旋转动画 +
-  运行时长，180ms 刷新；idle 30s 低频刷新
+  运行时长，450ms 刷新；idle 30s 低频刷新
 - **活动面板（`<C-o>`）**：思考过程 + 工具使用记录收进右侧面板，聊天区只显示
   浮动活动指示（`·· thinking · 12.3s` / `🔧 bash · 2.1s`），**钉在聊天框最底部**
   （内容始终在其上方流入，不会被流式输出顶到中间），活动结束即消失、
@@ -341,8 +336,9 @@ LLM 适配器在请求时解析为 data URL。两条能力路径：
 ## 用户配置与插件
 
 默认加载你自己的 nvim 配置和插件（colorscheme / statusline / LSP 等全部生效）：
-dsh_tui 在 `VimEnter`（用户配置加载完成后）接管窗口布局，并会在 300ms/1.2s 时
-检查布局是否被插件（如 dashboard）顶掉并自动重建。
+dsh_tui 在 `VimEnter`（用户配置加载完成后）接管窗口布局；布局保护是**事件驱动**的
+（启动守卫窗口期关闭外来窗、WinClosed 重建输入窗、窗口归属守卫；300ms/1.2s 的
+defer_fn 用于禁用外部补全插件干扰）。
 如需纯净启动（不加载用户配置），给 runner 行加 `config: { loadUserConfig: false }`；
 沙箱/CI 的 headless 测试模式会自动隔离 XDG 目录。
 
@@ -411,6 +407,7 @@ README / UPGRADE）；peer 依赖
 src/                          TypeScript 源码（strict，唯一手写源；根目录只留 index.ts）
   index.ts    组合根：build App → install 各模块 → boot（对应 init.lua 门面）
   kernel/     内核：公共接口与功能（业务模块唯一外联面之一）
+    index.ts      内核 barrel（历史导出层；业务模块直连 kernel/*.js）
     app.ts       kernel 原语 + 六域 slices（runtime/sessions/ui/ext/trans/agent；对应 state.lua 的角色）
     types.ts     共享类型层：SessionEvent 判别联合 + 宿主服务结构接口
     ext-types.ts 扩展 API 公共类型契约（ext-api 实现 + 反出口）
@@ -436,7 +433,7 @@ src/                          TypeScript 源码（strict，唯一手写源；根
   ext-api/    扩展 API 域：install + handleDshExtRequest + announceReady + 4 个 dsh-ext 通知
   deps/       依赖体检：index.ts + services.ts（体检机制）+ commands/deps.ts
   market/     插件市场：index.ts + progress.ts（数据层 + 安装进度 UI）+ commands/market.ts
-lib/                          tsc 编译产物（.js + .d.ts；dsh 加载入口 main → lib/index.js）lib/                          tsc 编译产物（.js + .d.ts；dsh 加载入口 main → lib/index.js）
+lib/                          tsc 编译产物（.js + .d.ts；dsh 加载入口 main → lib/index.js）
 nvim/lua/dsh_tui/             nvim 侧 UI（按职责拆分的 Lua 模块）
   init.lua      公共门面：完整的 M.* API 转发 + 跨模块意图编排（submit/菜单路由）+ start()
   state.lua     共享可变状态（窗口/buffer 句柄的唯一来源，M._* 兼容字段的惰性别名）
@@ -455,11 +452,12 @@ nvim/lua/dsh_tui/             nvim 侧 UI（按职责拆分的 Lua 模块）
   popup_core.lua 通用浮窗族（审批 / 提问 / 选择器）+ 底部提示栏
   popups.lua    专用浮窗（技能详情、子代理视图、目录选择、进度、会话列表）
   subagent_chat.lua 子代理对话窗（转录浮窗 + 内嵌输入行，Enter 发送 / 历史 / 动态高度）
-docs/                         文档（EXT-API.md 插件开放接口参考）
+  full_input.lua <C-e> 全屏输入编辑器（草稿进出、Enter 换行、回车发送）
+docs/                         文档（EXT-API.md 插件开放接口参考 + ARCHITECTURE.md 架构说明）
 examples/                     示例插件（examples/nvim/git-panel.lua + examples/dsh-plugin/）
 scripts/smoke.ts              无头冒烟测试（Node ≥23.6 直跑）
 scripts/check-arch.mjs        架构边界守卫（并入 npm run check：App kernel-only / slice 域名白名单 / 跨域状态写零容忍）
-scripts/app-ops-check.mjs      域操作注入运行时守卫（并入 npm run check：19 个 ops 全量注入断言）
+scripts/app-ops-check.mjs      域操作注入运行时守卫（并入 npm run check：从 AppSlices d.ts 动态派生，全部域 op 注入断言）
 scripts/e2e.ts                真模型端到端回归
 tsconfig.json / tsconfig.scripts.json   主构建 / scripts 检查配置
 cordis.patch.yml              bundle patch：insert nvim-tui-runner 行

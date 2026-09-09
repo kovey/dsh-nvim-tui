@@ -6,7 +6,12 @@ import type { App } from '../../kernel/app.js'
 
 
 /** /restart — respawn the dsh command and exit this process. */
-export const restartCommand = (app: App) => {
+export const restartCommand = async (app: App) => {
+  const ok = await app.openPicker(t('确认重启'), [
+    { label: t('重启 dsh 进程'), value: 'yes' },
+    { label: t('取消'), value: 'no' },
+  ])
+  if (ok !== 'yes') return
   try {
     const next = spawn(process.argv[0], process.argv.slice(1), { stdio: 'inherit', detached: true })
     next.unref()

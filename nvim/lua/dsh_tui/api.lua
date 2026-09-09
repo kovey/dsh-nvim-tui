@@ -779,12 +779,13 @@ function API.region_claim(id, opts)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   require('dsh_tui.popup_core').lock_display_keys(buf)
   -- q/Esc release the region (a display surface; closing is the one edit
-  -- the owner does not need to Nop).
+  -- the owner does not need to Nop). Pass the SIDE explicitly — the default
+  -- ('right' via reg.panel) left top/bottom regions unclosable (pre-review).
   vim.api.nvim_buf_set_keymap(buf, 'n', 'q',
-    string.format('<Cmd>lua require("dsh_tui.api").region_release(%q)<CR>', id),
+    string.format('<Cmd>lua require("dsh_tui.api").region_release(%q, %q)<CR>', id, side),
     { noremap = true })
   vim.api.nvim_buf_set_keymap(buf, 'n', '<Esc>',
-    string.format('<Cmd>lua require("dsh_tui.api").region_release(%q)<CR>', id),
+    string.format('<Cmd>lua require("dsh_tui.api").region_release(%q, %q)<CR>', id, side),
     { noremap = true })
   local vertical = side == 'right' or side == 'left'
   local cfg
@@ -804,7 +805,14 @@ function API.region_claim(id, opts)
   cfg.border = 'rounded'
   cfg.style = 'minimal'
   cfg.zindex = 30 -- above the chat, below menus/approvals (reasoning tier)
-  local win = vim.api.nvim_open_win(buf, false, cfg)
+  -- Small screens / bad geometry make nvim_open_win throw: keep the
+  -- documented `{ err = message }` contract instead of surfacing a raw
+  -- exception into the Node caller (pre-review: unhandled rejection).
+  local ok, win = pcall(vim.api.nvim_open_win, buf, false, cfg)
+  if not ok then
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    return { err = 'region_claim failed: ' .. tostring(win) }
+  end
   vim.wo[win].number = false
   vim.wo[win].signcolumn = 'no'
   vim.wo[win].cursorline = false

@@ -56,7 +56,7 @@ const INTENTS: IntentSpec[] = [
     name: 'exit',
     exact: [['退出'], ['退出dsh'], ['退出程序'], ['离开'], ['exit'], ['quit dsh']],
   },
-  { name: 'quit', exact: [['quit'], ['q']] },
+  { name: 'quit', exact: [['quit']] },
   { name: 'restart', exact: [['重启'], ['重启dsh'], ['restart']] },
   { name: 'clear', exact: [['清屏'], ['清空屏幕'], ['清空'], ['清屏一下'], ['clear'], ['clear screen'], ['cls']] },
   { name: 'stop', exact: [['停止'], ['停下'], ['停'], ['stop'], ['halt']] },
@@ -132,7 +132,10 @@ const INTENTS: IntentSpec[] = [
   // -- approval / display ----------------------------------------------------
   {
     name: 'yolo',
-    exact: [['yolo'], ['开启yolo'], ['关闭yolo'], ['yolo on'], ['yolo off']],
+    // '开启yolo'/'关闭yolo' carry FIXED args (the bare toggle would flip
+    // the OPPOSITE way 50% of the time); 'yolo on/off' already match the
+    // pattern below and are dropped from the exact list.
+    exact: [['yolo'], ['开启yolo', 'on'], ['关闭yolo', 'off']],
     patterns: [{ re: /^yolo[:： ]*(on|off)$/i, arg: (m) => m[1] }],
   },
   { name: 'density', exact: [['紧凑模式'], ['紧凑卡片'], ['density']] },

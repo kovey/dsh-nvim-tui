@@ -9,7 +9,7 @@ nvim 窗口、读写输入、订阅会话事件：
 | Lua 面 | TUI 实例内的 nvim 插件（用户配置里加载） | `require('dsh_tui').api` | `api.version` |
 
 `require('dsh_tui')` 的其余 `M.*` 门面是**内部接口**（runner + smoke 测试专用），
-不做稳定性承诺；`src/app.ts` 的 App 字段同理。
+不做稳定性承诺；`src/kernel/app.ts` 的 App 字段同理。
 
 ## 一、总体模型
 
@@ -310,7 +310,7 @@ Node → Lua: runner 调 api.rpc_dispatch(extId, method, args) / api.rpc_event(.
   notice 提示（`扩展接口握手失败/版本不匹配`）。
 - 弃用策略：稳定面字段只增不改；确需破坏时先加新名、旧名保留一个 minor 版本
   并在 notice 中提示。
-- **不承诺兼容**：`require('dsh_tui').M.*` 其余字段、`src/app.ts` 的 App、所有
+- **不承诺兼容**：`require('dsh_tui').M.*` 其余字段、`src/kernel/app.ts` 的 App、所有
   `dsh-*` 内部通知、`S._*` 状态字段。
 - 能力语义：`capabilities()` 的 `card/float/picker` 在 headless 下同样可用
   （内容落 e2e dump，便于测试）；`panel` 在 headless 下被禁用并返回 null。

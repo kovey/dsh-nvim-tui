@@ -9,7 +9,7 @@ import type { App } from '../../kernel/app.js'
  *  (`llm-<provider>.models`, the same catalog the vision-model switch and
  *  /settings overview use). Best-effort: returns [] when the section is
  *  absent or the schema is unrecognized. */
-const configuredModels = (app: App, providerId: string, settingsNs?: string): string[] => {
+export const configuredModels = (app: App, providerId: string, settingsNs?: string): string[] => {
   const settings = app.svc('settings')
   if (typeof settings?.describe !== 'function') return []
   const wanted = new Set<string>([`llm-${providerId}.models`])
@@ -35,23 +35,17 @@ const configuredModels = (app: App, providerId: string, settingsNs?: string): st
   return []
 }
 
-/** /models — provider/model catalog popup (sessions-style browse + act):
- *  current selection, live providers with their configured models
- *  (Enter switches), and not-yet-assembled providers pointing at their
- *  settings section. */
-export const modelsCommand = async (app: App): Promise<void> => {
+/** Shared catalog rows for the /models directory AND the /model picker:
+ *  current header (`act:current`), provider group rows (`prov:<id>`),
+ *  switchable model rows (`switch:{provider,model}`). null = llm service
+ *  absent; [] = no providers registered. */
+export const modelCatalogRows = (app: App): Array<{ label: string; value: string; active?: boolean }> | null => {
   const sel = app.slices.agent.currentSelection()
   const llm = app.runtimeCtx.get('llm') as LlmService | undefined
-  if (llm === undefined) {
-    app.notice(t('（llm 服务未装配）'))
-    return
-  }
+  if (llm === undefined) return null
   const live = llm.listProviders?.() ?? []
   const configurable = llm.listConfigurableProviders?.() ?? []
-  if (live.length === 0 && configurable.length === 0) {
-    app.notice(t('（没有已注册的 provider；用 /settings 查看模型配置）'))
-    return
-  }
+  if (live.length === 0 && configurable.length === 0) return []
   const rows: Array<{ label: string; value: string; active?: boolean }> = [{
     label: `▸ 当前模型: ${sel.provider}/${sel.model}${sel.reasoningEffort ? ` ◎${sel.reasoningEffort}` : ''}`,
     value: 'act:current',
@@ -82,6 +76,24 @@ export const modelsCommand = async (app: App): Promise<void> => {
       label: `○ ${pid} · ${String(p.displayName ?? '')} · 未装配（配置段 ${String(p.settingsNs ?? '?')}）`,
       value: `prov:${pid}`,
     })
+  }
+  return rows
+}
+
+/** /models — provider/model catalog popup (sessions-style browse + act):
+ *  current selection, live providers with their configured models
+ *  (Enter switches), and not-yet-assembled providers pointing at their
+ *  settings section. */
+export const modelsCommand = async (app: App): Promise<void> => {
+  const sel = app.slices.agent.currentSelection()
+  const rows = modelCatalogRows(app)
+  if (rows === null) {
+    app.notice(t('（llm 服务未装配）'))
+    return
+  }
+  if (rows.length === 0) {
+    app.notice(t('（没有已注册的 provider；用 /settings 查看模型配置）'))
+    return
   }
   const picked = await app.openPicker(t('模型目录（Enter 切换 · 复用 /model 语义）'), rows)
   if (picked === null) return

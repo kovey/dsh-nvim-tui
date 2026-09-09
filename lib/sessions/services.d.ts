@@ -1,14 +1,16 @@
 import type { AgentHandle } from '../kernel/types.js';
 import type { App, ModelRef } from '../kernel/app.js';
-export declare const attachSession: (app: App, handle: AgentHandle, modelRef: ModelRef) => Promise<string>;
+export declare const attachSession: (app: App, handle: AgentHandle, modelRef: ModelRef, opts?: {
+    background?: boolean;
+}) => Promise<string>;
 /** Empty-state hero: big DSH·TUI banner + title ABOVE the whale, usage
  *  hints BELOW it (the feed centers the whole block). */
 export declare const createSession: (app: App, cwdPath?: string) => Promise<string | undefined>;
-/** Resume a persisted session, replay its history into the chat. */
-/** Resume a persisted session WITHOUT switching the active view — used by
- *  row actions (e.g. rename) that need a live session but must not move the
- *  user away from the current chat. Returns the live id, or undefined. */
 export declare const ensureLiveSession: (app: App, id: string) => Promise<string | undefined>;
+/** Dispose one live session that is NOT the active view (background-resumed
+ *  sessions must not accumulate forever — each holds an agent handle, a feed
+ *  and nvim chat/reasoning buffers). */
+export declare const disposeLiveSession: (app: App, id: string) => Promise<void>;
 export declare const resumeSession: (app: App, id: string) => Promise<string | undefined>;
 /** Terminal title: active session title + model (OSC 2 via nvim). */
 export declare const switchTo: (app: App, id: string) => Promise<void>;
