@@ -786,8 +786,6 @@ export class FeedRenderer {
       case 'turn/start':
         this.base.push('', '── turn ──')
         this.turnStartedAt = Date.now()
-        this.todoLiveRows = []
-        this.lastTodoKey = ''
         this.turnMarkerBase = this.base.length
         if (!history && this.reasoningBuf !== null) {
           // The panel is a per-turn activity log (live turns only).
@@ -799,12 +797,9 @@ export class FeedRenderer {
         this.schedule()
         break
       case 'turn/end':
-        // An incomplete todo panel at turn end lands as the turn's final
-        // state (the NEXT turn starts a fresh pinned block).
-        if (this.todoLiveRows.length > 0) {
-          this.base.push(...this.todoLiveRows)
-          this.todoLiveRows = []
-        }
+        // The incomplete todo panel STAYS pinned across turns (standing
+        // board, same slot as the jobs board): content can never push it
+        // into the transcript, and the next todo/write updates it in place.
         this.commitReasoning()
         this.commitTail()
         this.base.push('── turn end ──')
@@ -815,9 +810,10 @@ export class FeedRenderer {
       case 'todo/write': {
         // Standing todo list (todo_write): while ANY item is incomplete the
         // block is PINNED at the bottom of the view (the thinking row stays
-        // the bottom-most line below it); once every item is ✓ the block
-        // COMMITS into base as ordinary chat content. Empty todos clear
-        // the pinned slot without committing.
+        // the bottom-most line below it) — across turns, like the jobs
+        // board; once every item is ✓ the block COMMITS into base as
+        // ordinary chat content (one-shot per identical list). Empty todos
+        // clear the pinned slot without committing.
         const todos = event.data?.todos ?? []
         const rows: string[] = []
         if (todos.length > 0) {
@@ -833,7 +829,9 @@ export class FeedRenderer {
         }
         const allDone = todos.length > 0 && todos.every((td) => td.status === 'completed')
         if (allDone) {
-          // One-shot per turn: identical re-emissions skip the duplicate commit.
+          // One-shot per identical list: repeated re-emissions (models
+          // repeat the whole list) skip the duplicate commit — the key
+          // spans turns so a stale re-emission cannot re-commit later.
           const key = rows.join('\n')
           if (key !== this.lastTodoKey) {
             this.base.push(...rows)

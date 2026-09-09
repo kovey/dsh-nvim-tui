@@ -682,17 +682,27 @@ description:
   const tThink2 = tLines.findIndex((l: string) => l.startsWith('·· thinking'))
   assert.ok(tHeader2 >= 0 && tHeader2 < tThink2, 'completed todo committed into the chat flow (above the tail/thinking)')
   assert.ok(tHeader2 < tLines.length - 2, 'committed block no longer occupies the pinned slot')
-  // turn/end with an incomplete todo → commits as the turn's final state
+  // turn/end with an incomplete todo → STAYS pinned (standing board, the
+  // jobs-board pattern): content can never push it into the transcript.
   feedB.applyEvent({ type: 'todo/write', time: 7050, data: { todos: [
     { content: '收尾', status: 'in_progress' } ] } })
   feedB.applyEvent({ type: 'turn/end', time: 7060, data: {} })
   await new Promise((r) => setTimeout(r, 250))
   tLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
-  assert.equal(tLines.filter((l: string) => l.startsWith('📋 待办')).length, 2, 'incomplete todo at turn end commits (two blocks total in history)')
+  assert.equal(tLines.filter((l: string) => l.startsWith('📋 待办')).length, 2, 'one committed all-✓ block in history + one pinned standing board')
+  assert.ok(tLines[tLines.length - 2]?.startsWith('📋 待办'), 'incomplete todo keeps the bottom pinned slot after turn end')
 
   // 6a2b. jobs pinned board: live updates in the bottom slot, all-terminal
   // commits the final state into base.
   feedB.applyEvent({ type: 'turn/start', time: 7070, data: { turn: 3 } })
+  await new Promise((r) => setTimeout(r, 250))
+  tLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.ok(tLines[tLines.length - 2]?.startsWith('📋 待办'), 'standing todo board survives turn/start (cross-turn pinning)')
+  // Empty todos clear the pinned slot without committing.
+  feedB.applyEvent({ type: 'todo/write', time: 7071, data: { todos: [] } })
+  await new Promise((r) => setTimeout(r, 250))
+  tLines = await nvim.request('nvim_buf_get_lines', [chatB.chatBuf, 0, -1, false])
+  assert.equal(tLines.filter((l: string) => l.startsWith('📋 待办')).length, 1, 'empty todo/write clears the pinned slot (only the committed block remains)')
   const jobsRows1 = ['', '⚙ 任务 2 项 · 1 运行中', '  ⏳ lint', '  · test']
   feedB.setJobsBoard(jobsRows1)
   feedB.applyEvent({ type: 'assistant/chunk', time: 7080, data: { chunk: { type: 'reasoning-delta', text: '任务跑着' } } })

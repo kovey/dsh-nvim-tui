@@ -41,6 +41,20 @@
   可选服务不再假成功；refreshHistory 存储失败可见。
 - **会话生命周期**：ensureLiveSession 并发去重；rename 后台恢复会话完成/取消后
   dispose；后台恢复不再触碰全局视图状态。
+- **状态栏空白回归修复（2026-09-09）**：上一批 S6 修复让 boot 恢复路径的 attach
+  走 `background: true`，不再设置全局视图指针——`chatWinId` 恒为 null，
+  `updateStatusline` 首行即返回，恢复会话后聊天状态栏（权限模式/模型/缓存/
+  tokens/耗时/成本/spinner）整条空白。修复为 `switchTo` 在 `set_active` 后从
+  Lua `ids()` 同步视图指针（chatWin 本就是共享窗口、reasoningWin 是全局面板
+  状态，同步幂等），S6 的「行操作不移动可见视图」语义保留。headless dump 新增
+  `## statusline` 段，使该回归可被 e2e 断言。
+- **待办面板改为常驻钉住（2026-09-09）**：原实现把待办面板当「回合内状态」——
+  `turn/start` 清空、`turn/end` 提交进转录，回合一结束待办块就被后续聊天内容
+  顶进历史（且下回合的 todo/write 只在回合内实时更新）。现与任务板同一机制：
+  未完成列表**跨回合钉在聊天区底部**（thinking 行之上），每次 todo/write 原位
+  实时刷新；全部 ✓ 时一次性提交终态入转录（去重键跨回合，重复重放不再堆叠）；
+  空列表只清钉住槽不入转录。smoke 断言同步更新（turn/end 不再提交、跨回合
+  钉住、空列表清槽）。
 - **测试可信度**：smoke graceful-exit 不再静默放行（kill 路径硬失败）；
   面板宽度断言改为开面板前取样；`npm run smoke` 先构建；e2e 校验 harness 退出码。
 - **优雅退出根修（REVIEW §8 专项排查）**：winbar `OptionSet` 重断言在 nvim 退出

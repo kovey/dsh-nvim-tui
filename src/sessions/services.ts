@@ -203,6 +203,26 @@ export const switchTo = async (app: App, id: string) => {
   app.slices.ext.setPendingCardInput(null)
   WSS(app.slices.sessions).activeId = id
   await app.lua.setActive(id)
+  // Sync the runtime's GLOBAL view pointers with the Lua side. The resume
+  // path attaches with background:true (S6 — row actions must not move the
+  // visible view), so setChatWin/setReasoning never ran for it; without this
+  // sync updateStatusline early-returns (chatWinId === null) and the stats
+  // bar stays blank for the whole resumed session. chatWin is the SHARED
+  // chat window and reasoningWin the global panel state, so ids() (not
+  // ensure_chat) is the accurate source right after set_active.
+  try {
+    const ids = await app.luaCall('return require("dsh_tui").ids()', []) as {
+      chatWin?: unknown; reasoningOpen?: unknown; reasoningWin?: unknown
+    } | null | undefined
+    if (ids !== null && ids !== undefined && typeof ids === 'object') {
+      if (Number.isInteger(ids.chatWin)) {
+        app.slices.runtime.setChatWin(ids.chatWin as number)
+      }
+      app.slices.runtime.setReasoning(
+        ids.reasoningOpen === true,
+        Number.isInteger(ids.reasoningWin) ? (ids.reasoningWin as number) : null)
+    }
+  } catch { /* best-effort: the next session event re-syncs the view */ }
   app.slices.ui.ensureSpinner()
   app.slices.ui.updateStatusline()
   updateTitle(app)
