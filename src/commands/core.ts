@@ -9,6 +9,7 @@
  * @module dsh-nvim-tui/commands
  */
 import { appendFileSync, readdirSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { isAbsolute, join } from 'node:path'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -16,6 +17,7 @@ import { t } from '../kernel/i18n.js'
 import { matchIntent } from './nlcmd.js'
 import { activeSessionCwd } from '../kernel/app.js'
 import { routeDifficultyForTurn } from '../kernel/difficulty.js'
+import { findVisionModel } from '../kernel/vision.js'
 import { readClipboardImage, splitImageDataUrls, parseImageDataUrl } from '../feed/images.js'
 import { queueSubagentPromptKey } from '../kernel/types.js'
 import type { ApprovalRequest, InboxLike, LlmService, MessageContent, SaveImageAttachment } from '../kernel/types.js'
@@ -61,24 +63,17 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
       return
     }
     // 官方识图路径：当前模型声明 image 输入 → 直接发送；否则临时切换到
-    // 官方识图模型（目录中的 deepseek-v4-flash-vision-exp 等），回合结束
-    // 自动切回原模型（boot.ts 的 turn/end 恢复）。目录里没有任何带 image
+    // 官方识图模型（0.1.5 默认目录里的 deepseek-flash / deepseek-v4-flash-
+    // vision-exp，以及自定义目录里任意声明 image 的模型），回合结束自动
+    // 切回原模型（boot.ts 的 turn/end 恢复）。目录里没有任何带 image
     // 模态的模型时 fail fast——不要让回合死在适配器里（UNSUPPORTED_CONTENT）。
     const llm = app.runtimeCtx.get('llm') as LlmService | undefined
     const sel = app.slices.agent.currentSelection()
     const curInfo = await llm?.resolveModelInfo(sel.provider, sel.model).catch(() => undefined)
     if (curInfo?.inputModalities?.includes('image') !== true) {
-      const candidates = ['deepseek-v4-flash-vision-exp', 'deepseek-vl2', 'deepseek-vl']
-      let visionModel: string | undefined
-      for (const id of candidates) {
-        const info = await llm?.resolveModelInfo(sel.provider, id).catch(() => undefined)
-        if (info?.inputModalities?.includes('image') === true) {
-          visionModel = id
-          break
-        }
-      }
+      const visionModel = await findVisionModel(app, sel.provider)
       if (visionModel === undefined) {
-        app.notice(`没有可用的官方识图模型（settings.yaml 的 llm-deepseek.models 需包含声明 image 模态的模型，如 deepseek-v4-flash-vision-exp）`)
+        app.notice(`没有可用的官方识图模型（settings.yaml 的 llm-deepseek.models 需包含声明 image 模态的模型，如 deepseek-flash 或 deepseek-v4-flash-vision-exp）`)
         return
       }
       rec.modelRef.current = { ...sel, model: visionModel }
@@ -142,6 +137,20 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
  */
 export const queueSubagentPrompt = async (app: App, parentAgent: unknown, childId: string, text: string) => {
   const subagentsSvc = app.svc('subagents')
+  // 0.1.5 public face: `subagents.prompt({requestId, parentSessionId,
+  // childSessionId, mode:'continuable', delivery:'queue', content}, signal)`.
+  if (typeof subagentsSvc?.prompt === 'function') {
+    await subagentsSvc.prompt({
+      requestId: randomUUID(),
+      parentSessionId: (parentAgent as { session?: { id?: string } } | undefined)?.session?.id ?? '',
+      childSessionId: childId,
+      mode: 'continuable',
+      delivery: 'queue',
+      content: [{ type: 'text', text }],
+    }, new AbortController().signal)
+    return
+  }
+  // pre-0.1.5 face: the symbol-keyed queue method on the service instance.
   const fn = subagentsSvc?.[queueSubagentPromptKey]
   if (typeof fn !== 'function') {
     throw new Error(t('子代理续聊不可用（subagents 服务未装配）'))
@@ -352,7 +361,7 @@ export const onInput = (app: App, text: string): void => {
         } else {
           const sessionTitle = app.svc('sessionTitle')
           if (sessionTitle === undefined) { app.notice(t('session-title 服务未装配')); return }
-          const live = app.runtimeCtx.sessions.get(target.id)
+          const live = app.liveSessions.get(target.id)
           if (live === undefined) { app.notice(t('会话已不在线（可能已退出或未成功恢复），无法重命名')); return }
           sessionTitle.rename(live, name)
           app.notice(t('会话标题已更新'))

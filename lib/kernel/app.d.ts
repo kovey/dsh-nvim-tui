@@ -3,14 +3,23 @@ import type { NeovimClient } from 'neovim';
 import type { FeedRenderer } from '../feed/feed.js';
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js';
 import type { RunnerConfig } from './types.js';
-import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspacesService } from './types.js';
+import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspacesService } from './types.js';
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
 /** The active session's working directory (falls back to the process cwd
  *  when no session is attached) — local-file commands must resolve against
  *  THIS, not process.cwd(): /search can resume a session from another
  *  project directory while the shell cwd stays put. */
 export declare const activeSessionCwd: (app: App) => string;
-export declare const BUILD_VERSION = "0.3.4";
+/** dsh 0.1.5 persistence.list() returns snapshots ({header, revision, …});
+ *  pre-0.1.5 hosts returned the header directly. Normalize either shape. */
+export declare const persistedHeader: (item: {
+    header?: unknown;
+    id?: string;
+} | null | undefined) => {
+    id?: string;
+    [key: string]: unknown;
+} | null;
+export declare const BUILD_VERSION = "0.3.5";
 export declare const BUILD_STAMP: string;
 export interface ServiceMap {
     appExit: (code?: number) => void;
@@ -477,6 +486,10 @@ export interface App {
     watchdogMs: number;
     dumpPath: string;
     errorLogPath: string;
+    /** Live-session store: dsh 0.1.5 removed the `sessions` service — this
+     *  adapter reads the agents registry (`Agent.session`). Never assign to
+     *  the cordis context (property set = service registration semantics). */
+    liveSessions: SessionStore;
     svc: <K extends keyof ServiceMap>(name: K) => ServiceMap[K] | undefined;
     luaCall: (code: string, args?: unknown[]) => Promise<any>;
     lua: {

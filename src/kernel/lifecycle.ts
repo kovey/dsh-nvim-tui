@@ -88,15 +88,23 @@ export function installLifecycle(app: App): void {
     app.slices.agent.drainQuestions()
     app.slices.agent.settlePicker(null)
     if (app.slices.sessions.activeId !== null) app.slices.sessions.recordState(app.slices.sessions.activeId)
-    // Persist every live session before disposing its agent. Bounded: an
+    // Persist every live session before disposing its agents. Bounded: an
     // active turn holds the session's append boundary open, and the flush /
     // handle disposal would wait for LLM retries (minutes). The QUIT path
     // races this; the effect-disposer path lets it drain.
     try {
-      for (const session of app.runtimeCtx.sessions.list()) {
-        try {
-          await app.runtimeCtx.sessions.flush(session)
-        } catch {}
+      // pre-0.1.5: per-session store flush; 0.1.5: service-wide
+      // sessionPersistence.flush() (handle dispose drains durably below).
+      const legacyFlush = (app.liveSessions as unknown as { flush?: (s: unknown) => Promise<unknown> }).flush
+      if (typeof legacyFlush === 'function') {
+        for (const session of app.liveSessions.list()) {
+          try { await legacyFlush(session) } catch {}
+        }
+      } else {
+        const svcFlush = (app.svc('sessionPersistence') as unknown as { flush?: () => Promise<unknown> } | undefined)?.flush
+        if (typeof svcFlush === 'function') {
+          try { await svcFlush() } catch {}
+        }
       }
     } catch {}
     for (const rec of app.slices.sessions.live.values()) {

@@ -263,7 +263,7 @@ export const forkSession = async (app: App, directive: string | undefined): Prom
     // (sessions.fork → child.events → agents.create with meta.seedLength)
     // cannot work in alpha.4: fork() enters a live child that create()
     // then collides on, and Session.events / meta.seedLength are gone.
-    const parent = app.runtimeCtx.sessions.get(app.slices.sessions.activeId)
+    const parent = app.liveSessions.get(app.slices.sessions.activeId)
     const events = parent === undefined ? [] : app.slices.trans.sessionEvents(parent)
     let lastEnd: SessionEvent | undefined
     for (let i = events.length - 1; i >= 0; i--) {

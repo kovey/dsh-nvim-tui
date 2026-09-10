@@ -52,7 +52,7 @@ dsh --profile nvim-tui
   [docs/EXT-API.md](docs/EXT-API.md)）
 - **引用与补全**：`@` 文件引用 + **@session 会话引用**（官方规范 mention）；
   `/` 补全菜单含全部命令 + 技能条目
-- **多模态识图**：原生 image 直发；模型不支持 image 时**自动临时切换官方识图模型**（deepseek-v4-flash-vision-exp 等），回合结束切回；`<C-v>` 剪贴板读图、`/image <路径>`、粘贴 data URL
+- **多模态识图**：原生 image 直发；模型不支持 image 时**自动临时切换官方识图模型**（deepseek-flash / deepseek-v4-flash-vision-exp 等），回合结束切回；`<C-v>` 剪贴板读图、`/image <路径>`、粘贴 data URL
 - **文件变更 diff**：每个改动文件的工具调用（write/edit/replace/patch/fs 等）
   自动对比改动前后内容，`✎ 新增/修改/删除 路径 (+N −M)` 高亮块渲染进聊天流
   （绿色 `+` / 红色 `-` / 上下文行，大文件自动截断）——每轮改了什么都一目了然
@@ -92,26 +92,26 @@ dsh plugin --profile tui update --latest kovey/dsh-nvim-tui      # 官方 tui pr
 dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui # 自定义 profile
 
 # 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
-dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.3.4"
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.3.5"
 ```
 
 > **宿主 dsh 升级与 rc.1 适配**见 [UPGRADE.md](./UPGRADE.md)。
-> v0.2.14 起 peer 依赖锚定 `^0.1.2-rc.1`，必须与 rc.1 宿主配套使用。
+> v0.3.5 起 peer 依赖锚定 `^0.1.5-rc.1`，必须与 0.1.5-rc.1 宿主配套使用。
 
 ## 运行依赖
 
 | 依赖 | 最低版本 | 说明 |
 |---|---|---|
-| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | **0.1.2-rc.1**（`next` dist-tag） | peer 依赖 `@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` `^0.1.2-rc.1`，由 profile 的 dsh 安装锚点提供 |
+| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | **0.1.5-rc.1**（`next` dist-tag） | peer 依赖 `@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` `^0.1.5-rc.1`，由 profile 的 dsh 安装锚点提供 |
 | [Neovim](https://neovim.io) | **0.9**（推荐 **0.10+**） | 0.10+ 完整体验（输入框四边边框、弹窗提示嵌入边框）；0.9 可运行但降级（`❯` 提示列与左边框以虚拟文本呈现、弹窗提示为分离提示条） |
 | Node.js | 23.6+ | 由 dsh 提供（`engines` 声明），一般无需单独安装 |
 
-> 开发与 CI 实测：dsh 0.1.2-rc.1 / nvim 0.12.5（smoke 全量在 0.12.4 与
+> 开发与 CI 实测：dsh 0.1.5-rc.1 / nvim 0.12.5（smoke 全量在 0.12.4 与
 > 0.12.5 双版本通过）。
 
 > 升级宿主：`npm i -g @deepseek-ai/dsh@next`（当前 next dist-tag 即
-> 0.1.2-rc.1；v0.2.14 起 peer 依赖锚定 `^0.1.2-rc.1`，与旧宿主
-> rc.2 / alpha.2 / alpha.5 不混用）。
+> 0.1.5-rc.1；v0.3.5 起 peer 依赖锚定 `^0.1.5-rc.1`，与旧宿主
+> 0.1.2-rc.1 及更早版本不混用；会话日志随宿主迁移到 V3 格式）。
 
 ## 开发安装（本地仓库直链）
 
@@ -127,7 +127,7 @@ dsh --profile nvim-tui
 > 本仓库根目录就是 bundle 本身：`cordis.patch.yml` 挂载 `nvim-tui-runner` 行，
 > package.json 的 `dsh.bundle.patch` 声明了它。
 
-启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.3.4 (build YYYY-MM-DD HH:mm) · channel N`。
+启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.3.5 (build YYYY-MM-DD HH:mm) · channel N`。
 输入 `/help` 随时查看全部命令。
 
 ## 配置
@@ -270,9 +270,10 @@ LLM 适配器在请求时解析为 data URL。能力路径：
 1. **原生识图**：当前模型声明 `inputModalities: [text, image]` 且网关透传
    `image_url` → 直接发送；
 2. **官方识图模型自动切换**：当前模型不含 image 模态时，TUI 临时切换到
-   目录中声明的官方识图模型（`deepseek-v4-flash-vision-exp` /
-   `deepseek-vl2` / `deepseek-vl`，按此顺序探测），**回合结束自动切回**原
-   模型（连续图片消息会延长切换窗口）。目录中没有任何带 image 模态的模型
+   目录中声明的官方识图模型（优先 `deepseek-flash` /
+   `deepseek-v4-flash-vision-exp` / `deepseek-vl2` / `deepseek-vl`，随后
+   扫描目录里任意声明 image 模态的模型），**回合结束自动切回**原模型
+   （连续图片消息会延长切换窗口）。目录中没有任何带 image 模态的模型
    时发送前 fail fast，明确报错而不是让回合死在适配器里
    （`UNSUPPORTED_CONTENT`）。
 

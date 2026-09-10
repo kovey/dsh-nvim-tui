@@ -306,14 +306,26 @@ export interface UserQuestion {
     }>;
 }
 /** Symbol-keyed host prompt queue on the dsh-subagent service instance
- *  (Symbol.for('dsh.subagent.queuePrompt')): queue one human prompt as a
- *  distinct child turn. Signature: (parentAgent, childId, content, source,
- *  signal) → inbox MessageId. The service exposes NO public method name for
- *  this face — only the symbol. */
+ *  (Symbol.for('dsh.subagent.queuePrompt')): pre-0.1.5 face — queue one
+ *  human prompt as a distinct child turn. Signature:
+ *  (parentAgent, childId, content, source, signal) → inbox MessageId.
+ *  0.1.5 replaced it with the public `subagents.prompt` method. */
 export declare const queueSubagentPromptKey: symbol;
+/** One 0.1.5 subagent prompt request (public `subagents.prompt`). */
+export interface SubagentPromptRequest {
+    requestId: string;
+    parentSessionId: string;
+    childSessionId: string;
+    mode: 'continuable';
+    delivery: 'queue' | 'steer';
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+}
 /** dsh-subagent directory service. */
 export interface SubagentsService {
-    listChildren?: (parentSessionId: string) => Promise<Array<{
+    listChildren?: (parentSessionId: string, signal?: AbortSignal) => Promise<Array<{
         kind?: string;
         id: string;
         label?: string;
@@ -322,21 +334,34 @@ export interface SubagentsService {
         reason?: string;
         hasChildren?: boolean;
     }>>;
+    /** 0.1.5: queue/steer one human prompt to a continuable child. */
+    prompt?: (request: SubagentPromptRequest, signal: AbortSignal) => Promise<{
+        messageId?: unknown;
+    } | void>;
     /** Host prompt queue + other symbol-keyed runtime faces. */
     [key: symbol]: unknown;
 }
+/** Minimal persisted-session header fields the TUI consumes. */
+export interface SessionHeaderLike {
+    id: string;
+    cwd?: string;
+    origin?: string;
+    parentSession?: string;
+    createdAt?: number;
+    title?: string;
+    /** Log offset of seeded history (projection-cache reads need it). */
+    inheritedEventCount?: number;
+    [key: string]: unknown;
+}
 /** dsh-session-persistence: history list + read-only inspection. */
 export interface SessionPersistenceService {
-    list?: () => Promise<Array<{
-        id: string;
-        cwd?: string;
-        origin?: string;
-        parentSession?: string;
-        createdAt?: number;
-        title?: string;
-        /** Log offset of seeded history (projection-cache reads need it). */
-        inheritedEventCount?: number;
+    /** 0.1.5: snapshot list (header keyed); pre-0.1.5: header list. */
+    list?: () => Promise<Array<SessionHeaderLike | {
+        header: SessionHeaderLike;
+    }> | Array<SessionHeaderLike | {
+        header: SessionHeaderLike;
     }>>;
+    /** pre-0.1.5 hosts: read-only inspection ({events, meta}). */
     inspect?: (id: string) => Promise<{
         events?: unknown[];
         meta?: {
@@ -344,7 +369,16 @@ export interface SessionPersistenceService {
             cwd?: string;
         };
     } | undefined>;
-    /** Raw physical artifact access (the backend decodes its own encoding). */
+    /** 0.1.5: open a stored session handle (read access). */
+    open?: (id: string, access: 'read' | 'write', options?: {
+        signal?: AbortSignal;
+    }) => Promise<{
+        read?: (offset?: number, length?: number, options?: unknown) => Promise<{
+            events?: SessionEvent[];
+        } | undefined>;
+        close?: () => void | Promise<unknown>;
+    } | undefined>;
+    /** Raw physical artifact access (pre-0.1.5 backend encodes its own). */
     supportsRawArtifacts?: boolean;
     readRaw?: (id: string) => Promise<{
         filename?: string;
@@ -637,19 +671,18 @@ export interface HarnessSession {
     append: (type: string, data: unknown, opts?: {
         surfaceOp?: 'append' | {
             op: 'replace';
-            start: number;
-            end: number;
+            startSeq: number;
+            endSeq: number;
         };
         sourceEventSeqs?: number[];
     }) => unknown;
     [key: string]: unknown;
 }
-/** The harness session store. */
+/** The live-session store seam. dsh 0.1.5 removed the `sessions` service —
+ *  the TUI builds this adapter over `ctx.agents.get/list` (`Agent.session`). */
 export interface SessionStore {
     get: (id: string) => HarnessSession | undefined;
     list: () => HarnessSession[];
-    flush: (session: HarnessSession) => Promise<unknown>;
-    fork: (parentId: string) => HarnessSession;
 }
 /** The agent inbox projection (queued next-turn / next-step messages). */
 export interface InboxLike {
@@ -672,7 +705,7 @@ export interface AgentHandle {
     };
     dispose: () => Promise<unknown>;
 }
-/** The harness agents service. */
+/** The harness agents service (0.1.5 AgentRegistry). */
 export interface AgentsService {
     create: (options: {
         sessionId: string;
@@ -688,6 +721,13 @@ export interface AgentsService {
         agentOptions?: Record<string, unknown>;
         setup?: (agentCtx: Context) => void;
     }) => Promise<AgentHandle>;
+    /** 0.1.5: live-agent registry lookups (the sessions-store adapter source). */
+    get?: (id: string) => {
+        session?: unknown;
+    } | undefined;
+    list?: () => Array<{
+        session?: unknown;
+    }>;
 }
 /** dsh-agent-default-model selection. */
 export interface ModelSelection {
@@ -714,6 +754,11 @@ export interface LlmService {
         displayName?: string;
         settingsNs?: string;
     }>;
+    /** 0.1.5: full model catalog for one provider (vision-candidate fallback). */
+    listModels?: (provider: string) => Promise<Array<{
+        id?: string;
+        inputModalities?: string[];
+    }>>;
 }
 /**
  * The harness runtime context as consumed by this bundle: the cordis context
@@ -723,7 +768,6 @@ export interface LlmService {
 export interface RuntimeCtx {
     get(name: string): unknown;
     on(name: string, cb: (...args: any[]) => unknown): () => void;
-    sessions: SessionStore;
     agents: AgentsService;
     agentDefaultModel: ModelSelection;
     llm?: LlmService;

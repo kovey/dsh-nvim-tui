@@ -66,7 +66,12 @@ export { EXT_API_VERSION, EXT_HANDLER_TIMEOUT_MS, matchSessionEventFilter } from
  * Mount the Neovim TUI runner over dsh-base.
  */
 export function apply(ctx: Context, config: RunnerConfig = {}): void {
-  ctx.inject(['agents', 'agentDefaultModel', 'sessions'], (rt) => {
+  // dsh 0.1.5 removed the `sessions` service: the live-session store is the
+  // agents registry itself (createApp builds the store-shaped adapter over
+  // `agents.get/list` → `Agent.session`). Inject only what 0.1.5 provides —
+  // and never assign onto the cordis context: property assignment carries
+  // service-registration semantics and deadlocks inside inject.
+  ctx.inject(['agents', 'agentDefaultModel'], (rt) => {
     const runtimeCtx = rt as unknown as RuntimeCtx
     const localeInit = String(config.locale ?? process.env.DSH_NVIM_TUI_LOCALE ?? 'zh')
     setLocale(localeInit === 'en' ? 'en' : 'zh')

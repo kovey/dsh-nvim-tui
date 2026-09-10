@@ -3,6 +3,50 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.3.5（2026-09-10）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.5)
+
+覆盖提交：
+[`5ff1b28`](https://github.com/kovey/dsh-nvim-tui/commit/5ff1b28) ·
+[`7e27a05`](https://github.com/kovey/dsh-nvim-tui/commit/7e27a05) ·
+[`aff0b0d`](https://github.com/kovey/dsh-nvim-tui/commit/aff0b0d) ·
+[`6ddae4d`](https://github.com/kovey/dsh-nvim-tui/commit/6ddae4d)
+
+**dsh v0.1.5-rc.1 全面适配**（peer 依赖锚点 `^0.1.5-rc.1`，逐包核对官方
+release notes / session V3 迁移文档 / 22 个依赖包的类型面差异）：
+
+- **`ctx.sessions` 移除适配**：注入面改为 `['agents','agentDefaultModel']`，
+  live 会话经 `agents.get/list` 的 `Agent.session` 自建适配器（0.1.5 的
+  AgentRegistry 语义）。
+- **sessionPersistence 新 API**：`list()` 快照（`{header,revision,…}`）归一化；
+  冷读改 `open(id,'read').read()` + close；`supportsRawArtifacts` 缺失时
+  清理路径自动降级为仅隐藏（不再直写宿主物理文件）。
+- **V3 规范信封**：自愈修复的 surface replace 改 `startSeq/endSeq`
+  （0.1.5 拒绝旧 `start/end` 拼写）。
+- **subagents 续聊**：改走公开 `subagents.prompt(...)`（queue/steer +
+  requestId），保留旧符号键路径兼容 0.1.2 宿主。
+- **识图模型**：候选优先 `deepseek-flash`（0.1.5 新默认，自带 image），
+  并新增 `llm.listModels` 目录扫描兜底（任意 image 模态模型）。
+- **难度路由补强**：档位模型切换前经 `resolveModelInfo` 校验存在性
+  （缺失时跳过并提示，不再让回合死于 NO_ADAPTER）；0.1.5 的模型切换
+  notice（`form:'notice'`）按暗淡通知行渲染。
+
+**新特性：`/difficulty` 按任务难度自动选模型（M1-M4）**：
+
+- M1 显式档位 `easy|medium|hard|auto|off` + runner config
+  `difficultyRouting.tiers`（HMR）；M2 规则定档（计划模式/活跃目标/工具
+  失败数/关键词/长度）；M3 可选 LLM 分类器（便宜模型打分，失败回退规则）；
+  M4 子代理模型闸门同步（官方 `subagent-model-selection`）。
+- 发送前临时切换会话模型，回合结束自动切回全局默认；状态栏档位徽标
+  🟢/🟡/🔴；手动 `/model` 暂停路由，`agentDefaultModel` 持久化默认不被污染。
+
+**修复**：
+
+- `/market` 行距：★ 与星数间加空格、星块与名称间隔加大（宽字形字体不再
+  遮挡数字）。
+- `/deps install` 一步到位：写入后等待热重载就绪，超时自动重启 dsh；
+  一键装配与 `/market` 一律按启动时的真实 profile 写配置（loader include
+  条目解析，删除硬编码 `nvim-tui` 回退，解析不到时明确报错）。
+
 ## [v0.3.4（2026-09-09）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.4)
 
 覆盖提交：

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { runningProfileName } from '../kernel/profile.js'
+import { findVisionModel } from '../kernel/vision.js'
 import type { App, AppSlices } from '../kernel/app.js'
 
 /** One assembly row: package identity + the exact YAML appended to the patch. */
@@ -251,27 +252,19 @@ export async function checkAll(app: App, s: AppSlices['agent'], patchPath: strin
     fixId: searchOn ? undefined : 'search-override',
   })
 
-  // 官方识图模型：目录中存在声明 image 模态的模型（如
-  // deepseek-v4-flash-vision-exp）时，图片消息会自动切换该模型处理。
+  // 官方识图模型：目录中存在声明 image 模态的模型（0.1.5 默认目录里的
+  // deepseek-flash / deepseek-v4-flash-vision-exp，或自定义目录中任意声明
+  // image 的模型）时，图片消息会自动切换该模型处理。
   let visionModel: string | undefined
   try {
     const sel = s.currentSelection()
-    const llm = app.runtimeCtx.get('llm') as unknown as {
-      resolveModelInfo?: (p: string, m: string) => Promise<{ inputModalities?: string[] } | undefined>
-    }
-    for (const id of ['deepseek-v4-flash-vision-exp', 'deepseek-vl2', 'deepseek-vl']) {
-      const info = await llm?.resolveModelInfo?.(sel.provider, id)
-      if (info?.inputModalities?.includes('image') === true) {
-        visionModel = id
-        break
-      }
-    }
+    visionModel = await findVisionModel(app, sel.provider)
   } catch {}
   reports.push({
     id: 'vision-model', label: '官方识图模型', group: '配置生效性',
     status: visionModel === undefined ? 'warn' : 'ok',
     detail: visionModel === undefined
-      ? '目录中没有声明 image 模态的模型 — 影响: 图片消息无法发送（settings.yaml 的 llm-deepseek.models 加入 deepseek-v4-flash-vision-exp 并声明 inputModalities: [text, image]）'
+      ? '目录中没有声明 image 模态的模型 — 影响: 图片消息无法发送（settings.yaml 的 llm-deepseek.models 加入 deepseek-flash 或 deepseek-v4-flash-vision-exp 并声明 inputModalities: [text, image]）'
       : `已就绪: ${visionModel}（图片消息自动切换，回合结束切回）`,
   })
 

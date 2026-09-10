@@ -21,7 +21,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
       // Project-level sessions only: `session-` prefixed ids; subagent
       // children (bare UUIDs / origin subagent) never appear here.
       if (!/^session-/.test(sid)) continue
-      if (app.runtimeCtx.sessions.get(sid)?.header?.origin === 'subagent') continue
+      if (app.liveSessions.get(sid)?.header?.origin === 'subagent') continue
       const rec = app.slices.sessions.live.get(sid)
       const hist = app.slices.sessions.historyById.get(sid)
       const title = rec?.title ?? hist?.title ?? ''
@@ -29,7 +29,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
     }
   }
   rows.push({ label: '未分组', value: 'ws:none' })
-  for (const s of app.runtimeCtx.sessions.list()) {
+  for (const s of app.liveSessions.list()) {
     if (inWs.has(s.id) || archived.has(s.id) || s.header?.origin === 'subagent' || !/^session-/.test(s.id)) continue
     const rec = app.slices.sessions.live.get(s.id)
     rows.push({ label: `    ${s.id === app.slices.sessions.activeId ? '▸' : ' '} ${rec?.title ?? ''} · ${s.id}`, value: `sess:${s.id}` })
@@ -72,7 +72,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
     }
     if (act === 'rename') {
       let background = false
-      if (app.runtimeCtx.sessions.get(sid) === undefined) {
+      if (app.liveSessions.get(sid) === undefined) {
         // Persisted-only session: resume it in the background — sessionTitle
         // .rename requires the exact LIVE session object, but renaming must
         // NOT switch the active view. The background flag makes the rename

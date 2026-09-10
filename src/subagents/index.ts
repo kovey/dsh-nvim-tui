@@ -30,15 +30,26 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
   // Gather the event log: live children stream from the in-memory store
   // (new events keep arriving via session/event routing); settled children
   // are read from persistence without resuming or publishing an agent.
-  const live = app.runtimeCtx.sessions.get(childId)
+  const live = app.liveSessions.get(childId)
   let events: SessionEvent[] = []
   if (live) {
     events = [...app.slices.trans.sessionEvents(live)]
   } else {
     try {
       const persistence = app.svc('sessionPersistence')
-      const inspection = await persistence?.inspect?.(childId)
-      events = (inspection?.events ?? []) as SessionEvent[]
+      if (typeof persistence?.open === 'function') {
+        // 0.1.5: open a read handle, read the validated log, close the handle.
+        const handle = await persistence.open(childId, 'read')
+        const result = handle === undefined ? undefined : await handle.read?.()
+        events = (result?.events ?? []) as SessionEvent[]
+        if (handle !== undefined) {
+          try { handle.close?.() } catch {}
+        }
+      } else {
+        // pre-0.1.5 hosts: read-only inspection.
+        const inspection = await persistence?.inspect?.(childId)
+        events = (inspection?.events ?? []) as SessionEvent[]
+      }
     } catch (err) {
       app.notice(`读取子代理会话失败: ${(err as Error).message}`)
       return
@@ -105,15 +116,26 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
     await app.luaCall('require("dsh_tui").close_subagent_view()', []).catch(() => {})
     W(app.slices.agent).subagentView = null
   }
-  const live = app.runtimeCtx.sessions.get(childId)
+  const live = app.liveSessions.get(childId)
   let events: SessionEvent[] = []
   if (live) {
     events = [...app.slices.trans.sessionEvents(live)]
   } else {
     try {
       const persistence = app.svc('sessionPersistence')
-      const inspection = await persistence?.inspect?.(childId)
-      events = (inspection?.events ?? []) as SessionEvent[]
+      if (typeof persistence?.open === 'function') {
+        // 0.1.5: open a read handle, read the validated log, close the handle.
+        const handle = await persistence.open(childId, 'read')
+        const result = handle === undefined ? undefined : await handle.read?.()
+        events = (result?.events ?? []) as SessionEvent[]
+        if (handle !== undefined) {
+          try { handle.close?.() } catch {}
+        }
+      } else {
+        // pre-0.1.5 hosts: read-only inspection.
+        const inspection = await persistence?.inspect?.(childId)
+        events = (inspection?.events ?? []) as SessionEvent[]
+      }
     } catch (err) {
       app.notice(`读取子代理会话失败: ${(err as Error).message}`)
       return
@@ -178,7 +200,7 @@ const sendToSubagent = (app: App, text: string) => {
   // Validate the service BEFORE the optimistic echo: a failed send must
   // not leave a pending-echo entry that poisons the next message's dedupe.
   const subagentsSvc = app.svc('subagents')
-  if (typeof subagentsSvc?.[queueSubagentPromptKey] !== 'function') {
+  if (typeof subagentsSvc?.prompt !== 'function' && typeof subagentsSvc?.[queueSubagentPromptKey] !== 'function') {
     chat.feed.pushError(t('子代理续聊不可用（subagents 服务未装配）'))
     return
   }
@@ -226,7 +248,7 @@ export function installSubagents(app: App): void {
   /** Route a subagent lifecycle event to its PARENT session's feed. */
   app.slices.ui.feedForSubagent = (info: SubagentInfo) => {
     if (!info?.id) return undefined
-    const child = app.runtimeCtx.sessions.get(info.id)
+    const child = app.liveSessions.get(info.id)
     const parentId = child?.header?.parentSession
     const rec = parentId !== undefined ? app.slices.sessions.live.get(parentId) : undefined
     if (rec) return rec

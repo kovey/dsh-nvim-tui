@@ -26,7 +26,7 @@ import type {
   AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService,
   DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService,
   MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService,
-  PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent,
+  PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore,
   LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService,
   SessionTitleService, SettingsService, SkillsService, SubagentInfo,
   SubagentsService, ToolsService, Usage,
@@ -44,7 +44,16 @@ export const activeSessionCwd = (app: App): string => {
   return typeof cwd === 'string' && cwd !== '' ? cwd : process.cwd()
 }
 
-export const BUILD_VERSION = '0.3.4'
+/** dsh 0.1.5 persistence.list() returns snapshots ({header, revision, …});
+ *  pre-0.1.5 hosts returned the header directly. Normalize either shape. */
+export const persistedHeader = (item: { header?: unknown; id?: string } | null | undefined): { id?: string; [key: string]: unknown } | null => {
+  if (item === null || item === undefined) return null
+  const h = (item as { header?: unknown }).header
+  if (h !== null && h !== undefined && typeof h === 'object') return h as { id?: string; [key: string]: unknown }
+  return item as { id?: string; [key: string]: unknown }
+}
+
+export const BUILD_VERSION = '0.3.5'
 export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 // ---------------------------------------------------------------------------
@@ -356,6 +365,10 @@ export interface App {
   watchdogMs: number
   dumpPath: string
   errorLogPath: string
+  /** Live-session store: dsh 0.1.5 removed the `sessions` service — this
+   *  adapter reads the agents registry (`Agent.session`). Never assign to
+   *  the cordis context (property set = service registration semantics). */
+  liveSessions: SessionStore
   svc: <K extends keyof ServiceMap>(name: K) => ServiceMap[K] | undefined
   luaCall: (code: string, args?: unknown[]) => Promise<any>
   lua: {
@@ -398,6 +411,25 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
   const svc = <K extends keyof ServiceMap>(name: K): ServiceMap[K] | undefined =>
     runtimeCtx.get(name) as ServiceMap[K] | undefined
 
+  // dsh 0.1.5 removed the `sessions` service: the live-session store is the
+  // agents registry itself (`ctx.agents.get/list` return Agents whose
+  // `.session` is the live session). Build the store-shaped adapter HERE —
+  // assigning a property onto the cordis context is service-registration
+  // semantics and deadlocks inside the inject callback.
+  const agentsReg = runtimeCtx.get('agents') as unknown as {
+    get?: (id: string) => { session?: unknown } | undefined
+    list?: () => Array<{ session?: unknown }>
+  }
+  const liveSessions: SessionStore = {
+    get: (id) => {
+      const s = agentsReg?.get?.(id)?.session
+      return (s === null || s === undefined ? undefined : s) as HarnessSession | undefined
+    },
+    list: () => (agentsReg?.list?.() ?? [])
+      .map((a) => a.session)
+      .filter((s): s is HarnessSession => s !== null && s !== undefined),
+  }
+
   /** msgpack-RPC boundary: nvim.lua results are structurally unknown. */
   const luaCall = (code: string, args: unknown[] = []): Promise<any> => {
     return app.slices.runtime.nvim === null ? Promise.reject(new Error('nvim not connected')) :
@@ -422,6 +454,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     ctx,
     runtimeCtx,
     config,
+    liveSessions,
     headless,
     watchdogMs,
     dumpPath,

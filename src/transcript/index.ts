@@ -79,10 +79,13 @@ const synthesizeToolResult = (rec: SessionRec, callId: string, seq: number | und
 }
 
 /** Replace one existing surface node (identified by its seq) with a new
- *  message-producing event of the given type. */
+ *  message-producing event of the given type. V3 canonical envelopes spell
+ *  the replace span `startSeq/endSeq` (0.1.5 rejects the pre-V3 `start/end`
+ *  spelling); the started-repair's TOOL_NOT_STARTED variant carries no
+ *  source seq and relies on the host's canonical history suffix instead. */
 const surfaceReplace = (session: HarnessSession, type: string, seq: number, data: unknown): void => {
   session.append(type, data, {
-    surfaceOp: { op: 'replace', start: seq, end: seq },
+    surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq },
     sourceEventSeqs: [seq],
   })
 }

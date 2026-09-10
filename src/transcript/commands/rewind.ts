@@ -9,7 +9,7 @@ export const rewindCommand = async (app: App, a: string | undefined) => {
     app.notice(t('无活跃会话'))
     return
   }
-  const session = app.runtimeCtx.sessions.get(rec.id)
+  const session = app.liveSessions.get(rec.id)
   if (session === undefined || typeof session.truncate !== 'function') {
     app.notice(t('会话截断不可用：宿主 dsh-session 不支持 truncate（可用 /fork 派生替代）'))
     return

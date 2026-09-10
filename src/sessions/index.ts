@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { appendFileSync } from 'node:fs'
 import { t } from '../kernel/i18n.js'
 import { encodeHeaderOnlyLog, readCleanedIds, writeCleanedIds } from '../kernel/subagent-clean.js'
+import { persistedHeader } from '../kernel/app.js'
 import type { App, AppSlices, WritableSlice } from '../kernel/app.js'
 import { registerNvimNotification } from '../kernel/rpc.js'
 import {
@@ -37,7 +38,10 @@ const listSubagentChildren = async (app: App, parentId: string): Promise<Array<{
   let histMap = new Map<string, { createdAt?: number; origin?: string; parentSession?: string }>()
   if (typeof persistence?.list === 'function') {
     try {
-      for (const h of await persistence.list()) histMap.set(h.id, h)
+      for (const h of await persistence.list()) {
+        const hh = persistedHeader(h as { header?: unknown; id?: string } | null)
+        if (hh?.id !== undefined) histMap.set(hh.id, hh as { createdAt?: number; origin?: string; parentSession?: string })
+      }
     } catch {}
   }
   const cleaned = readCleanedIds()[parentId] ?? []
@@ -64,7 +68,7 @@ const listSubagentChildren = async (app: App, parentId: string): Promise<Array<{
     seen.add(id)
     children.push({ id, label: label ?? id.slice(0, 8), running, mode, createdAt: createdAtOf(id) })
   }
-  for (const s of app.runtimeCtx.sessions.list?.() ?? []) {
+  for (const s of app.liveSessions.list?.() ?? []) {
     if (s?.header?.parentSession === parentId && s.header.origin === 'subagent') {
       add(s.id, undefined, true, undefined)
     }
@@ -112,7 +116,7 @@ const cleanSubagentChain = async (app: App, parentId: string, childId: string): 
   let truncated = false
   try {
     if (persistence?.supportsRawArtifacts === true &&
-      app.runtimeCtx.sessions.get(childId) === undefined) {
+      app.liveSessions.get(childId) === undefined) {
       const inspection = await persistence.inspect?.(childId)
       const meta = inspection?.meta
       if (meta?.id === childId) {
@@ -210,7 +214,11 @@ export function installSessions(app: App): void {
     const persistence = app.svc('sessionPersistence')
     if (typeof persistence?.list !== 'function') return
     try {
-      const all = await persistence.list()
+      // 0.1.5 list() returns snapshots ({header, revision, …}); pre-0.1.5
+      // hosts returned the header directly — normalize either shape.
+      const all = (await persistence.list())
+        .map((h) => persistedHeader(h as { header?: unknown; id?: string } | null))
+        .filter((h): h is { id: string; [key: string]: unknown } => h !== null && typeof h.id === 'string')
       const cwd = process.cwd()
       // Persisted titles live in the projection cache (SessionHeader carries
       // no title field): read the cached `title` projection per header so a
@@ -228,13 +236,21 @@ export function installSessions(app: App): void {
           return undefined
         }
       }
+      const toRow = (h: { id: string; [key: string]: unknown }) => ({
+        id: h.id,
+        cwd: typeof h.cwd === 'string' ? h.cwd : undefined,
+        createdAt: typeof h.createdAt === 'number' ? h.createdAt : undefined,
+        title: cachedTitle(h) ?? (typeof h.title === 'string' ? h.title : undefined),
+        origin: typeof h.origin === 'string' ? h.origin : undefined,
+        inheritedEventCount: typeof h.inheritedEventCount === 'number' ? h.inheritedEventCount : undefined,
+      })
       WSS(app.slices.sessions).historyHeaders = all
         .filter((h) => h.cwd === cwd && /^session-/.test(h.id) && h.origin !== 'subagent')
-        .map((h) => ({ ...h, title: cachedTitle(h) ?? h.title }))
+        .map(toRow)
       app.slices.sessions.historyById.clear()
       for (const h of all) {
         if (/^session-/.test(h.id) && h.origin !== 'subagent') {
-          app.slices.sessions.historyById.set(h.id, { ...h, title: cachedTitle(h) ?? h.title })
+          app.slices.sessions.historyById.set(h.id, toRow(h))
         }
       }
     } catch (err) {

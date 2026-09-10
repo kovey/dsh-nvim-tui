@@ -20,7 +20,7 @@ export const renameCommand = (app: App, a: string | undefined) => {
     return
   }
   try {
-    sessionTitle.rename(app.runtimeCtx.sessions.get(rec.id), title)
+    sessionTitle.rename(app.liveSessions.get(rec.id), title)
     app.notice(t('标题已更新'))
   } catch (err) {
     app.notice(`重命名失败: ${(err as Error).message}`)

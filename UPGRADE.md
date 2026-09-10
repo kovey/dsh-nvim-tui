@@ -1,3 +1,45 @@
+# 升级指南：dsh 0.1.2-rc.1 → 0.1.5-rc.1（nvim-tui v0.3.5）
+
+dsh-nvim-tui v0.3.5 将 peer 依赖锚点抬升至 **`^0.1.5-rc.1`**，并完成对
+0.1.5-rc.1 的全面适配核查。本次是 0.1.5 系列首个候选版，宿主发生了多项
+插件侧破坏性变更，TUI 的适配点如下（详见 CHANGELOG v0.3.5）：
+
+- **`ctx.sessions` 服务移除**：live 会话存储并入 `ctx.agents` 注册表
+  （`agents.get/list` 返回的 Agent 携带 `.session`）。TUI 注入面改为
+  `['agents','agentDefaultModel']` 并自建 sessions 适配器。
+- **Session 生命周期/V3 日志格式**：`sessionPersistence` 改为
+  `list()`（快照 `{header,revision,…}`）+ `open(id,'read').read()` 的
+  SessionHandle 模型；V3 规范信封的 surface replace 拼写改为
+  `startSeq/endSeq`。TUI 的会话历史/子代理冷读/自愈修复全部随迁。
+- **subagents 续聊**：符号键 `queueSubagentPrompt` 移除，改为公开
+  `subagents.prompt({requestId, parentSessionId, childSessionId,
+  mode:'continuable', delivery:'queue', content}, signal)`（双路径兼容
+  旧宿主）。
+- **默认模型换代**：新会话默认 `deepseek-flash`（DeepSeek-V41-Flash，
+  自带 image 模态）；识图候选优先 `deepseek-flash` 并新增"目录扫描任意
+  image 模态模型"兜底（不再只认硬编码 id）。
+- **新增 surface 事件 `system/message`** 与模型切换 notice
+  （`form:'notice'` 用户消息）：TUI 以暗淡通知行渲染，不进用户气泡。
+- 其余核对：Inbox 接口（nextTurn/nextStep/clear/append/prepend/replace/
+  remove/splice）、agents.create/resume（async，setup 增第二参）、
+  installModelSelection、agentDefaultModel、settings、jobs、planMode、
+  goals、skills、sessionQuery、messageFeedback、workspace、permission
+  presets、compaction、attachments、loader include 条目、`dsh --profile`
+  CLI 与 profile 目录布局——均与 0.1.5-rc.1 逐一核对签名一致。
+
+升级步骤：
+
+```bash
+npm i -g @deepseek-ai/dsh@next   # next dist-tag 即 0.1.5-rc.1
+dsh --version                    # 应输出 0.1.5-rc.1（运行中的进程需重启生效）
+# 插件侧：dsh plugin --profile <name> update --latest kovey/dsh-nvim-tui
+```
+
+> 会话日志由宿主自动迁移到 V3 格式（旧文件保留）；升级后的会话不支持降级
+> 读取，回退宿主版本前请先导出需要保留的会话。
+
+---
+
 # 升级指南：dsh 0.1.2-alpha.5 → 0.1.2-rc.1
 
 dsh-nvim-tui v0.2.14 将 peer 依赖锚点抬升至 **`^0.1.2-rc.1`**。升级前已做
