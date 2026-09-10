@@ -35,12 +35,26 @@ export const permissionCommand = async (app: App, a: string | undefined) => {
     }
     const opt = permission.optionOf(name)
     const current = permission.current(rec.handle.agent.session)
-    // Danger-full-access switch asks for an explicit confirmation first
-    // (official client's modal acknowledgement counterpart).
-    const danger = /full|danger/i.test(name) || /全|危险/.test(opt?.name ?? '')
+    // Danger is decided by the PRESET'S OWN KNOBS (resolve() → {sandbox,
+    // approval}), not by its display name: a renamed/aliased preset used to
+    // skip the confirmation entirely. The name regex stays only as a last
+    // resort when the service cannot resolve the bundle.
+    const spec = ((): { sandbox?: string | null; approval?: string | null } | undefined => {
+      try {
+        return (permission as unknown as { resolve?: (n: string) => { sandbox?: string | null; approval?: string | null } }).resolve?.(name)
+      } catch {
+        return undefined
+      }
+    })()
+    const danger = spec !== undefined
+      ? spec.sandbox === 'danger-full-access' || spec.approval === 'never'
+      : (/full|danger/i.test(name) || /全|危险/.test(opt?.name ?? ''))
+    const knobs = spec === undefined
+      ? ''
+      : `（沙箱 ${spec.sandbox ?? '继承'} · 审批 ${spec.approval ?? '继承'}）`
     if (danger && name !== current) {
       const ok = await app.openPicker(t('危险权限确认'), [
-        { label: '确认切换到全访问（危险操作需谨慎）', value: 'yes' },
+        { label: `确认切换「${name}」${knobs}——危险操作需谨慎`, value: 'yes' },
         { label: '取消', value: 'no' },
       ])
       if (ok !== 'yes') {
@@ -49,7 +63,7 @@ export const permissionCommand = async (app: App, a: string | undefined) => {
       }
     }
     permission.set(rec.handle.agent.session, name)
-    app.notice(`权限预设: ${name}`)
+    app.notice(`权限预设: ${name}${knobs}`)
     app.slices.ui.updateStatusline()
   } catch (err) {
     app.notice(`permission 失败: ${(err as Error).message}`)

@@ -27,6 +27,9 @@
  */
 import stringWidth from 'string-width'
 
+/** One shared grapheme segmenter (per-cell construction was measurable). */
+const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
 /** One rendered table row (or a table-false passthrough entry). */
 export type TableEntry =
   | { table: true; text: string; group: string | null; spans: Array<{ s: number; e: number; group: string }> }
@@ -124,7 +127,7 @@ export function renderTable(block: string[], closed: boolean, maxWidth = Infinit
     // Grapheme clusters, not code points: ZWJ family emoji (👨‍👩‍👧‍👦) and skin
     // tones are ONE display unit — splitting by code point tears the
     // cluster into broken glyphs.
-    for (const { segment: ch } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text ?? '')) {
+    for (const { segment: ch } of GRAPHEME_SEGMENTER.segment(text ?? '')) {
       const chW = stringWidth(ch)
       if (cur !== '' && curW + chW > w) {
         out.push(cur)

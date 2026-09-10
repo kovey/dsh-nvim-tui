@@ -2,7 +2,7 @@
  *  wired by the commands module index). */
 import { t } from '../../kernel/i18n.js'
 import { isAbsolute, join } from 'node:path'
-import { readImageFile } from '../../feed/images.js'
+import { readImageFile, expandHome } from '../../feed/images.js'
 
 import { imageLabel } from '../../feed/images.js'
 import { openDirPicker } from '../core.js'
@@ -19,7 +19,8 @@ export const attachCommand = async (app: App, a: string | undefined) => {
     path = await openDirPicker(app, activeSessionCwd(app))
     if (path === null) return
   }
-  const abs = isAbsolute(path) ? path : join(activeSessionCwd(app), path)
+  const expanded = expandHome(path)
+  const abs = isAbsolute(expanded) ? expanded : join(activeSessionCwd(app), expanded)
   // Detect on the BYTES: readImageFile reads the file and sniffs the
   // format (extension fallback); it throws for non-images, which is how
   // we tell "image attachment" from "@ path mention" below.
@@ -30,8 +31,12 @@ export const attachCommand = async (app: App, a: string | undefined) => {
   if (img !== null) {
     const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
     const attachments = app.svc('attachments')
-    if (!rec || typeof attachments?.saveImage !== 'function') {
-      app.notice(t('附件服务未装配'))
+    if (!rec) {
+      app.notice(t('无活跃会话'))
+      return
+    }
+    if (typeof attachments?.saveImage !== 'function') {
+      app.notice(t('附件服务未装配（attachments.saveImage 缺失）'))
       return
     }
     try {

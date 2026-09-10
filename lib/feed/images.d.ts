@@ -7,6 +7,14 @@ export declare function sniffMediaType(bytes: Uint8Array): string | null;
  * as a fallback for pathless buffers).
  * @throws {Error} when the file is unreadable or the format is unsupported.
  */
+/** Expand a leading `~/` against the user's home. Callers MUST expand BEFORE
+ *  deciding relative-vs-absolute: `isAbsolute('~/a.png')` is false, so a
+ *  home-relative path used to be joined onto the session cwd and fail ENOENT. */
+export declare function expandHome(path: string): string;
+/** Read an image file. The media type is sniffed from a bounded PREFIX of the
+ *  file (magic numbers live in the first bytes) — the whole file is only read
+ *  once the type is known, so sniffing a large non-image no longer blocks the
+ *  event loop on a full read. */
 export declare function readImageFile(path: string, _knownMediaType?: string | null): SaveImageAttachment;
 /**
  * Parse a pasted `data:image/…;base64,…` URL into the SaveImageAttachment

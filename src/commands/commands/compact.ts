@@ -20,7 +20,9 @@ export const compactCommand = async (app: App) => {
   }
   app.notice(t('正在压缩上下文…'))
   try {
-    const result = await compaction.compactNow(rec.handle.agent, new AbortController().signal)
+    // Bounded: compaction runs an LLM summarization pass, and a wedged
+    // provider used to leave /compact awaiting forever with no way out.
+    const result = await compaction.compactNow(rec.handle.agent, AbortSignal.timeout(180000))
     if (result === null) {
       app.notice(t('没有可压缩的历史'))
     } else {

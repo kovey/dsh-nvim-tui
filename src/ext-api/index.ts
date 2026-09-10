@@ -49,6 +49,17 @@ export function matchSessionEventFilter(
 
 // -- hmr-surviving module state (see installExtApi) -------------------------
 let readyAnnounced = false
+/** Promise.race with a timeout whose timer is ALWAYS cleared (the naive
+ *  race leaked one pending timer per bounded call). */
+const withTimeout = <T>(p: Promise<T>, ms: number, message: string): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v) },
+      (e) => { clearTimeout(timer); reject(e as Error) },
+    )
+  })
+
 const readyWaiters: Array<() => void> = []
 const moduleListeners = new Map<string, Set<(payload: unknown) => void>>()
 const moduleSessionSubs: Array<{
@@ -92,9 +103,14 @@ export function installExtApi(app: App): void {
     extStatusSegments: new Map(),
   })
 
-  // Subscription/slot state lives at MODULE scope: a runner-row reload
-  //  (hmr) re-runs apply() in the same process — plugin subscriptions and
-  //  status segments must survive the reload, not silently vanish.
+  // Subscription state lives at MODULE scope: a runner-row reload (hmr)
+  //  re-runs apply() in the same process — `on`/`onSessionEvent` listeners
+  //  must survive the reload, not silently vanish.
+  //  CAVEAT (audit 2026-09): status segments, `luaExt.on` handlers and Lua
+  //  subscriptions live in the APP domain (the arch gate pins those fields
+  //  there), so a runner-row reload DROPS them. A consumer that registers
+  //  once inside `tui.ready.then(...)` must re-register after a reload —
+  //  see the note in docs/EXT-API.md.
   const listeners = readyListeners()
   const sessionSubs = readySessionSubs()
   /** Node-side floats opened via ui.float: key → win id. */
@@ -193,11 +209,10 @@ export function installExtApi(app: App): void {
       if (app.slices.runtime.nvim === null) return Promise.reject(new Error('nvim not connected'))
       const p = app.slices.runtime.nvim.request(method, args as never[]) as Promise<unknown>
       if (opts?.timeoutMs === undefined) return p
-      return Promise.race([
-        p,
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`nvim.request ${method} 超时`)), opts.timeoutMs)),
-      ])
+      // Clear the timer on the SUCCESS path too: every bounded request used
+      // to leave a pending timer alive for up to timeoutMs (30s), keeping the
+      // event loop busy and the process from draining.
+      return withTimeout(p, opts.timeoutMs, `nvim.request ${method} 超时`)
     },
     call: (fn, args = []) => {
       if (!SAFE_VIM_FN.has(fn)) return Promise.reject(new Error(`nvim.call 不在只读白名单内（收到: ${fn}；需要任意执行请用 nvim.lua/nvim.ex）`))
@@ -450,11 +465,8 @@ export function installExtApi(app: App): void {
         const p = app.luaCall('return require("dsh_tui.api").rpc_dispatch(...)', [
           extId, method, args,
         ])
-        const res = await Promise.race([
-          p,
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`lua ext ${extId}.${method} timeout (${timeoutMs}ms)`)), timeoutMs)),
-        ]) as { ok?: unknown; value?: unknown; error?: unknown } | null | undefined
+        const res = await withTimeout(p, timeoutMs,
+          `lua ext ${extId}.${method} timeout (${timeoutMs}ms)`) as { ok?: unknown; value?: unknown; error?: unknown } | null | undefined
         if (res !== null && res !== undefined && typeof res === 'object' && res.ok === false) {
           throw new Error(String(res.error ?? `lua ext ${extId}.${method} failed`))
         }

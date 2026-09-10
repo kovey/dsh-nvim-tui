@@ -291,9 +291,13 @@ export interface AppSlices {
         foldEvent: (rec: SessionRec, event: SessionEvent) => void;
         maybePushFileDiff: (feed: FeedRenderer, event: SessionEvent, labelPrefix?: string) => void;
         readFileSnapshot: (p: string) => Promise<string | null>;
+        /** Pre-edit snapshots by callId. `owner` scopes the turn/end cleanup to
+         *  the session that produced the call — an unconditional clear wiped
+         *  ANOTHER session's in-flight snapshots and silently dropped its ✎ diffs. */
         readonly pendingFileSnaps: Map<string, {
             display: string;
             before: string | null;
+            owner?: string;
         }>;
         readonly renderedDiffCalls: WeakMap<FeedRenderer, Set<string>>;
         readonly pendingEchoes: Map<string, string[]>;

@@ -63,7 +63,9 @@ export function fileDiffsFromMeta(meta: unknown): FileDiffMeta[] | null {
 }
 
 function addOnly(text: string, maxLines: number): DiffBlock {
-  const raw = text.split('\n')
+  // ''.split('\n') === [''] — an EMPTY file used to render one blank '+ '
+  // line and count it as +1. An empty side has no lines at all.
+  const raw = text === '' ? [] : text.split('\n')
   const room = Math.max(1, maxLines - 1)
   const keep = raw.slice(0, room)
   const lines = keep.map((l) => '+ ' + l)
@@ -73,7 +75,7 @@ function addOnly(text: string, maxLines: number): DiffBlock {
 }
 
 function delOnly(text: string, maxLines: number): DiffBlock {
-  const raw = text.split('\n')
+  const raw = text === '' ? [] : text.split('\n')
   const room = Math.max(1, maxLines - 1)
   const keep = raw.slice(0, room)
   const lines = keep.map((l) => '- ' + l)

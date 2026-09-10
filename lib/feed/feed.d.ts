@@ -178,6 +178,8 @@ export declare class FeedRenderer {
      *  terminal) into base. */
     jobsLiveRows: string[];
     jobsLiveKey: string;
+    /** Key of the board already committed to `base` (idempotence guard). */
+    committedJobsKey: string;
     /** Cached viewport width: the cap renderTable wraps overwide tables
      *  against (refreshed by winSize, throttled once per 2s per flush). */
     lastWinW: number;
@@ -234,7 +236,12 @@ export declare class FeedRenderer {
     setJobsBoard(rows: string[]): void;
     /** All jobs terminal: the FINAL board state lands in base (ordinary chat
      *  content) and the pinned slot clears. */
-    commitJobsBoard(rows: string[]): void;
+    /** Commit the FINAL jobs board. `batchKey` identifies the batch (ids +
+     *  statuses — the caller's identity, NOT the rendered text: two different
+     *  batches can render identically). Re-committing the same batch is a
+     *  no-op, so a heartbeat racing the terminal state cannot duplicate the
+     *  board in the transcript. */
+    commitJobsBoard(rows: string[], batchKey?: string): void;
     /** Ext card (P1 extension API): a `▣ plugin · title` header block with an
      *  indented body and optional action hints. Returns a handle that updates
      *  or dismisses the block IN PLACE (tracked base range). With `onAction`

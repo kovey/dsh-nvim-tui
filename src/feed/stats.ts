@@ -9,9 +9,14 @@
 
 import type { TokenUsage, Usage } from '../kernel/types.js'
 
-/** Built-in price table (USD per 1M tokens, 2025 public pricing). */
+/** Built-in price table (USD per 1M tokens, 2025 public pricing). Covers the
+ *  whole dsh 0.1.5 deepseek catalog — `deepseek-flash` is the base-bundle
+ *  DEFAULT, so a missing key made the statusline/$ segment vanish for every
+ *  out-of-the-box profile (and for our own vision-switch turns). */
 const MODEL_PRICES: Record<string, { input: number; output: number; cacheRead?: number }> = {
+  'deepseek-flash': { input: 0.27, output: 1.1, cacheRead: 0.07 },
   'deepseek-v4-flash': { input: 0.27, output: 1.1, cacheRead: 0.07 },
+  'deepseek-v4-flash-vision-exp': { input: 0.27, output: 1.1, cacheRead: 0.07 },
   'deepseek-v4-pro': { input: 0.55, output: 2.19, cacheRead: 0.14 },
 }
 

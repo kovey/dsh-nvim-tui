@@ -284,7 +284,10 @@ end
 
 --- startPath: absolute or relative directory to start in.
 function P.show_dir_picker(startPath)
-  P.close_dir_picker()
+  -- Superseding a leftover picker window must NOT settle the picker the
+  -- runner is opening right now (the Node side already cancelled the
+  -- previous caller when it registered this one).
+  P.close_dir_picker(true)
   S.dirPath = vim.fn.fnamemodify(startPath or vim.fn.getcwd(), ':p'):gsub('/$', '')
   if vim.fn.isdirectory(S.dirPath) ~= 1 then
     S.dirPath = vim.fn.getcwd()
@@ -346,7 +349,10 @@ function P.dir_enter()
     P.render_dir_picker()
   else
     local full = S.dirPath .. '/' .. e.name
-    P.close_dir_picker()
+    -- Silent close: the SELECTION notify below is the settlement. A cancel
+    -- notify here would resolve the runner side to nil first and drop the
+    -- picked path.
+    P.close_dir_picker(true)
     if S.channel then
       vim.rpcnotify(S.channel, 'dsh-dir-selected', full)
     end
@@ -364,8 +370,9 @@ function P.dir_up()
   P.render_dir_picker()
 end
 
-function P.close_dir_picker()
+function P.close_dir_picker(keep_silent)
   detach_footer()
+  local was_open = S.dirWin ~= nil
   if S.dirWin and vim.api.nvim_win_is_valid(S.dirWin) then
     pcall(vim.api.nvim_win_close, S.dirWin, true)
   end
@@ -374,6 +381,13 @@ function P.close_dir_picker()
   S.dirPath = nil
   S.dirRows = {}
   S.dirIdx = 1
+  -- Cancellation must SETTLE the runner-side promise: q/Esc/root/read-error
+  -- only closed the float, so /dir /lines /attach (no-arg) awaited forever
+  -- with no way out. A successful pick resolves first and clears dirSettle,
+  -- which makes this notify a harmless no-op.
+  if was_open and not keep_silent and S.channel then
+    vim.rpcnotify(S.channel, 'dsh-dir-selected', vim.NIL)
+  end
 end
 
 -- ---------------------------------------------------------------------------

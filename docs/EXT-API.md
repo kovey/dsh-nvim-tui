@@ -332,3 +332,16 @@ Node → Lua: runner 调 api.rpc_dispatch(extId, method, args) / api.rpc_event(.
 - region 的 `side='full'` 全屏区域（reasoning 与其余区域临时隐藏，关闭后
   恢复）——当前四边停靠槽已覆盖主要场景。
 - 面板/区域拖拽重排与 tab 化（`insertBefore` 类能力，另行评估）。
+
+## 热重载（hmr）与重新注册
+
+runner row 被热重载时，`apply()` 会在同一进程内重跑：`on(event)` 与
+`onSessionEvent(...)` 订阅在模块级保留，**不需要**重新注册；但以下三项位于 app
+域（架构门禁将其钉在 `AppSlices.ext`），重载会丢失，消费方必须重新注册：
+
+- `statusSegment(...)` 注册的状态栏段
+- `luaExt.on(extId, handler)` 的 Lua 扩展处理器
+- Lua 侧订阅（`luaExt` 相关注册）
+
+推荐写法：把注册逻辑放进一个幂等的 `setup()`，在 `tui.ready.then(setup)` 与每次
+`apply()` 后都调用一次（重复注册以最后一次为准）。

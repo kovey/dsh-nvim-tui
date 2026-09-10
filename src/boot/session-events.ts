@@ -35,14 +35,14 @@ export function makeSessionEventHandler(
 ): (owner: { id: string }, event: SessionEvent) => void {
   /** tool/call → pre-edit snapshot of the mutation target (shared by all
    *  four routing paths — the ✓ result line renders an accurate +/− block). */
-  const snapshotToolTarget = (event: SessionEvent): void => {
+  const snapshotToolTarget = (event: SessionEvent, ownerId?: string): void => {
     if (event.type !== 'tool/call' || typeof event.data?.name !== 'string') return
     const p = producedPathFromCall(event.data.name, event.data.arguments)
     if (p === null) return
     if (typeof event.data.callId === 'string' && event.data.callId !== '') {
       const cid = event.data.callId
       void app.slices.ui.readFileSnapshot(p).then((before) => {
-        app.slices.ui.pendingFileSnaps.set(cid, { display: p, before })
+        app.slices.ui.pendingFileSnaps.set(cid, { display: p, before, owner: ownerId })
       })
     }
   }
@@ -51,7 +51,7 @@ export function makeSessionEventHandler(
    *  feed (reasoning/text/tools keep streaming in place). The chat window
    *  dedupes the harness's replay of our own optimistic user echo (FIFO). */
   const routeToChildFeed = (owner: { id: string }, event: SessionEvent, feed: SessionRec['feed'], dedupeEchoes: boolean): void => {
-    snapshotToolTarget(event)
+    snapshotToolTarget(event, owner.id)
     if (dedupeEchoes && event.type === 'user/message') {
       const q = app.slices.ui.pendingEchoes.get(owner.id)
       if (q !== undefined && q.length > 0) {
@@ -102,7 +102,7 @@ export function makeSessionEventHandler(
           if (typeof data.callId === 'string' && data.callId !== '') {
             const cid = data.callId
             void app.slices.ui.readFileSnapshot(p).then((before) => {
-              app.slices.ui.pendingFileSnaps.set(cid, { display: p, before })
+              app.slices.ui.pendingFileSnaps.set(cid, { display: p, before, owner: rec.id })
             })
           }
         }
@@ -130,8 +130,12 @@ export function makeSessionEventHandler(
       return false
     },
     'turn/end': (rec, owner, event) => {
-      // Turn finished on the ACTIVE session → terminal bell (toggle /bell).
-      app.slices.ui.pendingFileSnaps.clear()
+      // Owner-scoped cleanup: an unconditional clear wiped in-flight
+      // snapshots belonging to OTHER sessions (their tool/result then found
+      // no snapshot and dropped the ✎ diff block silently).
+      for (const [cid, snap] of app.slices.ui.pendingFileSnaps) {
+        if (snap.owner === undefined || snap.owner === rec.id) app.slices.ui.pendingFileSnaps.delete(cid)
+      }
       if (rec.pendingToolCalls.size > 0) {
         // The turn ended while tool calls were still pending: the tool
         // scheduler crashed after committing tool/call events and no
@@ -268,7 +272,7 @@ export function makeSessionEventHandler(
     // this runner sees every child session event).
     const childLink = app.slices.sessions.childParent.get(owner.id)
     if (childLink !== undefined) {
-      snapshotToolTarget(event)
+      snapshotToolTarget(event, owner.id)
       if (event.type === 'tool/result') {
         const prec = app.slices.sessions.live.get(childLink.parentId)
         if (prec !== undefined) {

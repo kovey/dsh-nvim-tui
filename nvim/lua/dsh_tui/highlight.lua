@@ -119,6 +119,16 @@ function H.applyHighlights()
   vim.cmd('highlight default DshTuiWhaleW- guifg=#f2f5fa guibg=NONE ctermfg=255 ctermbg=NONE')
   vim.cmd('highlight default DshTuiWhaleWB guifg=#f2f5fa guibg=#4d6bfe ctermfg=255 ctermbg=63')
   vim.cmd('highlight default DshTuiWhaleWW guifg=#f2f5fa guibg=#f2f5fa ctermfg=255 ctermbg=255')
+  -- The 6 pairs the animation actually renders but never had a group (nvim
+  -- ignores an unknown hl_group: those pixels fell back to the default colors
+  -- and flickered frame to frame). Same palette: B body / W belly / E eye /
+  -- P blush / '-' transparent.
+  vim.cmd('highlight default DshTuiWhale-E guifg=NONE guibg=#14204a ctermfg=NONE ctermbg=17')
+  vim.cmd('highlight default DshTuiWhale-W guifg=NONE guibg=#f2f5fa ctermfg=NONE ctermbg=255')
+  vim.cmd('highlight default DshTuiWhaleBE guifg=#4d6bfe guibg=#14204a ctermfg=63 ctermbg=17')
+  vim.cmd('highlight default DshTuiWhaleBP guifg=#4d6bfe guibg=#f5a8b8 ctermfg=63 ctermbg=217')
+  vim.cmd('highlight default DshTuiWhaleEB guifg=#14204a guibg=#4d6bfe ctermfg=17 ctermbg=63')
+  vim.cmd('highlight default DshTuiWhalePW guifg=#f5a8b8 guibg=#f2f5fa ctermfg=217 ctermbg=255')
   vim.cmd('highlight default link DshTuiBold Bold')
   vim.cmd('highlight default link DshTuiPrompt DshTuiUser') -- input-line '❯'
   -- Slash-command completion menu: the selection reuses the pum look.

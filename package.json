@@ -31,7 +31,8 @@
     "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && node scripts/check-arch.mjs && node scripts/app-ops-check.mjs",
     "smoke": "npm run build && node scripts/smoke.ts",
     "prepublishOnly": "npm run check && npm run build && node scripts/smoke.ts",
-    "e2e": "node scripts/e2e.ts"
+    "e2e": "node scripts/e2e.ts",
+    "i18n:report": "node scripts/i18n-check.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-agent": "^0.1.5-rc.1",

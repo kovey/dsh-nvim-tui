@@ -201,6 +201,8 @@ export class FeedRenderer {
    *  terminal) into base. */
   jobsLiveRows: string[]
   jobsLiveKey: string
+  /** Key of the board already committed to `base` (idempotence guard). */
+  committedJobsKey = ''
   /** Cached viewport width: the cap renderTable wraps overwide tables
    *  against (refreshed by winSize, throttled once per 2s per flush). */
   lastWinW: number
@@ -391,8 +393,20 @@ export class FeedRenderer {
 
   /** All jobs terminal: the FINAL board state lands in base (ordinary chat
    *  content) and the pinned slot clears. */
-  commitJobsBoard(rows: string[]): void {
+  /** Commit the FINAL jobs board. `batchKey` identifies the batch (ids +
+   *  statuses — the caller's identity, NOT the rendered text: two different
+   *  batches can render identically). Re-committing the same batch is a
+   *  no-op, so a heartbeat racing the terminal state cannot duplicate the
+   *  board in the transcript. */
+  commitJobsBoard(rows: string[], batchKey?: string): void {
+    if (batchKey !== undefined && batchKey !== '' && batchKey === this.committedJobsKey) {
+      this.jobsLiveRows = []
+      this.jobsLiveKey = ''
+      this.schedule()
+      return
+    }
     if (rows.length > 0) this.base.push(...rows)
+    if (batchKey !== undefined && batchKey !== '') this.committedJobsKey = batchKey
     this.jobsLiveRows = []
     this.jobsLiveKey = ''
     this.schedule()
@@ -1198,7 +1212,10 @@ export class FeedRenderer {
     // activity row — streaming content can never push them into the chat
     // middle, and they never cover the thinking line.
     const panelLines = [...this.jobsLiveRows, ...this.todoLiveRows]
-    const raw = [...this.base, ...progressLines, ...restTail, ...panelLines, ...activityLines]
+    // restTail is the text BEFORE the promoted progress block: emitting
+    // progressLines first inverted every message's block order for the
+    // whole time any step was incomplete.
+    const raw = [...this.base, ...restTail, ...progressLines, ...panelLines, ...activityLines]
     // Raw-line → rendered-row mapping (interactive cards need their
     // POST-transform rows: tables expand, fences collapse — base offsets
     // alone cannot be trusted).
@@ -1479,17 +1496,10 @@ export class FeedRenderer {
             end
           end
         `, [this.bufId, this.ns, inPlaceRow, p.group ?? '', p.spans])
-        const tokenBlocks = codeBlocks.filter((b) => b.row === inPlaceRow)
-        if (tokenBlocks.length > 0) {
-          if (this.tokenNs === null) {
-            this.tokenNs = await this.nvim.request('nvim_create_namespace', ['dsh-tui-feed-ts']) as number
-          }
-          await this.nvim.lua(`
-            local buf, ns, row, blocks = ...
-            vim.api.nvim_buf_clear_namespace(buf, ns, row, row + 1)
-            require("dsh_tui").highlight_syntax(buf, ns, blocks)
-          `, [this.bufId, this.tokenNs, inPlaceRow, tokenBlocks])
-        }
+        // (No token pass here: a code block's tokens are registered when its
+        //  CLOSING fence arrives, so the single-row rewrite can never own a
+        //  block — the old `filter(b => b.row === inPlaceRow)` was dead. The
+        //  next full pass applies the syntax tokens.)
         // The line count did not change — no cursor move, nothing else to do.
         return
       }
