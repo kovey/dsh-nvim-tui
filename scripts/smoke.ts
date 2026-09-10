@@ -338,6 +338,39 @@ try {
   assert.ok(linesA.some((l: string) => l.startsWith('✗ web_search') && l.includes('TIMEOUT')), 'failed tool card')
   assert.ok(linesA.some((l: string) => l.includes('◇ subagent deepseek-code')), 'subagent start card')
   assert.ok(linesA.some((l: string) => l.includes('◇ subagent deepseek-code · completed')), 'subagent end card')
+
+  // 3c. Todo pinned panel: EVERY todo/write updates in place mid-turn —
+  // regression guard for "全部完成才一次性更新" (batch-at-the-end).
+  feedA.applyEvent({ type: 'turn/start', data: { turn: 9 } })
+  feedA.applyEvent({ type: 'assistant/chunk', data: { chunk: { type: 'text-delta', text: 'streaming…' } } })
+  feedA.applyEvent({ type: 'todo/write', data: { todos: [
+    { content: '任务一', status: 'pending' },
+    { content: '任务二', status: 'pending' },
+    { content: '任务三', status: 'pending' },
+  ] } })
+  await new Promise((r) => setTimeout(r, 150))
+  let todoLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(todoLines.some((l: string) => l.includes('📋 待办 3 项 · 0 完成 · 0 进行中 · 3 待办')), 'todo panel pins with the initial list')
+  assert.ok(todoLines.some((l: string) => l.includes('· 任务一')), 'pending mark renders per item')
+  feedA.applyEvent({ type: 'todo/write', data: { todos: [
+    { content: '任务一', status: 'completed' },
+    { content: '任务二', status: 'in_progress' },
+    { content: '任务三', status: 'pending' },
+  ] } })
+  await new Promise((r) => setTimeout(r, 150))
+  todoLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(todoLines.some((l: string) => l.includes('📋 待办 3 项 · 1 完成 · 1 进行中 · 1 待办')), 'intermediate write updates the panel in place')
+  assert.ok(todoLines.some((l: string) => l.includes('✓ 任务一')), 'completed mark renders immediately')
+  assert.ok(todoLines.some((l: string) => l.includes('… 任务二')), 'in-progress mark renders immediately')
+  feedA.applyEvent({ type: 'todo/write', data: { todos: [
+    { content: '任务一', status: 'completed' },
+    { content: '任务二', status: 'completed' },
+    { content: '任务三', status: 'completed' },
+  ] } })
+  await new Promise((r) => setTimeout(r, 150))
+  todoLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
+  assert.ok(todoLines.some((l: string) => l.includes('📋 待办 3 项 · 3 完成 · 0 进行中 · 0 待办')), 'all-done board commits into the transcript')
+  feedA.applyEvent({ type: 'turn/end', data: {} })
   assert.ok(linesA.some((l: string) => l.includes('◈ workflow 审计')), 'workflow start card')
   assert.ok(linesA.some((l: string) => l.includes('◈ ─ 阶段一')), 'workflow phase card')
 
