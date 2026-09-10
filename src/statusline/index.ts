@@ -13,6 +13,7 @@ import {
   formatTokens, formatElapsed, modeLabel, escapeStatusline,
 } from '../feed/stats.js'
 import { t } from '../kernel/i18n.js'
+import { TIER_ICONS } from '../kernel/difficulty.js'
 import type { InboxLike, SessionEvent } from '../kernel/types.js'
 import type { App, SessionRec } from '../kernel/app.js'
 import { registerHostHandler } from '../kernel/host-events.js'
@@ -208,7 +209,9 @@ const updateStatusline = (app: App) => {
   }
   if (rec?.model) {
     const effort = app.slices.agent.currentSelection().reasoningEffort
-    right.push(escapeStatusline(rec.model + (effort ? ` ◎${effort}` : '')))
+    const tier = rec.difficulty?.tmp?.tier
+    const tierIcon = tier !== undefined && tier !== null ? `${TIER_ICONS[tier]} ` : ''
+    right.push(escapeStatusline(tierIcon + rec.model + (effort ? ` ◎${effort}` : '')))
   }
   const usage = rec?.usage
   const cacheRate = usage ? cacheHitRate(usage, rec?.cacheReported === true) : null

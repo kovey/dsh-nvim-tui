@@ -3,7 +3,7 @@ import type { NeovimClient } from 'neovim';
 import type { FeedRenderer } from '../feed/feed.js';
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js';
 import type { RunnerConfig } from './types.js';
-import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspacesService } from './types.js';
+import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspacesService } from './types.js';
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
 /** The active session's working directory (falls back to the process cwd
  *  when no session is attached) — local-file commands must resolve against
@@ -86,6 +86,10 @@ export interface SessionRec {
         prev: ReturnType<ModelSelection['currentSelection']>;
         switchAt: number;
     } | null;
+    /** 难度路由状态（kernel/difficulty.ts）。 */
+    difficulty: DifficultyState;
+    /** 本回合工具失败次数（难度信号，turn/start 清零）。 */
+    toolErrors: number;
     /** Instant the most recent turn STARTED (vision restore ordering). */
     lastTurnStartAt: number;
     /** Live background jobs of this session (running + stopping). */

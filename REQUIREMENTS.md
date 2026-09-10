@@ -204,6 +204,7 @@ dsh --profile nvim-tui
 | 会话 | `/image <路径> [提示]` | **多模态识图**：见 §5.3；`/image clear` 清空 `<C-v>` 待发送队列 |
 | 模型 | `/model [provider/model]` | 无参浮窗选择，带参直接切换；热切 + 持久化默认 |
 | 模型 | `/effort off\|high\|max\|auto` | 推理等级 |
+| 模型 | `/difficulty [easy\|medium\|hard\|auto\|off]` | **按难度自动选模型**（见 §5.8）：规则定档 + 可选 LLM 分类器，临时切换档位模型，回合结束切回；状态栏档位徽标；`subagentPolicy` 同步官方子代理模型闸门 |
 | 模型 | `/preset [id]` | agent 预设（标准/PTC/极简/创造，需 agent-presets 行；官方空白规则：仅未开始回合的会话可切换） |
 | 审批 | `/yolo on\|off` | 审批策略全放行/逐项询问 |
 | 审批 | `/permission [name]` | 权限预设（permissionPresets 服务：沙箱模式 + 审批策略组合） |
@@ -306,6 +307,27 @@ dsh --profile nvim-tui
 - **R-M7-8 布局预设** `/layout default|panel`。
 - **R-M7-9 响铃** `/bell`：回合结束响铃开关（审批始终响铃）。
 - **R-M7-10 目录新建会话** `/new [目录]`：指定 cwd 建会话，含目录选择器浮窗。
+
+### 5.8 难度路由（按任务难度选模型）
+
+- **R-DIFF-1 档位模型**：`easy|medium|hard` 三档 → `{provider?, model, effort?}`，
+  配置在 runner 行 `config.difficultyRouting.tiers`（HMR）；provider 缺省继承当前，
+  档位未配置 = 不切换（用默认模型）。
+- **R-DIFF-2 定档来源**：手动钉住（`/difficulty <tier>`，优先）→ LLM 分类器
+  （`classifier.enabled`，任何失败回退规则）→ 规则评估（计划模式 / 活跃目标 /
+  本回合工具失败数 / 关键词 / 消息长度）。
+- **R-DIFF-3 切换语义**：发送前临时改写会话 `modelRef`，**回合结束自动切回**
+  全局默认（复用识图临时切换的 switchAt/turn-end 恢复点；连续同档消息延长切换
+  窗口）；`agentDefaultModel` 持久化默认永不被难度路由改写。
+- **R-DIFF-4 用户意图优先**：手动 `/model` 暂停本会话自动路由；`/difficulty off`
+  关闭；`/difficulty auto` 恢复。
+- **R-DIFF-5 可见性**：状态栏档位徽标（🟢/🟡/🔴）；切换/切回 notice 明示原因
+  （钉住/分类/规则）与目标模型；`/difficulty` 无参显示档位配置与状态。
+- **R-DIFF-6 子代理联动**：`subagentPolicy: true` 时同步官方
+  `subagent-model-selection` 闸门为档位模型集（子代理默认继承主会话模型，可
+  在档位集内自选）；关闭路由时关闸。
+- **R-DIFF-7 失效安全**：路由链任何异常不阻断消息发送（notice + 默认模型）；
+  分类器超时上限（默认 8s）。
 
 ## 6. 非功能需求
 

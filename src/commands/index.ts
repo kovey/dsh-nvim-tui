@@ -58,6 +58,7 @@ import { installHistoryCommand } from './commands/history.js'
 import { installDeliverablesCommand } from './commands/deliverables.js'
 import { installSettingsCommand } from './commands/settings.js'
 import { installBellCommand } from './commands/bell.js'
+import { installDifficultyCommand } from './commands/difficulty.js'
 
 /** Fill the commands module's App slots and register its commands. */
 export { drainPendingInput } from './core.js'
@@ -283,6 +284,7 @@ export function installCommands(app: App): void {
   installDeliverablesCommand(app)
   installSettingsCommand(app)
   installBellCommand(app)
+  installDifficultyCommand(app)
 
   registerTool(app)
   registerNotifications()

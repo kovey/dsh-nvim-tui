@@ -55,6 +55,8 @@ export const attachSession = async (app: App, handle: AgentHandle, modelRef: Mod
     committedJobKeys: new Set(),
     pendingToolCalls: new Map(),
     visionTmp: null,
+    difficulty: { tier: null, pinned: null, enabled: true, tmp: null, source: null, syncedRoutesKey: null },
+    toolErrors: 0,
     lastTurnStartAt: 0,
     bgJobs: 0,
   })

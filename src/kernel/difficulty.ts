@@ -1,0 +1,315 @@
+/**
+ * dsh_tui kernel module: DIFFICULTY-BASED MODEL ROUTING.
+ *
+ * Picks the model for a user turn by task difficulty:
+ *   M1 explicit — `/difficulty easy|medium|hard` pins a tier; `/difficulty
+ *     auto` re-arms estimation; `off` disables routing.
+ *   M2 rules — deterministic local heuristics (plan mode, goal, tool errors,
+ *     keywords, message length). Zero latency/cost.
+ *   M3 classifier — optional LLM rating with a cheap model before the main
+ *     turn (config `classifier.enabled`); any failure falls back to rules.
+ *   M4 subagent policy — optionally syncs the official
+ *     `subagent-model-selection` settings gate to the tier routes.
+ *
+ * Switching mirrors the vision-model temp-switch: the tier selection is
+ * applied to `rec.modelRef.current` at send time and restored at turn/end
+ * (boot/session-events.ts). The GLOBAL default (agentDefaultModel) is never
+ * touched. Manual `/model` disables routing for the session.
+ *
+ * Config lives in the runner row's config block (HMR):
+ *   config.difficultyRouting = { mode, tiers: {easy|medium|hard}, classifier,
+ *   subagentPolicy }
+ *
+ * @module dsh-nvim-tui/kernel/difficulty
+ */
+import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { App, SessionRec } from './app.js'
+import type { DifficultyRoutingConfig, DifficultyTier } from './types.js'
+
+/** Statusline / notice icons and labels per tier. */
+export const TIER_ICONS: Record<DifficultyTier, string> = { easy: '🟢', medium: '🟡', hard: '🔴' }
+const TIER_LABELS: Record<DifficultyTier, string> = { easy: '简', medium: '中', hard: '难' }
+const TIERS: DifficultyTier[] = ['easy', 'medium', 'hard']
+
+/** Hard-task keywords (rule estimator, M2). */
+const HARD_PATTERN = /(重构|架构|设计|排查|调试|性能|优化|安全|审查|评审|迁移|并发|死锁|泄漏|漏洞|攻击|注入|兼容|回滚|根因|崩溃|卡死|refactor|architecture|design|debug|optimiz|review|migrat|concurren|deadlock|race|security|vulnerab|rollback|root cause|performance)/i
+/** Short chatty acknowledgements → easy. */
+const CHATTY_PATTERN = /^(好|好的|行|可以|收到|谢谢|继续|ok|okay|yes|no|嗯|哦|哈|对|是|明白|了解)\b/i
+
+export function routingConfig(app: App): DifficultyRoutingConfig {
+  const raw = app.config.difficultyRouting
+  if (raw !== null && typeof raw === 'object') return raw as DifficultyRoutingConfig
+  return {}
+}
+
+/** Full selection for a tier (provider omitted = inherit current). */
+export function tierRoute(
+  cfg: DifficultyRoutingConfig,
+  tier: DifficultyTier,
+  current: { provider: string; model: string },
+): { provider: string; model: string; reasoningEffort?: string } | null {
+  const t = cfg.tiers?.[tier]
+  if (t === undefined || typeof t.model !== 'string' || t.model === '') return null
+  const provider = typeof t.provider === 'string' && t.provider !== '' ? t.provider : current.provider
+  const route: { provider: string; model: string; reasoningEffort?: string } = { provider, model: t.model }
+  if (t.effort !== undefined && t.effort !== 'auto') route.reasoningEffort = t.effort
+  return route
+}
+
+// ---------------------------------------------------------------------------
+// M2 — rule-based estimation (pure; smoke-tested)
+// ---------------------------------------------------------------------------
+
+export interface RuleContext {
+  planActive: boolean
+  goal: boolean
+  toolErrors: number
+  hasImages: boolean
+}
+
+export function estimateByRules(text: string, ctx: RuleContext): DifficultyTier {
+  if (ctx.planActive || ctx.goal || ctx.toolErrors > 0) return 'hard'
+  const clean = text.trim()
+  if (HARD_PATTERN.test(clean)) return 'hard'
+  if (ctx.hasImages) return 'medium' // vision path handles the model; never downgrade images
+  if (clean.length >= 600) return 'hard'
+  if (clean.length <= 30 && (CHATTY_PATTERN.test(clean) || (clean.length <= 12 && !/[?？]/.test(clean)))) return 'easy'
+  return 'medium'
+}
+
+// ---------------------------------------------------------------------------
+// M3 — optional LLM classifier (falls back to rules on ANY failure)
+// ---------------------------------------------------------------------------
+
+interface LlmLike {
+  prepareCall?: (config: unknown, signal: AbortSignal) => Promise<{
+    config: Record<string, unknown>
+    stream: (options: Record<string, unknown>) => AsyncIterable<StreamChunk>
+  }>
+}
+
+const CLASSIFY_PROMPT = (text: string): string =>
+  '你是任务难度分类器。评估下面用户任务的难度，只输出一个单词：easy、medium 或 hard。\n\n任务：\n' +
+  text.replace(/\s+/g, ' ').slice(0, 400)
+
+async function classifyViaLlm(
+  app: App, cfg: DifficultyRoutingConfig, rec: SessionRec, text: string,
+  current: { provider: string; model: string },
+): Promise<DifficultyTier | null> {
+  const c = cfg.classifier
+  if (c === undefined || c.enabled !== true || typeof c.model !== 'string' || c.model === '') return null
+  const llm = app.runtimeCtx.get('llm') as LlmLike | undefined
+  if (typeof llm?.prepareCall !== 'function') return null
+  const provider = typeof c.provider === 'string' && c.provider !== '' ? c.provider : current.provider
+  const timeoutMs = typeof c.timeoutMs === 'number' ? c.timeoutMs : 8000
+  try {
+    const signal = AbortSignal.timeout(timeoutMs)
+    const prepared = await llm.prepareCall({ provider, model: c.model, signal }, signal)
+    const assembler = new BlockAssembler()
+    const request: Record<string, unknown> = {
+      ...prepared.config,
+      messages: [createUserMessage({ content: [{ type: 'text', text: CLASSIFY_PROMPT(text) }], source: { kind: 'user' } })],
+      sessionId: rec.handle.agent.session.id,
+      signal,
+    }
+    for await (const chunk of prepared.stream(request)) assembler.push(chunk)
+    const out = assembler.blocks()
+      .filter((b) => b.type === 'text')
+      .map((b) => (b as { text: string }).text)
+      .join(' ')
+      .toLowerCase()
+    if (/hard|困难|复杂|难/.test(out)) return 'hard'
+    if (/easy|简单|轻松/.test(out)) return 'easy'
+    return 'medium'
+  } catch {
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// estimation entry (pin → classifier → rules)
+// ---------------------------------------------------------------------------
+
+export async function estimateDifficulty(
+  app: App, rec: SessionRec, text: string, hasImages: boolean,
+): Promise<{ tier: DifficultyTier; source: 'pin' | 'rules' | 'classifier' } | null> {
+  const d = rec.difficulty
+  if (d.enabled !== true) return null
+  const cfg = routingConfig(app)
+  if (cfg.mode === 'off') return null
+  if (d.pinned !== null) return { tier: d.pinned, source: 'pin' }
+  const current = app.slices.agent.currentSelection()
+  const classified = await classifyViaLlm(app, cfg, rec, text, current)
+  if (classified !== null) return { tier: classified, source: 'classifier' }
+  return {
+    tier: estimateByRules(text, {
+      planActive: rec.planActive,
+      goal: rec.goal !== null,
+      toolErrors: rec.toolErrors,
+      hasImages,
+    }),
+    source: 'rules',
+  }
+}
+
+// ---------------------------------------------------------------------------
+// M4 — subagent model gate sync (official `subagent-model-selection`)
+// ---------------------------------------------------------------------------
+
+function allRoutes(cfg: DifficultyRoutingConfig, current: { provider: string; model: string }): Array<{ provider: string; model: string }> {
+  const out: Array<{ provider: string; model: string }> = []
+  const seen = new Set<string>()
+  for (const tier of TIERS) {
+    const r = tierRoute(cfg, tier, current)
+    if (r === null) continue
+    const key = `${r.provider}\0${r.model}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ provider: r.provider, model: r.model })
+  }
+  return out
+}
+
+function routesKey(cfg: DifficultyRoutingConfig, current: { provider: string; model: string }): string {
+  return JSON.stringify(allRoutes(cfg, current).map((r) => `${r.provider}/${r.model}`).sort())
+}
+
+async function syncSubagentPolicy(
+  app: App, cfg: DifficultyRoutingConfig, rec: SessionRec,
+  current: { provider: string; model: string }, enabled: boolean,
+): Promise<void> {
+  if (cfg.subagentPolicy !== true) return
+  const key = enabled ? routesKey(cfg, current) : 'off'
+  if (rec.difficulty.syncedRoutesKey === key) return
+  const settings = app.runtimeCtx.get('settings') as unknown as {
+    update?: (ns: string, patch: Record<string, unknown>) => Promise<unknown>
+  } | undefined
+  if (typeof settings?.update !== 'function') return
+  try {
+    await settings.update('subagent-model-selection', enabled
+      ? { enabled: true, allowedModels: allRoutes(cfg, current) }
+      : { enabled: false, allowedModels: [] })
+    rec.difficulty.syncedRoutesKey = key
+    app.notice(enabled
+      ? '子代理模型闸门已同步为难度档位模型（subagent-model-selection）'
+      : '子代理模型闸门已关闭（subagent-model-selection）')
+  } catch (err) {
+    app.notice(`子代理模型策略同步失败: ${(err as Error).message}`)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// send-time routing + turn-end restore
+// ---------------------------------------------------------------------------
+
+/** Called by followup() before every main-session send. Never throws. */
+export async function routeDifficultyForTurn(app: App, rec: SessionRec, text: string, hasImages: boolean): Promise<void> {
+  try {
+    const d = rec.difficulty
+    if (d.enabled !== true) return
+    const est = await estimateDifficulty(app, rec, text, hasImages)
+    if (est === null) return
+    // A routed turn is still pending and the queued message keeps the same
+    // tier → extend the switch window (visionTmp semantics). A different
+    // tier cannot switch mid-pending-turn; the next turn re-estimates.
+    if (d.tmp !== null) {
+      if (d.tmp.tier === est.tier) d.tmp.switchAt = Date.now()
+      return
+    }
+    if (est.tier === 'medium') return
+    const cfg = routingConfig(app)
+    const current = { ...rec.modelRef.current }
+    const route = tierRoute(cfg, est.tier, current)
+    if (route === null) return
+    if (route.provider === current.provider && route.model === current.model) return
+    rec.modelRef.current = route
+    rec.model = route.model
+    rec.provider = route.provider
+    d.tier = est.tier
+    d.source = est.source
+    d.tmp = { prev: current, switchAt: Date.now(), tier: est.tier }
+    const why = est.source === 'pin' ? '手动钉住' : est.source === 'classifier' ? 'LLM 分类' : '规则评估'
+    app.notice(`${TIER_ICONS[est.tier]} 难度${TIER_LABELS[est.tier]}（${why}）→ 使用 ${route.provider}/${route.model}${route.reasoningEffort ? ` ◎${route.reasoningEffort}` : ''} · 回合结束切回 ${current.provider}/${current.model}`)
+    app.slices.ui.updateStatusline()
+    if (cfg.subagentPolicy === true) void syncSubagentPolicy(app, cfg, rec, current, true)
+  } catch (err) {
+    app.notice(`难度路由失败（本次用默认模型）: ${(err as Error).message}`)
+  }
+}
+
+/** Called at turn/end (after the vision restore). `notify` = active session. */
+export function restoreDifficulty(app: App, rec: SessionRec, notify: boolean): void {
+  const d = rec.difficulty
+  if (d.tmp === null) return
+  if ((rec.lastTurnStartAt ?? 0) < d.tmp.switchAt) return
+  const prev = d.tmp.prev
+  d.tmp = null
+  d.tier = null
+  d.source = null
+  rec.modelRef.current = prev
+  rec.model = prev.model
+  rec.provider = prev.provider
+  if (notify) {
+    app.notice(`已切回模型 ${prev.provider}/${prev.model}（难度路由回合结束）`)
+    app.slices.ui.updateStatusline()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// /difficulty command ops
+// ---------------------------------------------------------------------------
+
+/** Apply /difficulty <arg>. Returns 0..n notice lines. */
+export async function applyDifficultyCommand(app: App, rec: SessionRec, arg: 'auto' | 'off' | DifficultyTier): Promise<string[]> {
+  const d = rec.difficulty
+  const cfg = routingConfig(app)
+  const current = { ...rec.modelRef.current }
+  if (arg === 'off') {
+    d.enabled = false
+    d.pinned = null
+    if (d.tmp !== null) {
+      const prev = d.tmp.prev
+      d.tmp = null
+      d.tier = null
+      d.source = null
+      rec.modelRef.current = prev
+      rec.model = prev.model
+      rec.provider = prev.provider
+    }
+    await syncSubagentPolicy(app, cfg, rec, current, false)
+    return ['难度路由已关闭（/difficulty auto 恢复）']
+  }
+  d.enabled = true
+  if (arg === 'auto') {
+    d.pinned = null
+    return ['难度路由: 自动（规则评估' + (cfg.classifier?.enabled === true ? ' + LLM 分类' : '') + '）']
+  }
+  d.pinned = arg
+  const route = tierRoute(cfg, arg, current)
+  const routeText = route === null ? '（未配置该档位模型 → 用默认模型）' : `（${route.provider}/${route.model}）`
+  await syncSubagentPolicy(app, cfg, rec, current, true)
+  return [`难度钉住: ${TIER_ICONS[arg]} ${TIER_LABELS[arg]}${routeText} · 下一条消息生效，回合结束切回默认`]
+}
+
+/** Status lines for bare /difficulty. */
+export function difficultyStatusLines(app: App, rec: SessionRec): string[] {
+  const d = rec.difficulty
+  const cfg = routingConfig(app)
+  const current = app.slices.agent.currentSelection()
+  const lines: string[] = [
+    `难度路由: ${d.enabled !== true || cfg.mode === 'off' ? '关闭' : '自动'}${d.pinned !== null ? ` · 钉住 ${TIER_ICONS[d.pinned]} ${TIER_LABELS[d.pinned]}` : ''}`,
+    `当前回合档位: ${d.tier === null ? '—（默认模型）' : `${TIER_ICONS[d.tier]} ${TIER_LABELS[d.tier]}${d.source !== null ? ` · ${d.source}` : ''}`}`,
+    '档位配置:',
+  ]
+  for (const tier of TIERS) {
+    const r = tierRoute(cfg, tier, current)
+    lines.push(`  ${TIER_ICONS[tier]} ${TIER_LABELS[tier]} → ${r === null ? '默认模型' : `${r.provider}/${r.model}${r.reasoningEffort ? ` ◎${r.reasoningEffort}` : ''}`}`)
+  }
+  if (cfg.classifier?.enabled === true) {
+    lines.push(`LLM 分类: 开启（${cfg.classifier.provider ?? current.provider}/${cfg.classifier.model ?? '?'}）`)
+  }
+  if (cfg.subagentPolicy === true) lines.push('子代理模型闸门: 同步档位模型')
+  lines.push('', '用法: /difficulty [easy|medium|hard|auto|off]')
+  return lines
+}

@@ -739,6 +739,54 @@ export interface RunnerConfig {
     resumeSessionId?: string;
     resumeLatest?: boolean;
     prompt?: string;
+    /** 按任务难度自动选择模型（/difficulty，详见 kernel/difficulty.ts）。 */
+    difficultyRouting?: DifficultyRoutingConfig;
     [key: string]: unknown;
+}
+/** Difficulty tier for the model router. */
+export type DifficultyTier = 'easy' | 'medium' | 'hard';
+/** One tier's model route (provider omitted = inherit the current one). */
+export interface TierRoute {
+    provider?: string;
+    model: string;
+    /** reasoning effort applied while the tier model is active. */
+    effort?: 'off' | 'high' | 'max' | 'auto';
+}
+/** /difficulty routing configuration (runner config block, HMR). */
+export interface DifficultyRoutingConfig {
+    /** auto = route per turn; off = never route (default: auto). */
+    mode?: 'auto' | 'off';
+    /** Per-tier model routes; a tier without a route falls back to the
+     *  current default model (no switch). */
+    tiers?: Partial<Record<DifficultyTier, TierRoute>>;
+    /** LLM difficulty classifier (opt-in; falls back to rules on any error). */
+    classifier?: {
+        enabled?: boolean;
+        provider?: string;
+        model?: string;
+        timeoutMs?: number;
+    };
+    /** Sync the official `subagent-model-selection` gate so child agents may
+     *  pick among the tier routes (off = leave the user's own setting). */
+    subagentPolicy?: boolean;
+}
+/** Per-session difficulty routing state (SessionRec.difficulty). */
+export interface DifficultyState {
+    /** Tier of the model currently active via a temporary switch. */
+    tier: DifficultyTier | null;
+    /** Manual pin (/difficulty easy|medium|hard); null = auto estimation. */
+    pinned: DifficultyTier | null;
+    /** Routing enabled for this session (mode auto; /model disables). */
+    enabled: boolean;
+    /** Active temporary switch: previous selection + switch instant. */
+    tmp: {
+        prev: ReturnType<ModelSelection['currentSelection']>;
+        switchAt: number;
+        tier: DifficultyTier;
+    } | null;
+    /** Where the active tier came from (pin / rules / classifier). */
+    source: 'pin' | 'rules' | 'classifier' | null;
+    /** Last subagent-policy routes key synced (dedupe settings writes). */
+    syncedRoutesKey: string | null;
 }
 export {};

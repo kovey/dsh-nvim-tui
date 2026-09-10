@@ -24,7 +24,7 @@ import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types
 import type { RunnerConfig } from './types.js'
 import type {
   AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService,
-  FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService,
+  DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService,
   MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService,
   PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent,
   LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService,
@@ -118,6 +118,10 @@ export interface SessionRec {
   deliverables: { turn: number | undefined; paths: string[] }
   /** Image turn in flight: previous selection to restore + switch instant. */
   visionTmp: { prev: ReturnType<ModelSelection['currentSelection']>; switchAt: number } | null
+  /** 难度路由状态（kernel/difficulty.ts）。 */
+  difficulty: DifficultyState
+  /** 本回合工具失败次数（难度信号，turn/start 清零）。 */
+  toolErrors: number
   /** Instant the most recent turn STARTED (vision restore ordering). */
   lastTurnStartAt: number
   /** Live background jobs of this session (running + stopping). */

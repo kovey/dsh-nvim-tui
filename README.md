@@ -244,6 +244,7 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 会话 | `/image <路径> [提示]` | **多模态识图**：本地图片（png/jpg/webp/gif，支持 `~/`）随提示发送；macOS 无参数时读剪贴板图片；`/image clear` 清空 `<C-v>` 队列 |
 | 模型 | `/model [provider/model]` | 无参浮窗选择，带参直接切换；热切 + 持久化默认 |
 | 模型 | `/effort off\|high\|max\|auto` | 推理等级 |
+| 模型 | `/difficulty [easy\|medium\|hard\|auto\|off]` | **按难度自动选模型**：规则评估（计划模式/目标/工具失败/关键词/长度）→ 临时切换档位模型，回合结束自动切回；可开 LLM 分类器与子代理模型闸门（见 §难度路由） |
 | 模型 | `/preset [id]` | agent 预设（需 agent-presets 行；官方空白规则：仅未开始回合的会话可切换） |
 | 审批 | `/yolo on\|off` | 审批策略全放行/逐项询问 |
 | 审批 | `/permission [name]` | 权限预设（沙箱模式 + 审批策略组合）；危险全访问预设先弹确认 |
@@ -277,6 +278,37 @@ LLM 适配器在请求时解析为 data URL。能力路径：
 
 > 注：早期版本的 `dsh-vision-bridge` OCR 桥路径已移除（v0.3.2），识别统一走
 > 官方识图模型。旧会话遗留的带图失败消息仍可用 `/rewind` 回退修复。
+
+## 难度路由（按任务难度选模型）
+
+`/difficulty` 在发送前按难度临时切换会话模型，**回合结束自动切回**全局默认
+（与识图临时切换同一套机制，`agentDefaultModel` 持久化默认永不被污染）：
+
+- **定档来源**：手动钉住 `/difficulty easy|medium|hard` → 规则评估
+  （计划模式 / 活跃目标 / 本回合工具失败、关键词、消息长度）→ 可选 **LLM
+  分类器**（`classifier.enabled`，用便宜模型在发送前打分，任何失败回退规则）。
+- **配置**（runner 行的 `config:` 块，HMR 免重启）：
+
+```yaml
+- insert:
+    - id: nvim-tui-runner
+      name: 'dsh-nvim-tui'
+      config:
+        difficultyRouting:
+          mode: auto            # auto | off
+          tiers:
+            easy:   { model: <快模型>, effort: off }
+            medium: { model: <默认模型> }   # 可省略 = 不切换
+            hard:   { model: <强模型>, effort: max }
+          classifier: { enabled: true, model: <打分模型>, timeoutMs: 8000 }
+          subagentPolicy: true  # 同步官方 subagent-model-selection 闸门
+```
+
+- **状态栏徽标**：`🟢/🟡/🔴` 前缀显示当前回合生效的档位；`/difficulty` 无参查看
+  档位配置与当前状态；`/difficulty off` 关闭，手动 `/model` 也会暂停本会话
+  自动路由（`/difficulty auto` 恢复）。
+- **子代理联动**（`subagentPolicy: true`）：子代理默认继承主会话模型，官方
+  `subagent-model-selection` 闸门同步为档位模型集，模型可在其中自选。
 
 ## 会话管理
 

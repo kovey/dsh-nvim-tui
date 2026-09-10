@@ -10,6 +10,7 @@
  */
 import { FeedRenderer } from '../feed/feed.js'
 import { t } from '../kernel/i18n.js'
+import { restoreDifficulty } from '../kernel/difficulty.js'
 import type { ChatMessage, GoalState, MessageContent, SessionEvent } from '../kernel/types.js'
 import type { App, SessionRec } from '../kernel/app.js'
 
@@ -81,6 +82,7 @@ export function makeSessionEventHandler(
       const data = event.data as { turn?: number } | undefined
       rec.deliverables = { turn: data?.turn, paths: [] }
       rec.pendingToolCalls.clear()
+      rec.toolErrors = 0
       rec.lastTurnStartAt = Date.now()
       return false
     },
@@ -118,10 +120,13 @@ export function makeSessionEventHandler(
       return false
     },
     'tool/result': (rec, _owner, event) => {
-      const data = event.data as { message?: { source?: { callId?: string } } } | undefined
+      const data = event.data as { message?: { source?: { callId?: string } }; error?: unknown } | undefined
       if (typeof data?.message?.source?.callId === 'string') {
         rec.pendingToolCalls.delete(data.message.source.callId)
       }
+      // Difficulty signal (M2): a failed tool result marks this turn hard —
+      // the NEXT turn re-estimates against this count (reset on turn/start).
+      if (data?.error !== undefined) rec.toolErrors++
       return false
     },
     'turn/end': (rec, owner, event) => {
@@ -172,6 +177,8 @@ export function makeSessionEventHandler(
           app.slices.ui.updateStatusline()
         }
       }
+      // 难度路由恢复：排在识图恢复之后（难度先切、识图后切 → 逆序恢复）。
+      restoreDifficulty(app, rec, owner.id === app.slices.sessions.activeId)
       return false
     },
     'session/title': (rec, owner, event) => {

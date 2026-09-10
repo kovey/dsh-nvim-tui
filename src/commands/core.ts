@@ -15,6 +15,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { t } from '../kernel/i18n.js'
 import { matchIntent } from './nlcmd.js'
 import { activeSessionCwd } from '../kernel/app.js'
+import { routeDifficultyForTurn } from '../kernel/difficulty.js'
 import { readClipboardImage, splitImageDataUrls, parseImageDataUrl } from '../feed/images.js'
 import { queueSubagentPromptKey } from '../kernel/types.js'
 import type { ApprovalRequest, InboxLike, LlmService, MessageContent, SaveImageAttachment } from '../kernel/types.js'
@@ -43,6 +44,11 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
   // fork a side session instead.)
   if (rec.status !== undefined && rec.status.startsWith('● running')) {
     app.slices.ui.activeFeed()?.appendNotice('已排队：当前回合结束后处理')
+  }
+  // 难度路由（M1-M3）：发送前按难度切换本会话模型，回合结束自动切回。
+  // 内部兜底，失败不阻断发送。
+  if (rec.difficulty !== undefined && rec.modelRef !== undefined) {
+    await routeDifficultyForTurn(app, rec, text, (images?.length ?? 0) > 0)
   }
   if (images !== undefined && images.length > 0 && (text ?? '').trim() === '') {
     text = '📎 图片消息'
@@ -409,9 +415,19 @@ export const onInput = (app: App, text: string): void => {
 export const applyModelSelection = async (app: App, next: ModelRef['current']): Promise<void> => {
   const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (rec?.modelRef) rec.modelRef.current = next // hot for the active session
-  if (rec) rec.model = next.model
+  if (rec) {
+    rec.model = next.model
+    // 手动 /model = 明确意图：暂停该会话的自动难度路由（/difficulty auto 恢复）。
+    if (rec.difficulty !== undefined) {
+      rec.difficulty.enabled = false
+      rec.difficulty.pinned = null
+      rec.difficulty.tmp = null
+      rec.difficulty.tier = null
+      rec.difficulty.source = null
+    }
+  }
   await app.runtimeCtx.agentDefaultModel.saveSelection(next) // persist default
-  app.notice(`模型已切换: ${next.provider}/${next.model}${next.reasoningEffort ? ` (${next.reasoningEffort})` : ''}`)
+  app.notice(`模型已切换: ${next.provider}/${next.model}${next.reasoningEffort ? ` (${next.reasoningEffort})` : ''}${rec?.difficulty !== undefined ? '（已暂停自动难度路由，/difficulty auto 恢复）' : ''}`)
   app.slices.ui.updateStatusline()
 }
 

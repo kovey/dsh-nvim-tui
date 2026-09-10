@@ -24,6 +24,7 @@ import { runningBadge } from '../lib/statusline/index.js'
 import stringWidth from 'string-width'
 import { matchSessionEventFilter } from '../lib/ext-api/index.js'
 import { readPatchRowIds, packageExists } from '../lib/deps/index.js'
+import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { encodeSessionLog, encodeHeaderOnlyLog } from '../lib/kernel/subagent-clean.js'
 import { zstdDecompressSync } from 'node:zlib'
 import os from 'node:os'
@@ -1742,6 +1743,19 @@ description:
   } else {
     log('skip packageExists probes (no dsh install found)')
   }
+
+  // 9g3. /difficulty 难度路由（M2 规则定档：纯函数）。
+  const rules = estimateByRules
+  assert.equal(rules('你好', { planActive: false, goal: false, toolErrors: 0, hasImages: false }), 'easy', '短闲聊 → easy')
+  assert.equal(rules('收到', { planActive: false, goal: false, toolErrors: 0, hasImages: false }), 'easy', '确认语 → easy')
+  assert.equal(rules('帮我把这个函数重构一下，加缓存', { planActive: false, goal: false, toolErrors: 0, hasImages: false }), 'hard', '重构关键词 → hard')
+  assert.equal(rules('please debug the race condition', { planActive: false, goal: false, toolErrors: 0, hasImages: false }), 'hard', '英文 debug/race → hard')
+  assert.equal(rules('这段代码什么意思？', { planActive: false, goal: false, toolErrors: 0, hasImages: false }), 'medium', '普通问题 → medium')
+  assert.equal(rules('嗯', { planActive: true, goal: false, toolErrors: 0, hasImages: false }), 'hard', '计划模式优先 → hard')
+  assert.equal(rules('嗯', { planActive: false, goal: true, toolErrors: 0, hasImages: false }), 'hard', '活跃目标优先 → hard')
+  assert.equal(rules('嗯', { planActive: false, goal: false, toolErrors: 2, hasImages: false }), 'hard', '工具失败优先 → hard')
+  assert.equal(rules('嗯', { planActive: false, goal: false, toolErrors: 0, hasImages: true }), 'medium', '图片消息不降级 → medium')
+  assert.equal(rules('这是一条非常长的任务描述' + 'x'.repeat(600), { planActive: false, goal: false, toolErrors: 0, hasImages: false }), 'hard', '超长任务 → hard')
   const mdHead = FeedRenderer.parseLine('## 标题行', false, true)
   assert.equal(mdHead.text, '标题行', 'heading markers stripped')
   assert.equal(mdHead.group, 'DshTuiHeading', 'heading group')

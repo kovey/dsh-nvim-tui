@@ -284,6 +284,7 @@ const EN_DICT: Record<string, string> = {
   '切换会话': 'switch session',
   '插件市场': 'plugin market',
   '切换模型': 'switch model',
+  '按难度自动选模型': 'pick model by task difficulty',
   '关闭背景鲸鱼': 'hide the background whale',
   '文件': 'File',
   '引用文件': 'reference files',
