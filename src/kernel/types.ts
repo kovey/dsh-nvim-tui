@@ -554,6 +554,9 @@ export interface DifficultyState {
   enabled: boolean
   /** Active temporary switch: previous selection + switch instant. */
   tmp: { prev: ReturnType<ModelSelection['currentSelection']>; switchAt: number; tier: DifficultyTier } | null
+  /** Estimate parked while a turn was running (applied at turn/end for the
+   *  queued turn — modelRef must never change mid-turn). */
+  pending: { tier: DifficultyTier; source: 'pin' | 'rules' | 'classifier' } | null
   /** Where the active tier came from (pin / rules / classifier). */
   source: 'pin' | 'rules' | 'classifier' | null
   /** Last subagent-policy routes key synced (dedupe settings writes). */

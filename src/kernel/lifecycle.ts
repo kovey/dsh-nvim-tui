@@ -93,14 +93,21 @@ export function installLifecycle(app: App): void {
     // handle disposal would wait for LLM retries (minutes). The QUIT path
     // races this; the effect-disposer path lets it drain.
     try {
-      // pre-0.1.5: per-session store flush; 0.1.5: service-wide
-      // sessionPersistence.flush() (handle dispose drains durably below).
-      const legacyFlush = (app.liveSessions as unknown as { flush?: (s: unknown) => Promise<unknown> }).flush
-      if (typeof legacyFlush === 'function') {
-        for (const session of app.liveSessions.list()) {
-          try { await legacyFlush(session) } catch {}
+      // pre-0.1.5: the `sessions` service carried a per-session flush;
+      // 0.1.5: service-wide sessionPersistence.flush() (handle dispose
+      // drains durably below). `get('sessions')` throws on 0.1.5 (service
+      // removed) — the catch falls through to the service-level flush.
+      let flushed = false
+      try {
+        const legacyStore = app.runtimeCtx.get('sessions') as unknown as { flush?: (s: unknown) => Promise<unknown> } | undefined
+        if (typeof legacyStore?.flush === 'function') {
+          for (const session of app.liveSessions.list()) {
+            try { await legacyStore.flush(session) } catch {}
+          }
+          flushed = true
         }
-      } else {
+      } catch {}
+      if (!flushed) {
         const svcFlush = (app.svc('sessionPersistence') as unknown as { flush?: () => Promise<unknown> } | undefined)?.flush
         if (typeof svcFlush === 'function') {
           try { await svcFlush() } catch {}
