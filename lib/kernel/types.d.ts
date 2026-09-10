@@ -785,6 +785,8 @@ export interface RunnerConfig {
     prompt?: string;
     /** 按任务难度自动选择模型（/difficulty，详见 kernel/difficulty.ts）。 */
     difficultyRouting?: DifficultyRoutingConfig;
+    /** /todo 清单纪律守卫（逐项更新硬性约束；默认开，false 关闭）。 */
+    todoGuard?: boolean;
     [key: string]: unknown;
 }
 /** Difficulty tier for the model router. */

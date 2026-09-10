@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
+import { installTodoGuard } from '../kernel/todo-guard.js'
 import { FeedRenderer } from '../feed/feed.js'
 import { statSync } from 'node:fs'
 import { t } from '../kernel/i18n.js'
@@ -10,6 +11,11 @@ import { BUILD_STAMP, BUILD_VERSION } from '../kernel/app.js'
 import type { AgentHandle, SessionEvent } from '../kernel/types.js'
 import type { App, AppSlices, ModelRef, WritableSlice } from '../kernel/app.js'
 const WSS = (d: AppSlices['sessions']) => d as WritableSlice<AppSlices['sessions']>
+
+/** /todo 清单纪律守卫开关（默认开；config.todoGuard=false 或 DSH_NVIM_TUI_TODO_GUARD=0 关闭）。 */
+const todoGuardEnabled = (app: App): { enabled: boolean } => ({
+  enabled: app.config.todoGuard !== false && process.env.DSH_NVIM_TUI_TODO_GUARD !== '0',
+})
 
 export const attachSession = async (app: App, handle: AgentHandle, modelRef: ModelRef, opts?: { background?: boolean }) => {
   const id = handle.agent.session.id
@@ -104,6 +110,7 @@ export const createSession = async (app: App, cwdPath?: string) => {
     },
     setup: (agentCtx) => {
       installModelSelection(agentCtx, modelRef as unknown as Parameters<typeof installModelSelection>[1])
+      installTodoGuard(agentCtx, todoGuardEnabled(app))
     },
   })
   const id = await attachSession(app, handle, modelRef)
@@ -147,6 +154,7 @@ const doResumeSession = async (app: App, id: string): Promise<string | undefined
     },
     setup: (agentCtx) => {
       installModelSelection(agentCtx, modelRef as unknown as Parameters<typeof installModelSelection>[1])
+      installTodoGuard(agentCtx, todoGuardEnabled(app))
     },
   })
   const sid = await attachSession(app, handle, modelRef, { background: true })
@@ -287,7 +295,10 @@ export const forkSession = async (app: App, directive: string | undefined): Prom
         isSeeded: true,
       },
       agentOptions: { provider: selection.provider, model: selection.model },
-      setup: (agentCtx) => { installModelSelection(agentCtx, modelRef as unknown as Parameters<typeof installModelSelection>[1]) },
+      setup: (agentCtx) => {
+        installModelSelection(agentCtx, modelRef as unknown as Parameters<typeof installModelSelection>[1])
+        installTodoGuard(agentCtx, todoGuardEnabled(app))
+      },
     })
     const id = await attachSession(app, handle, modelRef)
     await switchTo(app, id)

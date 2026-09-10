@@ -25,6 +25,7 @@ import stringWidth from 'string-width'
 import { matchSessionEventFilter } from '../lib/ext-api/index.js'
 import { readPatchRowIds, packageExists } from '../lib/deps/index.js'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
+import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN } from '../lib/kernel/todo-guard.js'
 import { encodeSessionLog, encodeHeaderOnlyLog } from '../lib/kernel/subagent-clean.js'
 import { zstdDecompressSync } from 'node:zlib'
 import os from 'node:os'
@@ -1789,6 +1790,21 @@ description:
   assert.equal(rules('嗯', { planActive: false, goal: false, toolErrors: 2, hasImages: false }), 'hard', '工具失败优先 → hard')
   assert.equal(rules('嗯', { planActive: false, goal: false, toolErrors: 0, hasImages: true }), 'medium', '图片消息不降级 → medium')
   assert.equal(rules('这是一条非常长的任务描述' + 'x'.repeat(600), { planActive: false, goal: false, toolErrors: 0, hasImages: false }), 'hard', '超长任务 → hard')
+
+  // 9g4. 待办清单纪律守卫（纯函数：逐项更新硬性约束）
+  const gTodos = (statuses: string[]) => statuses.map((s, i) => ({ content: `任务${i + 1}`, status: s }))
+  assert.equal(
+    latestTodos([{ type: 'todo/write', data: { todos: gTodos(['pending', 'in_progress']) } }])?.[1]?.content,
+    '任务2', 'latestTodos 读取最后一次写入')
+  assert.equal(latestTodos([{ type: 'turn/start' }]), null, '没有 todo/write → null')
+  assert.ok(
+    (todoGuardReminder({ sawTodoWrite: false, toolCalls: 2 }, gTodos(['in_progress', 'pending']), 0) ?? '').includes('任务1'),
+    '有未完成项 + 工具活动 + 未写清单 → 提醒并列出未完成项')
+  assert.equal(todoGuardReminder({ sawTodoWrite: true, toolCalls: 2 }, gTodos(['in_progress']), 0), null, '该步写过清单 → 不提醒')
+  assert.equal(todoGuardReminder({ sawTodoWrite: false, toolCalls: 0 }, gTodos(['in_progress']), 0), null, '无工具活动 → 不提醒')
+  assert.equal(todoGuardReminder({ sawTodoWrite: false, toolCalls: 3 }, gTodos(['completed']), 0), null, '全部完成 → 不提醒')
+  assert.equal(todoGuardReminder({ sawTodoWrite: false, toolCalls: 1 }, gTodos(['pending']), MAX_NUDGES_PER_TURN), null, '提醒预算用尽 → 不提醒')
+  assert.equal(todoGuardReminder({ sawTodoWrite: false, toolCalls: 1 }, null, 0), null, '无清单 → 不提醒')
   const mdHead = FeedRenderer.parseLine('## 标题行', false, true)
   assert.equal(mdHead.text, '标题行', 'heading markers stripped')
   assert.equal(mdHead.group, 'DshTuiHeading', 'heading group')

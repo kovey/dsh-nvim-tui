@@ -329,6 +329,17 @@ dsh --profile nvim-tui
 - **R-DIFF-7 失效安全**：路由链任何异常不阻断消息发送（notice + 默认模型）；
   分类器超时上限（默认 8s）。
 
+### 5.9 待办清单纪律（逐项更新硬约束）
+
+- **R-TODO-1 常驻规则**：每个 agent 作用域注入 system-prompt 段落
+  （`nvim-tui-todo-discipline`）：开始一项立即标 `in_progress`、完成一项立即
+  `todo_write` 标 `completed`，禁止攒到最后一次性更新。
+- **R-TODO-2 逐步提醒**：`agent/pre-step` 瀑布——某步有工具调用却未写清单且清单
+  仍有未完成项时，向下一请求注入列出未完成项的具体提醒；每回合上限 3 条。
+- **R-TODO-3 可视性**：提醒消息以 `source.form='notice'` 渲染为暗淡通知行，不伪装
+  为用户输入；面板/状态栏/`/todo` 弹窗按每条 `todo/write` 事件实时刷新。
+- **R-TODO-4 可关闭**：`config.todoGuard: false` 或 `DSH_NVIM_TUI_TODO_GUARD=0`。
+
 ## 6. 非功能需求
 
 - **R-NFR-1 性能**：状态栏 running 时 180ms 刷新、idle 30s 低频刷新；流式渲染对上次

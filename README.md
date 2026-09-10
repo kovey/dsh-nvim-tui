@@ -311,6 +311,23 @@ LLM 适配器在请求时解析为 data URL。能力路径：
 - **子代理联动**（`subagentPolicy: true`）：子代理默认继承主会话模型，官方
   `subagent-model-selection` 闸门同步为档位模型集，模型可在其中自选。
 
+## 待办清单纪律（逐项更新硬约束）
+
+`todo_write` 是"整表重写"语义、由模型决定调用时机，客户端只能按事件实时渲染
+（面板 / 状态栏 / `/todo` 弹窗在每条 `todo/write` 到达的瞬间刷新）。为了让
+"逐项更新"成为**代码层面的硬性要求**而不是依赖模型自觉，TUI 在**每个 agent
+作用域**注入两道确定性约束（`src/kernel/todo-guard.ts`）：
+
+1. **常驻 system-prompt 段落**（`nvim-tui-todo-discipline`）：开始一项 → 立即标
+   `in_progress`；完成一项 → 立即 `todo_write` 标 `completed`；禁止攒到最后一次性
+   更新；回合结束前不得留下与事实不符的 `in_progress` 项；
+2. **逐步提醒**（`agent/pre-step` 瀑布）：某一步执行了工具调用却没写清单、而
+   清单仍有未完成项时，向**下一次请求**注入一条列出未完成项的具体提醒（每回合
+   上限 3 条，避免刷屏与死循环）。
+
+关闭：runner 行 `config.todoGuard: false`，或环境变量
+`DSH_NVIM_TUI_TODO_GUARD=0`。
+
 ## 会话管理
 
 - 每个会话独立的 chat buffer 与事件流；`/sessions` 是**工作区分组浏览器**
