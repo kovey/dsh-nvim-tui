@@ -6,7 +6,7 @@
  * @module dsh-nvim-tui/subagents
  */
 import { FeedRenderer } from '../feed/feed.js'
-import { t } from '../kernel/i18n.js'
+import { t, tf } from '../kernel/i18n.js'
 import { queueSubagentPromptKey } from '../kernel/types.js'
 import type { SessionEvent, SubagentInfo } from '../kernel/types.js'
 import type { App, AppSlices, WritableSlice } from '../kernel/app.js'
@@ -56,7 +56,7 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
         events = (inspection?.events ?? []) as SessionEvent[]
       }
     } catch (err) {
-      app.notice(`读取子代理会话失败: ${(err as Error).message}`)
+      app.notice(tf('读取子代理会话失败: {err}', { err: (err as Error).message }))
       return
     }
   }
@@ -99,7 +99,7 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
     // tail-following the running stream.
     await app.luaCall('require("dsh_tui").subagent_view_goto_thinking()', []).catch(() => {})
   }
-  app.notice(`子代理视图: ${label}（${events.length} 事件 · q/Esc 关闭${live ? ' · 实时跟随' : ''}）`)
+  app.notice(tf('子代理视图: {label}（{n} 事件 · q/Esc 关闭{live}）', { label, n: events.length, live: live ? t(' · 实时跟随') : '' }))
 }
 
 /**
@@ -187,7 +187,7 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
     // Settled replay: land on the FIRST thinking block, like the view.
     await app.luaCall('require("dsh_tui").subagent_chat_goto_thinking()', []).catch(() => {})
   }
-  app.notice(`子代理对话窗: ${label}（Enter 发送 · Esc 关闭${live ? ' · 实时' : ''}）`)
+  app.notice(tf('子代理对话窗: {label}（Enter 发送 · Esc 关闭{live}）', { label, live: live ? t(' · 实时') : '' }))
 }
 
 /**
@@ -225,7 +225,7 @@ const sendToSubagent = (app: App, text: string) => {
   void (async () => {
     try {
       await app.slices.agent.queueSubagentPrompt(parentRec.handle.agent, chat.childId, clean)
-      parentRec.feed?.appendNotice(`➤ 已发给子代理 ${chat.label}: ${FeedRenderer.truncate(clean, 60)}`)
+      parentRec.feed?.appendNotice(tf('➤ 已发给子代理 {label}: {text}', { label: chat.label, text: FeedRenderer.truncate(clean, 60) }))
     } catch (err) {
       chat.feed.pushError(`${t('发送失败')}: ${(err as Error).message}`)
     }
@@ -286,7 +286,7 @@ export function installSubagents(app: App): void {
     try {
       app.slices.agent.sendToSubagent(String(args?.[0] ?? ''))
     } catch (err) {
-      app.notice(`⚠ 子代理发送失败: ${(err as Error).message}`)
+      app.notice(tf('⚠ 子代理发送失败: {err}', { err: (err as Error).message }))
     }
   })
 

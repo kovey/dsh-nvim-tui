@@ -12,7 +12,7 @@ import {
   EMPTY_USAGE, foldUsage, billedInput, cacheHitRate, estimateCost,
   formatTokens, formatElapsed, modeLabel, escapeStatusline,
 } from '../feed/stats.js'
-import { t } from '../kernel/i18n.js'
+import { t, tf } from '../kernel/i18n.js'
 import { TIER_ICONS } from '../kernel/difficulty.js'
 import type { InboxLike, SessionEvent } from '../kernel/types.js'
 import type { App, SessionRec } from '../kernel/app.js'
@@ -91,7 +91,7 @@ const ensureSpinner = (app: App) => {
 export function runningBadge(mainRunning: boolean, subRunning: number, bgJobs: number): string | null {
   if (mainRunning) return '● running'
   if (subRunning > 0) return `● running ◇${subRunning}`
-  if (bgJobs > 0) return `🔧 后台 ${bgJobs}`
+  if (bgJobs > 0) return tf('🔧 后台 {n}', { n: bgJobs })
   return null
 }
 
@@ -215,14 +215,14 @@ const updateStatusline = (app: App) => {
   }
   const usage = rec?.usage
   const cacheRate = usage ? cacheHitRate(usage, rec?.cacheReported === true) : null
-  if (!hiddenGlance.has('cache') && cacheRate !== null) right.push(escapeStatusline(`缓存 ${Math.round(cacheRate * 100)}%`))
+  if (!hiddenGlance.has('cache') && cacheRate !== null) right.push(escapeStatusline(tf('缓存 {n}%', { n: Math.round(cacheRate * 100) })))
   // Context = the LATEST step's billed input vs the context window
   // (the session total is a different number — shown as Σ).
   const last = rec?.lastUsage
   const lastBilled = last ? billedInput(last) : 0
   if (!hiddenGlance.has('context') && rec?.contextWindow && lastBilled > 0) {
     const ratio = Math.min(1, lastBilled / rec.contextWindow)
-    right.push(escapeStatusline(`上下文 ${Math.round(ratio * 100)}%`))
+    right.push(escapeStatusline(tf('上下文 {n}%', { n: Math.round(ratio * 100) })))
   }
   if (!hiddenGlance.has('tokens') && lastBilled > 0) {
     right.push(escapeStatusline(rec?.contextWindow
@@ -346,7 +346,7 @@ export function installStatusline(app: App): void {
       app.slices.ui.ensureSpinner()
       app.slices.ui.updateStatusline()
       if (sid !== undefined && sid === app.slices.sessions.activeId) {
-        app.notice(`✓ 后台任务 ${snap?.label ?? '?'} · ${snap?.status ?? '结束'}`)
+        app.notice(tf('✓ 后台任务 {label} · {status}', { label: snap?.label ?? '?', status: snap?.status ?? t('结束') }))
       }
     }))
   }

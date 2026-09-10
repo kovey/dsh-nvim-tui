@@ -53,23 +53,25 @@ const dynamic = []
 for (const file of [...walk(SRC), ...EXTRA_DIRS.flatMap((d) => { try { return walk(d) } catch { return [] } })]) {
   const text = readFileSync(file, 'utf8')
   const rel = relative(ROOT, file)
-  const re = /\bt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")?\s*([^)]*)\)/g
+  // Two passes: (1) every call whose FIRST argument is a literal — matched
+  // independently of what follows, so a nested `t('…')` inside a tf()
+  // argument still registers; (2) calls whose first argument is not a
+  // literal (reported as dynamic).
+  const litRe = /\btf?\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g
   let m
-  while ((m = re.exec(text)) !== null) {
+  while ((m = litRe.exec(text)) !== null) {
     const lit = m[1] ?? m[2]
-    // An EMPTY literal is a deliberate "no usage hint" (usage: t('')).
     if (lit === '') continue
-    if (/^\s*(?:\*|\/\/)/.test(text.slice(Math.max(0, m.index - 200), m.index).split('\n').pop() ?? '')) continue
-    if (lit === undefined) {
-      const arg = (m[3] ?? '').trim()
-      if (arg !== '') dynamic.push(`${rel}: ${arg.slice(0, 40)}`)
-      continue
-    }
+    const lineStart = text.lastIndexOf('\n', m.index) + 1
+    const line = text.slice(lineStart, text.indexOf('\n', m.index))
+    if (/^\s*(?:\*|\/\/)/.test(line)) continue // documentation example
     const key = lit.replace(/\\'/g, "'").replace(/\\\\/g, '\\')
     const list = used.get(key) ?? []
     list.push(rel)
     used.set(key, list)
   }
+  const dynRe = /\btf?\(\s*([^'"\s)][^)]{0,40})/g
+  while ((m = dynRe.exec(text)) !== null) dynamic.push(`${rel}: ${m[1].slice(0, 40)}`)
 }
 
 /** Deliberate probes: the smoke suite asserts the zh-fallback with a literal
@@ -90,4 +92,22 @@ console.log(`字典键: ${keys.size} · 被引用: ${used.size} · 动态调用�
 report('死键（字典有、代码无引用）', dead, 200)
 report('未翻译（代码引用、字典无）', missing, 200)
 report('动态调用点（本次扫描无法解析）', dynamic, 20)
-console.log('\n说明：未翻译的键在 en 模式静默回落中文；本脚本只报告不失败。')
+// -- unwrapped literals: CJK text that never reaches t()/tf() ----------------
+const CJK = /[\u4e00-\u9fff]/
+const unwrapped = []
+for (const file of walk(SRC)) {
+  if (file.endsWith('kernel/i18n.ts')) continue // the dictionary itself
+  const lines = readFileSync(file, 'utf8').split('\n')
+  lines.forEach((line, i) => {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('*') || trimmed.startsWith('/*') || trimmed.startsWith('//')) return
+    const code = line.replace(/\/\/.*$/, '')
+    if (!CJK.test(code)) return
+    if (!/['"`][^'"`]*[\u4e00-\u9fff]/.test(code)) return
+    if (/\bt\(|\btf\(/.test(code)) return
+    unwrapped.push(`${relative(ROOT, file)}:${i + 1}  ${trimmed.slice(0, 90)}`)
+  })
+}
+report('未走 t()/tf() 的中文字面量（en 模式仍显示中文）', unwrapped, 25)
+
+console.log('\n说明：未翻译的键在 en 模式静默回落中文；未包装的字面量完全绕过字典。本脚本只报告不失败。')

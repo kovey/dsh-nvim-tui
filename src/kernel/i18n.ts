@@ -27,6 +27,15 @@ export function locale(): Locale {
  *  could not restore the original literal (the en string has no zh key). */
 const REVERSE = new Map<string, string>()
 
+/** Translate a template with `{name}` placeholders. A template literal passed
+ *  to `t()` can NEVER match the dictionary (the dictionary holds the
+ *  pre-interpolation text, the call site passes the interpolated string), so
+ *  every templated string must go through this instead. */
+export function tf(zh: string, vars: Record<string, string | number>): string {
+  return t(zh).replace(/\{(\w+)\}/g, (whole, key: string) =>
+    (key in vars ? String(vars[key]) : whole))
+}
+
 /** Translate one zh literal; unknown keys return the literal unchanged. */
 export function t(zh: string): string {
   if (current !== 'en') return REVERSE.get(zh) ?? zh
@@ -200,6 +209,26 @@ const EN_DICT: Record<string, string> = {
   '凭证引用': 'credential ref',
   '已配置': 'configured',
   '未配置': 'not configured',
+  // -- 模板串（tf()）：字典保存未插值的原文，占位符用 {name} --
+  '⚠ 工具调度器崩溃（profile 里存在第二份 @deepseek-ai/dsh-tools 拷贝）——已补写 {healed} 个悬空工具结果，本会话可继续使用；根治：在 profile 目录执行 pnpm why @deepseek-ai/dsh-tools 后 pnpm dedupe（或将 dsh-nvim-tui 升级到 0.2.8+）': '⚠ tool scheduler crashed (a second @deepseek-ai/dsh-tools copy exists in the profile) — wrote {healed} dangling tool results, the session can continue; fix: run `pnpm why @deepseek-ai/dsh-tools` in the profile dir, then `pnpm dedupe`',
+  '⚠ 回合结束时仍有 {healed} 个工具调用未产生结果——已补写错误结果，会话历史已修复': '⚠ {healed} tool calls produced no result before turn end — error results were written and the history repaired',
+  '  ◇ #{seq} {label}{phase}': '  ◇ #{seq} {label}{phase}',
+  '  ◇ #{seq} · {outcome}': '  ◇ #{seq} · {outcome}',
+  '◇ subagent {provider} · {id}': '◇ subagent {provider} · {id}',
+  '◇ subagent {provider} · {reason}{elapsed}': '◇ subagent {provider} · {reason}{elapsed}',
+  '🔧 后台 {n}': '🔧 bg {n}',
+  '缓存 {n}%': 'cache {n}%',
+  '上下文 {n}%': 'context {n}%',
+  '✓ 后台任务 {label} · {status}': '✓ background job {label} · {status}',
+  '（无标题）': '(untitled)',
+  '读取子代理会话失败: {err}': 'could not read the subagent session: {err}',
+  '子代理视图: {label}（{n} 事件 · q/Esc 关闭{live}）': 'subagent view: {label} ({n} events · q/Esc closes{live})',
+  '子代理对话窗: {label}（Enter 发送 · Esc 关闭{live}）': 'subagent chat: {label} (Enter sends · Esc closes{live})',
+  '➤ 已发给子代理 {label}: {text}': '➤ sent to subagent {label}: {text}',
+  '⚠ 子代理发送失败: {err}': '⚠ subagent send failed: {err}',
+  ' · 实时跟随': ' · live',
+  ' · 实时': ' · live',
+  '结束': 'done',
   // -- audit 2026-09 补译（覆盖此前英文模式静默回落中文的 156 条） --
   '<cache|context|tokens|cost|elapsed|total>': '<cache|context|tokens|cost|elapsed|total>',
   '<directive>': '<directive>',

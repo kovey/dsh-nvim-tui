@@ -30,7 +30,7 @@ import { whaleFrames, whaleRowsIndented } from './whale.js'
 import { transformTables, renderTable, isTableRow, isSeparator } from './table.js'
 import { imageLabel } from './images.js'
 import { formatElapsed, formatTokens } from './stats.js'
-import { t } from '../kernel/i18n.js'
+import { t, tf } from '../kernel/i18n.js'
 import type { ChatMessage, ImageAttachmentRef, MessageContent, MessageSourceLike, SessionEvent } from '../kernel/types.js'
 
 const INLINE_RE = /(\*\*[^*]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\n]+\))/g
@@ -952,12 +952,12 @@ export class FeedRenderer {
         break
       case 'tool-workflow/agent-start': {
         const d = event.data
-        this.pushSubagent(`  ◇ #${d?.seq ?? '?'} ${d?.label ?? 'subagent'}${d?.phase ? ` · ${d.phase}` : ''}`)
+        this.pushSubagent(tf('  ◇ #{seq} {label}{phase}', { seq: d?.seq ?? '?', label: d?.label ?? 'subagent', phase: d?.phase ? ` · ${d.phase}` : '' }))
         break
       }
       case 'tool-workflow/agent-end': {
         const d = event.data
-        this.pushSubagent(`  ◇ #${d?.seq ?? '?'} · ${d?.outcome ?? 'settled'}`)
+        this.pushSubagent(tf('  ◇ #{seq} · {outcome}', { seq: d?.seq ?? '?', outcome: d?.outcome ?? 'settled' }))
         break
       }
       case 'tool-workflow/run-end':
@@ -973,7 +973,7 @@ export class FeedRenderer {
   subagentStart(info: { runId?: string; provider?: string; id?: string }): void {
     const now = Date.now()
     this.subagents.set(FeedRenderer.subagentKey(info), { provider: info.provider ?? '?', startedAt: now })
-    this.pushSubagent(`◇ subagent ${info.provider ?? '?'} · ${FeedRenderer.truncate(String(info.id ?? ''), 16)}`)
+    this.pushSubagent(tf('◇ subagent {provider} · {id}', { provider: info.provider ?? '?', id: FeedRenderer.truncate(String(info.id ?? ''), 16) }))
   }
 
   subagentEnd(info: { runId?: string; provider?: string; id?: string; stopReason?: string }): void {
@@ -984,7 +984,7 @@ export class FeedRenderer {
     const run = this.subagents.get(key)
     const elapsed = run ? Date.now() - run.startedAt : null
     this.subagents.delete(key)
-    this.pushSubagent(`◇ subagent ${info.provider ?? '?'} · ${info.stopReason ?? 'settled'}${elapsed === null ? '' : ` · ${formatElapsed(elapsed)}`}`)
+    this.pushSubagent(tf('◇ subagent {provider} · {reason}{elapsed}', { provider: info.provider ?? '?', reason: info.stopReason ?? 'settled', elapsed: elapsed === null ? '' : ` · ${formatElapsed(elapsed)}` }))
   }
 
   /** One identity for a subagent run across start/end/elapsed lookups. */

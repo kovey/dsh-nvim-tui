@@ -6,6 +6,7 @@
  *
  * @module dsh-nvim-tui/headless
  */
+import { t } from './i18n.js'
 import { writeFileSync } from 'node:fs'
 import type { App } from './app.js'
 
@@ -27,7 +28,7 @@ export function installHeadless(app: App): {
         const feed = app.slices.ui.activeFeed()!
         const lines = await app.slices.runtime.nvim!.request('nvim_buf_get_lines', [feed.bufId, 0, -1, false])
         const listLines = app.slices.sessions.sessionEntries.map((s) =>
-          `[ ${s.id === app.slices.sessions.activeId ? '▸' : ' '} ${s.title || '（无标题）'} · ${s.id} · ${s.kind}`)
+          `[ ${s.id === app.slices.sessions.activeId ? '▸' : ' '} ${s.title || t('（无标题）')} · ${s.id} · ${s.kind}`)
         // The stats bar IS the shared chat window's statusline: dumping it
         // makes the boot-resume regression assertable (resume attaches with
         // background:true and once left chatWinId null → blank bar forever).

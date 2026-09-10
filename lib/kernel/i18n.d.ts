@@ -12,5 +12,10 @@
 export type Locale = 'zh' | 'en';
 export declare function setLocale(locale: Locale): void;
 export declare function locale(): Locale;
+/** Translate a template with `{name}` placeholders. A template literal passed
+ *  to `t()` can NEVER match the dictionary (the dictionary holds the
+ *  pre-interpolation text, the call site passes the interpolated string), so
+ *  every templated string must go through this instead. */
+export declare function tf(zh: string, vars: Record<string, string | number>): string;
 /** Translate one zh literal; unknown keys return the literal unchanged. */
 export declare function t(zh: string): string;
