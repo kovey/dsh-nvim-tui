@@ -5,6 +5,15 @@ import type { App, AppSlices, WritableSlice } from '../../kernel/app.js'
 const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 
 export const subagentsCommand = async (app: App) => {
+  // The confirmation notice promises "/subagents 可取消" — a second
+  // invocation with a pending followup CANCELS it instead of silently
+  // re-addressing the next input.
+  if (app.slices.agent.pendingSubagentFollowup !== null) {
+    const pending = app.slices.agent.pendingSubagentFollowup
+    W(app.slices.agent).pendingSubagentFollowup = null
+    app.notice(tf('已取消发送给子代理 {0}（下一条输入按正常消息处理）', [pending.label]))
+    return
+  }
   const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec || app.slices.sessions.activeId === null) {
     app.notice(t('无活跃会话'))
@@ -43,7 +52,7 @@ export const subagentsCommand = async (app: App) => {
         }
       }
       rows.push({
-        label: `${c.label}${c.running ? ' · 运行中' : ` · 已结束${ageLabel(c.createdAt) !== '' ? ` · ${ageLabel(c.createdAt)}` : ''}`}`,
+        label: `${c.label}${c.running ? t(' · 运行中') : ` · 已结束${ageLabel(c.createdAt) !== '' ? ` · ${ageLabel(c.createdAt)}` : ''}`}`,
         value: c.id,
       })
     }
@@ -65,9 +74,9 @@ export const subagentsCommand = async (app: App) => {
     const child = children.find((c) => c.id === sel)
     const action = child?.mode === 'continuable'
       ? await app.openPicker(t('子代理操作'), [
-          { label: '打开对话窗口（像主聊天一样发消息）', value: 'chat' },
-          { label: '继续对话（下一条输入发给它）', value: 'continue' },
-          { label: '查看思考链回放', value: 'view' },
+          { label: t('打开对话窗口（像主聊天一样发消息）'), value: 'chat' },
+          { label: t('继续对话（下一条输入发给它）'), value: 'continue' },
+          { label: t('查看思考链回放'), value: 'view' },
         ])
       : 'view'
     if (action === 'continue') {

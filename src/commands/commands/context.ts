@@ -35,7 +35,7 @@ export const contextCommand = async (app: App): Promise<void> => {
     } catch {}
   }
   const usage = rec.lastUsage ?? rec.usage
-  app.notice(`上下文占用（按事件折叠）: ${usage !== undefined ? `◧ ${formatTokens(billedInput(usage))}${rec.contextWindow !== undefined ? `/${formatTokens(rec.contextWindow)}` : ''}` : '暂无数据'}`)
+  app.notice(`上下文占用（按事件折叠）: ${usage !== undefined ? `◧ ${formatTokens(billedInput(usage))}${rec.contextWindow !== undefined ? `/${formatTokens(rec.contextWindow)}` : ''}` : t('暂无数据')}`)
 }
 
 export function installContextCommand(app: App): void {

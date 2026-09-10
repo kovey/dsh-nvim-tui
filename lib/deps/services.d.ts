@@ -3,7 +3,8 @@ type DepStatus = 'ok' | 'warn' | 'missing';
 export interface DepReport {
     id: string;
     label: string;
-    group: '主机插件' | '配置生效性' | '系统命令';
+    /** Display group label (translated at render time). */
+    group: string;
     status: DepStatus;
     detail: string;
     /** RowTemplate key: the item can be assembled with /deps install. */

@@ -52,6 +52,16 @@ release notes / session V3 迁移文档 / 22 个依赖包的类型面差异）�
 - `/locale zh|en` 现为**双向**：`t()` 维护反向索引、命令目录在推送时翻译，
   zh→en→zh 往返一致（此前在 en 启动后无法还原中文）。
 
+**界面一致性 / 低危清理**：
+
+- `tf()` 包装收尾：RPC 诊断标签、picker 动作标签、分类消息等 73 行 + 补译 65 条 ——
+  字典 **628 键 / 631 引用 / 0 死键 / 0 未翻译**（`npm run i18n:report`）。
+- workflow 运行表按会话隔离且各数组限界；`/density` 即时重绘并持久化；`/theme` 切回
+  `default` 会真正清除上一预设（空 spec = 重置），并持久化/恢复。
+- `estimateCost` 增加族名回退（`*flash*`/`*pro*`）；`readImageFile` 改为 512B 前缀嗅探；
+  `/fb` 不再把列表失败当"无反馈"；`/memory` 递归列举；`/subagents` 实现"可取消"；
+  `/deps` 去重并入 loader 现有行、pnpm 版本探测修复（2s 上限）。
+
 **待办清单纪律（逐项更新硬约束）**：
 
 - 每个 agent 作用域注入常驻 system-prompt 段落 + `agent/pre-step` 逐步提醒

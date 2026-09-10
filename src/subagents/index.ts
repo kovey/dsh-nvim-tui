@@ -272,17 +272,17 @@ export function installSubagents(app: App): void {
 
 
   // -- nvim notifications this module owns (dispatched by boot via rpc.ts) --
-  registerNvimNotification('dsh-subagent-view-closed', '子代理视图', (app) => {
+  registerNvimNotification('dsh-subagent-view-closed', t('子代理视图'), (app) => {
     app.slices.agent.setSubagentView(null)
   })
-  registerNvimNotification('dsh-subagent-chat-closed', '子代理对话', (app) => {
+  registerNvimNotification('dsh-subagent-chat-closed', t('子代理对话'), (app) => {
     app.slices.agent.setSubagentChat(null)
     // Closing the chat window cancels the "next input goes to this child"
     // addressing too (the notice promises /subagents can cancel it).
     const A = W(app.slices.agent)
     if (A.pendingSubagentFollowup !== null) A.pendingSubagentFollowup = null
   })
-  registerNvimNotification('dsh-subagent-send', '子代理发送', (app, args) => {
+  registerNvimNotification('dsh-subagent-send', t('子代理发送'), (app, args) => {
     try {
       app.slices.agent.sendToSubagent(String(args?.[0] ?? ''))
     } catch (err) {

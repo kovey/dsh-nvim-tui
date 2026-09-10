@@ -67,7 +67,11 @@ function R.apply_theme(theme)
   end
   for group, attrs in pairs(theme) do
     if type(group) == 'string' and type(attrs) == 'table' then
-      if type(attrs.link) == 'string' then
+      if next(attrs) == nil then
+        -- Empty spec = RESET this group (preset switching must clear the
+        -- previous preset's attributes, which are only ever added).
+        pcall(vim.api.nvim_set_hl, 0, group, {})
+      elseif type(attrs.link) == 'string' then
         pcall(vim.api.nvim_set_hl, 0, group, { link = attrs.link })
       else
         local spec = {}

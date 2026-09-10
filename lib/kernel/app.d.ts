@@ -140,8 +140,11 @@ export interface SessionRec {
 }
 export interface WorkflowRun {
     id: string;
+    /** Session that drove the run (runs are per-session, not global state). */
+    sessionId?: string;
     name: string;
     startedAt: number;
+    /** Bounded: a long run must not grow without limit. */
     phases: Array<{
         title: string;
         startedAt: number;
@@ -249,6 +252,10 @@ export interface AppSlices {
         disposeLiveSession: (id: string) => Promise<void>;
         readState: () => unknown;
         recordState: (id: string) => void;
+        /** Persist one UI preference (`dense`, …) next to the resume pointer. */
+        saveUiPref: (key: string, value: unknown) => void;
+        /** Read one persisted UI preference. */
+        uiPref: <T>(key: string) => T | undefined;
         createSession: (cwdPath?: string) => Promise<void>;
         resumeSession: (id: string) => Promise<void>;
         updateTitle: () => void;

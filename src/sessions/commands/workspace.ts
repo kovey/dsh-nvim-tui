@@ -56,7 +56,7 @@ export const workspaceCommand = async (app: App, a: string | undefined): Promise
   // Sessions-style popup: workspace directory + per-workspace actions.
   const list = ws.list()
   const rows: Array<{ label: string; value: string }> = [
-    { label: '＋ 新建工作区（弹出目录选择）', value: 'act:new' },
+    { label: t('＋ 新建工作区（弹出目录选择）'), value: 'act:new' },
   ]
   for (const w of list) {
     rows.push({ label: tf('📁 {0} · {1} · {2} 会话', [w.title, w.path, w.sessionIds.length]), value: `ws:${w.id}` })
@@ -82,8 +82,8 @@ export const workspaceCommand = async (app: App, a: string | undefined): Promise
   const w = list.find((x) => x.id === wid)
   if (w === undefined) return
   const act = await app.openPicker(tf('工作区 {0}', [w.title]), [
-    { label: '重命名（下一条输入作为新名称）', value: 'rename' },
-    { label: '删除工作区（会话保留为未分组）', value: 'delete' },
+    { label: t('重命名（下一条输入作为新名称）'), value: 'rename' },
+    { label: t('删除工作区（会话保留为未分组）'), value: 'delete' },
     { label: t('取消'), value: 'cancel' },
   ])
   if (act === 'rename') {

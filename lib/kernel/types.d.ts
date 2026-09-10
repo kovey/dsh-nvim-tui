@@ -617,12 +617,17 @@ export interface MessageFeedbackService {
     list: (opts: {
         sessionId: string;
     }) => Promise<{
-        ok: boolean;
+        ok: true;
         value: {
             items: Array<{
                 messageId: string;
                 version?: unknown;
             }>;
+        };
+    } | {
+        ok: false;
+        error?: {
+            code?: string;
         };
     }>;
     delete: (opts: {

@@ -26,5 +26,6 @@ export declare function todoGuardReminder(step: TodoGuardStep, todos: TodoItem[]
 /** Install the guard on one agent scope. Never throws. */
 export declare function installTodoGuard(agentCtx: unknown, opts?: {
     enabled?: boolean;
+    onError?: (stage: string, err: unknown) => void;
 }): void;
 export {};

@@ -11,7 +11,7 @@ export const doctorCommand = async (app: App) => {
     size = await app.luaCall('return { vim.o.columns, vim.o.lines }', [])
   } catch {}
   app.notice(`TERM=${process.env.TERM ?? '?'} · TTY=${process.stdout.isTTY} · Node ${process.version}`)
-  app.notice(`终端尺寸 ${size ? `${size[0]}×${size[1]}` : '?'} · Unicode ✓ · truecolor ${process.env.COLORTERM === 'truecolor' ? '✓' : '按 TERM'}`)
+  app.notice(`终端尺寸 ${size ? `${size[0]}×${size[1]}` : '?'} · Unicode ✓ · truecolor ${process.env.COLORTERM === 'truecolor' ? '✓' : t('按 TERM')}`)
   app.notice(t('诊断建议: 真彩异常时检查 COLORTERM；宽度异常检查 locale/字体'))
 }
 

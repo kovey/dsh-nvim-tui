@@ -10,7 +10,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
   const workspaceRows = typeof ws?.list === 'function' ? ws.list() : []
   const archived = new Set(ws?.archivedSessionIds ?? [])
   const rows: Array<{ label: string; value: string }> = [
-    { label: '＋ 新建会话', value: 'act:new' },
+    { label: t('＋ 新建会话'), value: 'act:new' },
   ]
   const inWs = new Set<string>()
   for (const w of workspaceRows) {
@@ -60,10 +60,10 @@ export const sessionsCommand = async (app: App): Promise<void> => {
     // (0.1.2-rc.1) does not expose a durable session DELETE; archive is the
     // official way to remove a session from the lists.
     const act = await app.openPicker(tf('会话 {0}', [sid]), [
-      { label: '打开会话', value: 'open' },
-      { label: '重命名（下一条输入作为新名称）', value: 'rename' },
-      { label: '归档（从列表隐藏）', value: 'archive' },
-      { label: '移入工作区 / 移出分组', value: 'group' },
+      { label: t('打开会话'), value: 'open' },
+      { label: t('重命名（下一条输入作为新名称）'), value: 'rename' },
+      { label: t('归档（从列表隐藏）'), value: 'archive' },
+      { label: t('移入工作区 / 移出分组'), value: 'group' },
     ])
     if (act === null) return
     if (act === 'open') {
@@ -181,8 +181,8 @@ export const sessionsCommand = async (app: App): Promise<void> => {
       return
     }
     const act = await app.openPicker(tf('工作区 {0}', [w.title]), [
-      { label: '新建会话于此工作区', value: 'new' },
-      { label: '重命名工作区（下一条输入作为新名称）', value: 'rename' },
+      { label: t('新建会话于此工作区'), value: 'new' },
+      { label: t('重命名工作区（下一条输入作为新名称）'), value: 'rename' },
     ])
     if (act === 'new') {
       await createSession(app, w.path)

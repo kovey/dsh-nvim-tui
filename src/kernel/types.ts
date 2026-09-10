@@ -380,7 +380,10 @@ export interface SessionTitleService {
 
 /** dsh-message-feedback service. */
 export interface MessageFeedbackService {
-  list: (opts: { sessionId: string }) => Promise<{ ok: boolean; value: { items: Array<{ messageId: string; version?: unknown }> } }>
+  list: (opts: { sessionId: string }) => Promise<
+    | { ok: true; value: { items: Array<{ messageId: string; version?: unknown }> } }
+    | { ok: false; error?: { code?: string } }
+  >
   delete: (opts: { sessionId: string; messageId: string; ifVersion: unknown }) => Promise<unknown>
   put: (opts: {
     sessionId: string

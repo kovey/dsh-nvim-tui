@@ -8,7 +8,7 @@ import type { App } from '../../kernel/app.js'
 /** /effort [off|high|max|auto] */
 export const effortCommand = async (app: App, a: string | undefined) => {
   if (!a) {
-    app.notice(`当前推理等级: ${app.slices.agent.currentSelection().reasoningEffort ?? 'auto（模型默认）'}`)
+    app.notice(`当前推理等级: ${app.slices.agent.currentSelection().reasoningEffort ?? t('auto（模型默认）')}`)
     return
   }
   if (!['off', 'high', 'max', 'auto'].includes(a)) {

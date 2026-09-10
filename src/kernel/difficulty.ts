@@ -28,7 +28,6 @@ import type { App, SessionRec } from './app.js'
 import type { DifficultyRoutingConfig, DifficultyTier } from './types.js'
 import { effortSupported } from './vision.js'
 import { t, tf } from './i18n.js'
-
 /** Statusline / notice icons and labels per tier. */
 export const TIER_ICONS: Record<DifficultyTier, string> = { easy: '🟢', medium: '🟡', hard: '🔴' }
 const TIER_LABELS: Record<DifficultyTier, string> = { easy: '简', medium: '中', hard: '难' }
@@ -400,7 +399,7 @@ export function difficultyStatusLines(app: App, rec: SessionRec): string[] {
   ]
   for (const tier of TIERS) {
     const r = tierRoute(cfg, tier, current)
-    lines.push(`  ${TIER_ICONS[tier]} ${TIER_LABELS[tier]} → ${r === null ? '默认模型' : `${r.provider}/${r.model}${r.reasoningEffort ? ` ◎${r.reasoningEffort}` : ''}`}`)
+    lines.push(`  ${TIER_ICONS[tier]} ${TIER_LABELS[tier]} → ${r === null ? t('默认模型') : `${r.provider}/${r.model}${r.reasoningEffort ? ` ◎${r.reasoningEffort}` : ''}`}`)
   }
   if (cfg.classifier?.enabled === true) {
     lines.push(tf('LLM 分类: 开启（{0}/{1}）', [cfg.classifier.provider ?? current.provider, cfg.classifier.model ?? '?']))

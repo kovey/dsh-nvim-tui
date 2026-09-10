@@ -28,7 +28,11 @@ export const feedbackCommand = async (app: App, a: string | undefined) => {
   try {
     if (op === 'clear') {
       const list = await feedback.list({ sessionId: rec.id })
-      const item = list.ok ? list.value.items.find((i) => i.messageId === rec.lastAssistantMessageId) : undefined
+      if (!list.ok) {
+        app.notice(tf('反馈失败: {0}', [list.error?.code ?? 'unknown']))
+        return
+      }
+      const item = list.value.items.find((i) => i.messageId === rec.lastAssistantMessageId)
       if (item !== undefined) {
         await feedback.delete({ sessionId: rec.id, messageId: rec.lastAssistantMessageId, ifVersion: item.version })
         app.notice(t('已清除反馈'))
@@ -38,7 +42,13 @@ export const feedbackCommand = async (app: App, a: string | undefined) => {
       return
     }
     const list = await feedback.list({ sessionId: rec.id })
-    const item = list.ok ? list.value.items.find((i) => i.messageId === rec.lastAssistantMessageId) : undefined
+    if (!list.ok) {
+      // A failed list used to be conflated with "no existing feedback" and
+      // the rating was sent with ifVersion: null (a silent lost update).
+      app.notice(tf('反馈失败: {0}', [list.error?.code ?? 'unknown']))
+      return
+    }
+    const item = list.value.items.find((i) => i.messageId === rec.lastAssistantMessageId)
     const note = rest.join(' ').trim() || undefined
     const r = await feedback.put({
       sessionId: rec.id,

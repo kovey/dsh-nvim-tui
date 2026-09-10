@@ -19,7 +19,7 @@ export const planCommand = (app: App, a: string | undefined) => {
   const arg = (a ?? '').trim()
   const state = planMode.get(rec.handle.agent)
   if (arg === '' || arg === 'status') {
-    app.notice(`计划模式: ${state.active ? '开启' : '关闭'}${state.pending ? '（变更待生效）' : ''}`)
+    app.notice(`计划模式: ${state.active ? t('开启') : t('关闭')}${state.pending ? t('（变更待生效）') : ''}`)
     return
   }
   if (arg !== 'on' && arg !== 'off') {
@@ -27,7 +27,7 @@ export const planCommand = (app: App, a: string | undefined) => {
     return
   }
   const r = planMode.set(rec.handle.agent, arg === 'on')
-  app.notice(`计划模式: ${arg === 'on' ? '开启' : '关闭'}（${r}）`)
+  app.notice(`计划模式: ${arg === 'on' ? t('开启') : t('关闭')}（${r}）`)
 }
 
 export function installPlanCommand(app: App): void {

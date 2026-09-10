@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { installTodoGuard } from '../kernel/todo-guard.js'
+import { uiPref } from './prefs.js'
 import { FeedRenderer } from '../feed/feed.js'
 import { statSync } from 'node:fs'
 import { t, tf } from '../kernel/i18n.js'
@@ -13,8 +14,10 @@ import type { App, AppSlices, ModelRef, WritableSlice } from '../kernel/app.js'
 const WSS = (d: AppSlices['sessions']) => d as WritableSlice<AppSlices['sessions']>
 
 /** /todo 清单纪律守卫开关（默认开；config.todoGuard=false 或 DSH_NVIM_TUI_TODO_GUARD=0 关闭）。 */
-const todoGuardEnabled = (app: App): { enabled: boolean } => ({
+const todoGuardEnabled = (app: App): { enabled: boolean; onError: (stage: string, err: unknown) => void } => ({
   enabled: app.config.todoGuard !== false && process.env.DSH_NVIM_TUI_TODO_GUARD !== '0',
+  // A silently-failing guard registration would remove the whole feature.
+  onError: (stage, err) => app.exitDiag(`todo-guard-${stage}`, err instanceof Error ? err.message : String(err)),
 })
 
 export const attachSession = async (app: App, handle: AgentHandle, modelRef: ModelRef, opts?: { background?: boolean }) => {
@@ -66,6 +69,10 @@ export const attachSession = async (app: App, handle: AgentHandle, modelRef: Mod
     lastTurnStartAt: 0,
     bgJobs: 0,
   })
+  // Restore the persisted /density preference for the new feed.
+  try {
+    if (uiPref<boolean>(app, 'dense') === true) feed.dense = true
+  } catch {}
   // Notices buffered during the startup window (no active session yet) land
   // here, ahead of the banner, so real failures are never lost.
   app.flushPendingNotices(feed)

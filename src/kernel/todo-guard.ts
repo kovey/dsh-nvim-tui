@@ -100,8 +100,13 @@ function sessionEventsOf(session: unknown): SessionEventLike[] {
 const guardState = new WeakMap<object, { lastSeq: number; nudges: number }>()
 
 /** Install the guard on one agent scope. Never throws. */
-export function installTodoGuard(agentCtx: unknown, opts?: { enabled?: boolean }): void {
+export function installTodoGuard(agentCtx: unknown, opts?: { enabled?: boolean; onError?: (stage: string, err: unknown) => void }): void {
   if (opts?.enabled === false) return
+  const fail = (stage: string, err: unknown): void => {
+    // The guard is best-effort, but a registration failure must not be
+    // INVISIBLE: the whole feature would silently disappear.
+    try { opts?.onError?.(stage, err) } catch {}
+  }
   const ctx = agentCtx as {
     systemPrompt?: { section?: (section: { name: string; order: number; text: string }) => unknown }
     get?: (name: string) => unknown
@@ -113,7 +118,9 @@ export function installTodoGuard(agentCtx: unknown, opts?: { enabled?: boolean }
       section?: (section: { name: string; order: number; text: string }) => unknown
     } | undefined
     prompt?.section?.({ name: TODO_GUARD_SECTION, order: SECTION_ORDER, text: todoDisciplineSectionText() })
-  } catch {}
+  } catch (err) {
+    fail('section', err)
+  }
   // ② per-step reminder (waterfall: appended to the NEXT request's messages)
   try {
     ctx?.on?.('agent/pre-step', async (payload: any, next: () => Promise<any>) => {
@@ -151,9 +158,12 @@ export function installTodoGuard(agentCtx: unknown, opts?: { enabled?: boolean }
             }),
           ],
         }
-      } catch {
+      } catch (err) {
+        fail('pre-step', err)
         return decision
       }
     }, { prepend: true })
-  } catch {}
+  } catch (err) {
+    fail('pre-step-registration', err)
+  }
 }

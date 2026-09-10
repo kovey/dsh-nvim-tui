@@ -383,7 +383,7 @@ export function installExtApi(app: App): void {
             title: opts.title, footer: opts.footer, lines: opts.lines ?? [] },
         ]) as { win?: unknown; buf?: unknown; err?: unknown } | null | undefined
         if (res === null || res === undefined || typeof res.err === 'string') {
-          app.notice(`⚠ ui.panel: ${String(res?.err ?? '不可用')}`)
+          app.notice(`⚠ ui.panel: ${String(res?.err ?? t('不可用'))}`)
           return null
         }
         if (typeof res.win !== 'number' || typeof res.buf !== 'number') return null
@@ -418,7 +418,7 @@ export function installExtApi(app: App): void {
             title: opts.title, footer: opts.footer, lines: opts.lines ?? [] },
         ]) as { win?: unknown; buf?: unknown; err?: unknown } | null | undefined
         if (res === null || res === undefined || typeof res.err === 'string') {
-          app.notice(`⚠ ui.region: ${String(res?.err ?? '不可用')}`)
+          app.notice(`⚠ ui.region: ${String(res?.err ?? t('不可用'))}`)
           return null
         }
         if (typeof res.win !== 'number' || typeof res.buf !== 'number') return null
@@ -538,7 +538,7 @@ export function installExtApi(app: App): void {
   }
 
   // -- nvim notifications this module owns (dispatched by boot via rpc.ts) --
-  registerNvimNotification('dsh-ext-register', '扩展注册', (app, args) => {
+  registerNvimNotification('dsh-ext-register', t('扩展注册'), (app, args) => {
     // A Lua-side extension registered (api.register): mirror its
     // session-event subscription so the Node side knows what to route.
     const spec = (args?.[0] ?? {}) as { id?: unknown; events?: unknown }
@@ -548,16 +548,16 @@ export function installExtApi(app: App): void {
     const wantsAll = raw === undefined || raw.length === 0 || raw.includes('all')
     app.slices.ext.extLuaSubs.set(id, wantsAll ? 'all' : new Set(raw))
   })
-  registerNvimNotification('dsh-ext-unregister', '扩展注销', (app, args) => {
+  registerNvimNotification('dsh-ext-unregister', t('扩展注销'), (app, args) => {
     const id = typeof args?.[0] === 'string' ? args[0] : ''
     if (id !== '') app.slices.ext.extLuaSubs.delete(id)
   })
-  registerNvimNotification('dsh-ext-notice', '扩展通知', (app, args) => {
+  registerNvimNotification('dsh-ext-notice', t('扩展通知'), (app, args) => {
     // Lua-side extensions surface transient notices through the runner.
     const text = String((args?.[0] as { text?: unknown } | undefined)?.text ?? args?.[0] ?? '')
     if (text !== '') app.notice(text)
   })
-  registerNvimNotification('dsh-ext-card-activate', '卡片操作', (app, args) => {
+  registerNvimNotification('dsh-ext-card-activate', t('卡片操作'), (app, args) => {
     // Interactive ext card: the chat keymap resolved the card mark under
     // the cursor (active session feed). action null → open the action
     // picker; a number → dispatch that action (plain fires immediately,
@@ -586,8 +586,8 @@ export function installExtApi(app: App): void {
             return
           }
           void app.openPicker(String(act.confirmText ?? tf('确认执行「{0}」？', [act.label])), [
-            { label: '确认', value: 'yes' },
-            { label: '取消', value: 'no' },
+            { label: t('确认'), value: 'yes' },
+            { label: t('取消'), value: 'no' },
           ]).then((sel) => {
             if (sel === 'yes') {
               try { feed2.fireCardAction(r.cardId, act.value) }

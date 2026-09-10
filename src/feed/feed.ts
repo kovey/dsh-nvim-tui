@@ -720,7 +720,7 @@ export class FeedRenderer {
           if (source.form === 'notice' && typeof source.summary === 'string' && source.summary !== '') {
             this.base.push('', `· ${source.summary}`)
           } else if (text) {
-            this.base.push('', '· 注入上下文')
+            this.base.push('', t('· 注入上下文'))
             for (const line of text.split('\n')) this.base.push(`· ${line}`)
           }
           this.schedule()
@@ -1617,7 +1617,7 @@ export class FeedRenderer {
           }
         } catch {}
       } else if (this.reasoningFailures === 3) {
-        this.base.push('', '⚠ 推理面板已失效（缓冲被重建）——后续内容只在对话区显示')
+        this.base.push('', t('⚠ 推理面板已失效（缓冲被重建）——后续内容只在对话区显示'))
         this.schedule()
       }
     }

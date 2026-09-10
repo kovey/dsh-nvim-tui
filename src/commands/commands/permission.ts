@@ -24,7 +24,7 @@ export const permissionCommand = async (app: App, a: string | undefined) => {
       const current = permission.current(rec.handle.agent.session)
       for (const name of names) {
         const opt = permission.optionOf(name)
-        app.notice(`${name}${name === current ? ' ✓（当前）' : ''} · ${opt?.name ?? name}${opt?.description ? ` — ${opt.description}` : ''}`)
+        app.notice(`${name}${name === current ? t(' ✓（当前）') : ''} · ${opt?.name ?? name}${opt?.description ? ` — ${opt.description}` : ''}`)
       }
       return
     }
@@ -55,7 +55,7 @@ export const permissionCommand = async (app: App, a: string | undefined) => {
     if (danger && name !== current) {
       const ok = await app.openPicker(t('危险权限确认'), [
         { label: `确认切换「${name}」${knobs}——危险操作需谨慎`, value: 'yes' },
-        { label: '取消', value: 'no' },
+        { label: t('取消'), value: 'no' },
       ])
       if (ok !== 'yes') {
         app.notice(t('已取消权限切换'))

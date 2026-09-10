@@ -19,7 +19,7 @@ export const yoloCommand = (app: App, a: string | undefined) => {
     rec.handle.agent.session.append('approval/policy', { policy })
     rec.policy = policy
     app.slices.ui.updateStatusline()
-    app.notice(`审批策略: ${policy === 'never' ? 'never（不再询问 · 需要审批的操作自动拒绝）' : 'ask（逐项询问）'}`)
+    app.notice(`审批策略: ${policy === 'never' ? t('never（不再询问 · 需要审批的操作自动拒绝）') : t('ask（逐项询问）')}`)
   } catch (err) {
     app.notice(tf('yolo 失败: {0}', [(err as Error).message]))
   }

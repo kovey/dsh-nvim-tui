@@ -15,7 +15,7 @@ export const bellCommand = (app: App, a: string | undefined) => {
   }
   if (arg !== '') W(app.slices.agent).bellOn = arg === 'on'
   else W(app.slices.agent).bellOn = !app.slices.agent.bellOn
-  app.notice(`回合结束响铃: ${app.slices.agent.bellOn ? '开' : '关'}`)
+  app.notice(`回合结束响铃: ${app.slices.agent.bellOn ? t('开') : t('关')}`)
 }
 
 export function installBellCommand(app: App): void {

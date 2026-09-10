@@ -194,7 +194,7 @@ const repairOrphanToolCalls = (rec: SessionRec): number => {
       try {
         const note = createUserMessage({
           source: { kind: 'user' },
-          content: [{ type: 'text', text: '（此前的工具结果随崩溃的工具调用一并移除）' }],
+          content: [{ type: 'text', text: t('（此前的工具结果随崩溃的工具调用一并移除）') }],
         })
         surfaceReplace(session, 'user/message', nodes[j], note)
       } catch {}
@@ -299,7 +299,7 @@ export function installTranscript(app: App): void {
     if (app.slices.runtime.disposed) return
     const payload = info as { id?: string; meta?: { name?: string } }
     const runId = payload?.id ?? '?'
-    const run = app.slices.trans.workflowRuns.get(runId) ?? { id: runId, name: payload?.meta?.name ?? runId, startedAt: Date.now(), phases: [], agents: [], logs: [], running: true, stopReason: undefined }
+    const run = app.slices.trans.workflowRuns.get(runId) ?? { id: runId, sessionId: app.slices.sessions.activeId ?? undefined, name: payload?.meta?.name ?? runId, startedAt: Date.now(), phases: [], agents: [], logs: [], running: true, stopReason: undefined }
     run.startedAt = Date.now()
     run.running = true
     // Bounded memory: long sessions spawn unbounded workflow runs — evict
@@ -317,6 +317,9 @@ export function installTranscript(app: App): void {
     const runId = payload?.id
     const run = runId === undefined ? undefined : app.slices.trans.workflowRuns.get(runId)
     if (run) {
+      // Bounded: one phase per workflow phase, a runaway script cannot grow
+      // this without limit.
+      if (run.phases.length >= 200) run.phases.shift()
       run.phases.push({ title: title as string, startedAt: Date.now() })
     }
     app.slices.ui.activeFeed()?.workflowPhase(payload, title as string)
@@ -326,7 +329,10 @@ export function installTranscript(app: App): void {
     const payload = info as { id?: string }
     const runId = payload?.id
     const run = runId === undefined ? undefined : app.slices.trans.workflowRuns.get(runId)
-    if (run) run.logs.push(message as string)
+    if (run) {
+      if (run.logs.length >= 400) run.logs.shift()
+      run.logs.push(message as string)
+    }
   })
   registerHostHandler('workflow/agent-start', (app, info, agent) => {
     if (app.slices.runtime.disposed) return
@@ -334,7 +340,10 @@ export function installTranscript(app: App): void {
     const entry = agent as { seq?: number; label?: string }
     const runId = payload?.id
     const run = runId === undefined ? undefined : app.slices.trans.workflowRuns.get(runId)
-    if (run) run.agents.push({ seq: entry?.seq ?? 0, label: entry?.label ?? '', outcome: undefined })
+    if (run) {
+      if (run.agents.length >= 200) run.agents.shift()
+      run.agents.push({ seq: entry?.seq ?? 0, label: entry?.label ?? '', outcome: undefined })
+    }
   })
   registerHostHandler('workflow/agent-end', (app, info, agent) => {
     if (app.slices.runtime.disposed) return

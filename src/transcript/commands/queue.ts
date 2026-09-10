@@ -49,8 +49,8 @@ export const queueCommand = async (app: App): Promise<void> => {
   try { picked = JSON.parse(sel) as { list: 'nextTurn' | 'nextStep'; id: string } } catch {}
   if (picked === undefined) return
   const act = await app.openPicker(t('队列操作'), [
-    { label: '删除该条', value: 'del' },
-    { label: '编辑该条（下一条输入作为新内容）', value: 'edit' },
+    { label: t('删除该条'), value: 'del' },
+    { label: t('编辑该条（下一条输入作为新内容）'), value: 'edit' },
   ])
   if (act === 'del') {
     if (typeof inbox?.remove !== 'function') { app.notice(t('inbox 不可用')); return }

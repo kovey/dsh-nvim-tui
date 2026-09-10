@@ -29,7 +29,7 @@ export function runningProfileName(app: App): string | undefined {
       entries?: () => Array<LoaderEntryLike>
     } | undefined
     const entry = loader?.resolve?.('include') ??
-      loader?.entries?.().find((e) => e.id === 'include' || e.options?.name === 'cordis:include')
+      [...(loader?.entries?.() ?? [])].find((e) => e.id === 'include' || e.options?.name === 'cordis:include')
     const raw = entry?.options?.config?.path
     if (typeof raw === 'string' && raw !== '') {
       const p = raw.startsWith('file:') ? fileURLToPath(raw) : raw

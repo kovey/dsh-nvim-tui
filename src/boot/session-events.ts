@@ -226,7 +226,7 @@ export function makeSessionEventHandler(
       rec.planActive = data?.active === true
       if (owner.id === app.slices.sessions.activeId) {
         app.slices.ui.updateStatusline()
-        app.notice(`计划模式已${rec.planActive ? '开启' : '关闭'}`)
+        app.notice(`计划模式已${rec.planActive ? t('开启') : t('关闭')}`)
       }
       return false
     },

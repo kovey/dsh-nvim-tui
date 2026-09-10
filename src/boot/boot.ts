@@ -19,6 +19,7 @@
  * @module dsh-nvim-tui/boot
  */
 import { spawnNvim, connectNvim } from '../kernel/bridge.js'
+import { themeMapFor } from '../kernel/theme-presets.js'
 import { join } from 'node:path'
 import { EXT_API_VERSION, announceReady, handleDshExtRequest } from '../ext-api/index.js'
 import { installLifecycle } from '../kernel/lifecycle.js'
@@ -33,7 +34,7 @@ import { restoreGlance } from '../statusline/commands/glance.js'
 import { maybeOnboard } from './onboarding.js'
 import type { AppSlices, WritableSlice } from '../kernel/app.js'
 import type { App } from '../kernel/app.js'
-import { tf } from '../kernel/i18n.js'
+import { tf, t } from '../kernel/i18n.js'
 const W = (d: AppSlices['runtime']) => d as WritableSlice<AppSlices['runtime']>
 
 /** Synchronous runtime-domain defaults — MUST run before every other
@@ -65,8 +66,8 @@ export function installRuntime(app: App): void {
     restartPending: false,
     boot: async () => {},
   })
-  registerNvimNotification('dsh-quit', '退出', (app) => app.quit(0))
-  registerNvimNotification('dsh-reasoning-toggled', '思考面板', async (app, args) => {
+  registerNvimNotification('dsh-quit', t('退出'), (app) => app.quit(0))
+  registerNvimNotification('dsh-reasoning-toggled', t('思考面板'), async (app, args) => {
     W(app.slices.runtime).reasoningOpen = args?.[0] === true
     if (app.slices.runtime.reasoningOpen) {
       const ids = await app.luaCall('return require("dsh_tui").ids()', []).catch(() => null)
@@ -190,7 +191,7 @@ export async function boot(app: App): Promise<void> {
       .then((res: unknown) => {
         const r = res as { ok?: unknown; error?: unknown } | null | undefined
         if (r !== null && r !== undefined && typeof r === 'object' && r.ok === false) {
-          app.notice(`⚠ ${String(r.error ?? '扩展接口握手失败')}`)
+          app.notice(`⚠ ${String(r.error ?? t('扩展接口握手失败'))}`)
         }
       })
       .catch((err: unknown) => app.notice(tf('⚠ 扩展接口握手失败: {0}', [(err as Error).message])))
@@ -203,9 +204,15 @@ export async function boot(app: App): Promise<void> {
     // nvim shows it as soon as the input starts with '/'.
     await app.luaCall('require("dsh_tui").set_commands(...)', [app.commandCatalog()]).catch(() => {})
     void app.refreshCommandCatalog()
-    // Theme overrides from the runner config (profile cordis.patch.yml).
+    // Theme overrides from the runner config (profile cordis.patch.yml), or
+    // the /theme preset chosen in an earlier run (persisted UI preference).
     if (app.config.theme !== undefined && app.config.theme !== null && typeof app.config.theme === 'object') {
       await app.luaCall('require("dsh_tui").apply_theme(...)', [app.config.theme]).catch(() => {})
+    } else {
+      // Restore the /theme preset chosen in an earlier run.
+      const saved = app.slices.sessions.uiPref<string>('theme')
+      const map = typeof saved === 'string' && saved !== '' ? themeMapFor(saved) : null
+      if (map !== null) await app.luaCall('require("dsh_tui").apply_theme(...)', [map]).catch(() => {})
     }
 
     // 2) wiring — three thin loops, all behavior lives in owner modules.

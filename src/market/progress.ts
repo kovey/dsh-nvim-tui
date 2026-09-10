@@ -21,7 +21,6 @@ import { execFileSync, spawn } from 'node:child_process'
 import * as tar from 'tar'
 import type { App } from '../kernel/app.js'
 import { t, tf } from '../kernel/i18n.js'
-
 /** One market entry (flattened registry record). */
 export interface MarketEntry {
   /** `owner/repo` — also the display name. */
@@ -560,30 +559,30 @@ export function firstErrorLine(tail: string): string {
  *  - git        → fall back to the npm publish when the repo is unreachable
  */
 export function classifyPnpmError(tail: string): PnpmFailure {
-  const t = tail ?? ''
-  if (/EAI_AGAIN|ETIMEDOUT|ENOTFOUND|ECONNRESET|ECONNREFUSED|getaddrinfo|fetch failed|network|Temporary failure|socket hang up|EADDRINUSE/i.test(t)) {
-    return { kind: 'network', message: '网络错误（连接/解析失败）' }
+  const raw = tail ?? ''
+  if (/EAI_AGAIN|ETIMEDOUT|ENOTFOUND|ECONNRESET|ECONNREFUSED|getaddrinfo|fetch failed|network|Temporary failure|socket hang up|EADDRINUSE/i.test(raw)) {
+    return { kind: 'network', message: t('网络错误（连接/解析失败）') }
   }
-  if (/ERR_PNPM_NO_MATCHING_VERSION|No matching version|ERR_PNPM_FETCH_404|404 Not Found|not found in the registry|package .* doesn't exist|no such package/i.test(t)) {
-    return { kind: 'notfound', message: '该版本/包不存在（registry 404）' }
+  if (/ERR_PNPM_NO_MATCHING_VERSION|No matching version|ERR_PNPM_FETCH_404|404 Not Found|not found in the registry|package .* doesn't exist|no such package/i.test(raw)) {
+    return { kind: 'notfound', message: t('该版本/包不存在（registry 404）') }
   }
-  if (/ERR_PNPM_OUTDATED_LOCKFILE|frozen-lockfile|lockfile.*(outdated|changed)|Cannot install with/i.test(t)) {
-    return { kind: 'lockfile', message: '锁文件与依赖声明不一致' }
+  if (/ERR_PNPM_OUTDATED_LOCKFILE|frozen-lockfile|lockfile.*(outdated|changed)|Cannot install with/i.test(raw)) {
+    return { kind: 'lockfile', message: t('锁文件与依赖声明不一致') }
   }
-  if (/EPERM|EACCES|ERR_PNPM_.*CACHE|Invalid or unexpected token|cache dir|EINTEGRITY|not allowed to access/i.test(t)) {
-    return { kind: 'cache', message: '缓存/权限问题（缓存损坏或目录不可写）' }
+  if (/EPERM|EACCES|ERR_PNPM_.*CACHE|Invalid or unexpected token|cache dir|EINTEGRITY|not allowed to access/i.test(raw)) {
+    return { kind: 'cache', message: t('缓存/权限问题（缓存损坏或目录不可写）') }
   }
-  if (/Repository not found|remote: Repository|fatal: could not read|Permission denied \(publickey\)|git@github\.com|ERROR: Repository/i.test(t)) {
-    return { kind: 'git', message: 'Git 仓库不可访问（私有/不存在/无权限）' }
+  if (/Repository not found|remote: Repository|fatal: could not read|Permission denied \(publickey\)|git@github\.com|ERROR: Repository/i.test(raw)) {
+    return { kind: 'git', message: t('Git 仓库不可访问（私有/不存在/无权限）') }
   }
-  return { kind: 'other', message: `未知错误: ${firstErrorLine(t)}` }
+  return { kind: 'other', message: tf('未知错误: {0}', [firstErrorLine(raw)]) }
 }
 
 // -- install progress UI helpers (moved from the module index) --
 /** Open the nvim progress window so long pnpm runs never look stuck. */
 export const openProgress = (app: App, title: string) => {
   let lines: string[] = [t('正在启动…')]
-  let bar = '▸ 准备中'
+  let bar = t('▸ 准备中')
   let lastPush = 0
   void app.luaCall('require("dsh_tui").show_progress(...)', [title, lines]).catch(() => {})
   const push = (): void => {
@@ -664,7 +663,7 @@ export const verifyOrRepairMain = async (
   pg.log(tf('⚠ 缺少入口文件（{0}）→ 自动寻找可用的预构建包…', [missing]))
   const candidates: Array<{ spec: string; label: string }> = []
   const npmSpec = await resolveNpmSpec(entry)
-  if (npmSpec !== undefined) candidates.push({ spec: npmSpec, label: 'npm 发布版' })
+  if (npmSpec !== undefined) candidates.push({ spec: npmSpec, label: t('npm 发布版') })
   if (entry.tarball !== undefined) candidates.push({ spec: entry.tarball, label: 'GitHub Release tarball' })
   for (const c of candidates) {
     if (runs.has(c.spec) || c.spec === spec) continue

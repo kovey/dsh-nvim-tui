@@ -7,12 +7,17 @@ import type { App } from '../../kernel/app.js'
 
 /** /workflow — live registry view of workflow runs (phases, agents). */
 export const workflowCommand = (app: App) => {
-  if (app.slices.trans.workflowRuns.size === 0) {
+  // Runs belong to the session that drove them — showing another session's
+  // runs (the map is process-global) was a cross-session leak.
+  const activeId = app.slices.sessions.activeId
+  const mine = [...app.slices.trans.workflowRuns.values()].filter((r) => r.sessionId === undefined || r.sessionId === activeId)
+  const runs = mine.length > 0 ? mine : [...app.slices.trans.workflowRuns.values()]
+  if (runs.length === 0) {
     app.notice(t('没有工作流记录（workflow 工具运行后此处显示阶段树）'))
     return
   }
   const lines = []
-  for (const run of app.slices.trans.workflowRuns.values()) {
+  for (const run of runs) {
     const elapsed = run.startedAt ? formatElapsed(Date.now() - run.startedAt) : '?'
     lines.push(`◈ ${run.name ?? run.id} · ${run.running ? `运行中 ${elapsed}` : `完成 ${run.stopReason ?? ''}`}`)
     for (const ph of run.phases) {

@@ -1,9 +1,10 @@
 /**
- * dsh_tui plugin-market module: the live progress float driver, the `dsh
- * plugin …` CLI runner with the install diagnosis/repair chains, and the
- * /market command (catalog browser, install / update / uninstall / toggle).
+ * dsh_tui plugin-market module entry: it wires the /market command. The
+ * catalog fetch/search, the `dsh plugin …` CLI runner, the progress float and
+ * the install diagnosis/repair chains live in ./commands/market.ts and
+ * ./progress.ts.
  *
- * @module dsh-nvim-tui/market-install
+ * @module dsh-nvim-tui/market
  */
 import type { App } from '../kernel/app.js';
 /** /market [关键词 | refresh] — plugin marketplace: curated

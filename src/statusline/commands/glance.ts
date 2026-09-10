@@ -27,7 +27,7 @@ export const glanceCommand = (app: App, a: string | undefined) => {
   else hiddenGlance.add(seg)
   app.slices.ui.updateStatusline()
   void app.luaCall('vim.g.dsh_tui_glance = ...', [[...hiddenGlance]]).catch(() => {})
-  app.notice(`glance ${seg}: ${hiddenGlance.has(seg) ? '隐藏' : '显示'}`)
+  app.notice(`glance ${seg}: ${hiddenGlance.has(seg) ? t('隐藏') : t('显示')}`)
 }
 
 /** /cost — accumulated usage + cost for the active session. */

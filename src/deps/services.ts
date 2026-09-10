@@ -10,7 +10,6 @@ import { runningProfileName } from '../kernel/profile.js'
 import { findVisionModel } from '../kernel/vision.js'
 import type { App, AppSlices } from '../kernel/app.js'
 import { t, tf } from '../kernel/i18n.js'
-
 /** One assembly row: package identity + the exact YAML appended to the patch. */
 interface RowTemplate {
   pkg: string
@@ -71,7 +70,8 @@ type DepStatus = 'ok' | 'warn' | 'missing'
 export interface DepReport {
   id: string
   label: string
-  group: '主机插件' | '配置生效性' | '系统命令'
+  /** Display group label (translated at render time). */
+  group: string
   status: DepStatus
   detail: string
   /** RowTemplate key: the item can be assembled with /deps install. */
@@ -262,7 +262,7 @@ export async function checkAll(app: App, s: AppSlices['agent'], patchPath: strin
       : svcOk(app, key)
     const present = patchIds.has(id)
     reports.push({
-      id, label, group: '主机插件',
+      id, label, group: t('主机插件'),
       status: ok ? 'ok' : 'missing',
       detail: ok ? detail : (present ? `${detail}（已装配但服务未就绪，重启后重试 /deps）` : `未装配 — 影响: ${detail}`),
       fixId: ok ? undefined : id,
@@ -318,12 +318,16 @@ export async function checkAll(app: App, s: AppSlices['agent'], patchPath: strin
   })
 
   // -- 系统命令 -------------------------------------------------------------
-  const pnpm = spawnSync('pnpm', ['--version'], { stdio: 'ignore', timeout: 5000 })
+  // `stdio: 'ignore'` made pnpm.stdout always null → the version was blank.
+  // Capture stdout, keep the probe bounded (2s; it is synchronous and blocks
+  // the whole runner while it waits).
+  const pnpm = spawnSync('pnpm', ['--version'], { encoding: 'utf8', timeout: 2000 })
+  const pnpmVersion = String(pnpm.stdout ?? '').trim()
   reports.push({
     id: 'pnpm', label: 'pnpm', group: '系统命令',
     status: pnpm.status === 0 ? 'ok' : 'warn',
     detail: pnpm.status === 0
-      ? `pnpm ${String(pnpm.stdout ?? '').trim()}（/market 安装器可用）`
+      ? `pnpm ${pnpmVersion !== '' ? pnpmVersion : '(版本未知)'}（/market 安装器可用）`
       : '未找到 pnpm — 影响: /market 安装插件（npm i -g pnpm 或 corepack enable）',
   })
 
@@ -352,6 +356,12 @@ export const installCommand = async (app: App, s: AppSlices['agent']): Promise<v
   if (sel === null) return
   const targets = sel === 'all' ? reports : reports.filter((r) => r.id === sel)
   const ids = readPatchRowIds(patchPath)
+  // Rows the RUNNING loader already carries (any layer): appending a second
+  // row with the same id makes the host loader fail the whole composition.
+  try {
+    const loader = app.runtimeCtx.get('loader') as unknown as { entries?: () => Array<{ id?: string }> } | undefined
+    for (const e of loader?.entries?.() ?? []) if (typeof e?.id === 'string') ids.add(e.id)
+  } catch {}
   const appended: string[] = []
   const skipped: string[] = []
   const assembledIds: string[] = []

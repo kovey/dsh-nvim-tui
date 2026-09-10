@@ -14,6 +14,7 @@ import { encodeHeaderOnlyLog, readCleanedIds, writeCleanedIds } from '../kernel/
 import { persistedHeader } from '../kernel/app.js'
 import type { App, AppSlices, WritableSlice } from '../kernel/app.js'
 import { registerNvimNotification } from '../kernel/rpc.js'
+import { saveUiPref, uiPref } from './prefs.js'
 import {
   createSession, resumeSession, switchTo, selectSession,
   forkSession, welcomeLines, updateTitle, disposeLiveSession,
@@ -176,6 +177,8 @@ export function installSessions(app: App): void {
     refreshList: () => {},
     readState: () => null,
     recordState: () => {},
+    saveUiPref: () => {},
+    uiPref: () => undefined,
     createSession: async () => {},
     resumeSession: async () => {},
     updateTitle: () => {},
@@ -208,6 +211,9 @@ export function installSessions(app: App): void {
       return null
     }
   }
+  app.slices.sessions.saveUiPref = (key: string, value: unknown) => saveUiPref(app, key, value)
+  app.slices.sessions.uiPref = <T>(key: string) => uiPref<T>(app, key)
+
   app.slices.sessions.recordState = (id: string) => {
     try {
       // Record the SESSION's own cwd, not the shell's: an old session opened
@@ -215,7 +221,8 @@ export function installSessions(app: App): void {
       // launch (claude --continue per-project semantics).
       const hdr = app.slices.sessions.live.get(id)?.handle.agent.session.header as { cwd?: unknown } | undefined
       const cwd = typeof hdr?.cwd === 'string' ? hdr.cwd : process.cwd()
-      writeFileSync(statePath, JSON.stringify({ sessionId: id, cwd, at: Date.now() }))
+      const prev = (app.slices.sessions.readState?.() ?? {}) as Record<string, unknown>
+      writeFileSync(statePath, JSON.stringify({ ...prev, sessionId: id, cwd, at: Date.now() }))
     } catch {}
   }
 
@@ -313,9 +320,9 @@ export function installSessions(app: App): void {
 
 
   // -- nvim notifications this module owns (dispatched by boot via rpc.ts) --
-  registerNvimNotification('dsh-session-select', '切换会话', (app, args) =>
+  registerNvimNotification('dsh-session-select', t('切换会话'), (app, args) =>
     app.slices.sessions.selectSession(String(args?.[0] ?? '')))
-  registerNvimNotification('dsh-session-new', '新建会话', () =>
+  registerNvimNotification('dsh-session-new', t('新建会话'), () =>
     app.slices.sessions.createSession())
 }
 

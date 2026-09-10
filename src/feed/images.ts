@@ -14,7 +14,7 @@
  * @module dsh-nvim-tui/images
  */
 import { execFileSync } from 'node:child_process'
-import { readFileSync, unlinkSync } from 'node:fs'
+import { closeSync, openSync, readFileSync, readSync, unlinkSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -69,8 +69,19 @@ export function expandHome(path: string): string {
  *  event loop on a full read. */
 export function readImageFile(path: string): SaveImageAttachment {
   const resolved = expandHome(path)
-  const raw = readFileSync(resolved)
-  let mediaType = sniffMediaType(raw)
+  // Sniff a bounded PREFIX (magic numbers live in the first bytes): reading a
+  // multi-hundred-MB non-image in FULL used to block the event loop before
+  // the type was even known. The whole file is read at most once, and only
+  // once the type is settled.
+  let mediaType: string | null = null
+  const fd = openSync(resolved, 'r')
+  try {
+    const head = Buffer.alloc(512)
+    const read = readSync(fd, head, 0, 512, 0)
+    mediaType = sniffMediaType(head.subarray(0, read))
+  } finally {
+    closeSync(fd)
+  }
   if (mediaType === null) {
     const ext = basename(resolved).toLowerCase().split('.').pop() ?? ''
     mediaType = EXTENSION_TYPES.get(ext) ?? null
@@ -78,6 +89,7 @@ export function readImageFile(path: string): SaveImageAttachment {
   if (mediaType === null) {
     throw new Error(tf('不支持的图片格式（支持 {0}）: {1}', [ACCEPTED.join(' / '), path]))
   }
+  const raw = readFileSync(resolved)
   return { data: new Uint8Array(raw), mediaType, name: basename(resolved) }
 }
 
@@ -92,12 +104,9 @@ const DATA_URL_RE = /data:(image\/png|image\/jpeg|image\/webp|image\/gif);base64
 export function parseImageDataUrl(dataUrl: string): SaveImageAttachment | null {
   const m = DATA_URL_RE.exec(dataUrl)
   if (m === null) return null
-  let decoded: Buffer
-  try {
-    decoded = Buffer.from(m[2].replace(/\s/g, ''), 'base64')
-  } catch {
-    return null
-  }
+  // Buffer.from(base64) does not throw for malformed input (it truncates), so
+  // the old try/catch was unreachable — the length check below is the guard.
+  const decoded = Buffer.from(m[2].replace(/\s/g, ''), 'base64')
   if (decoded.length === 0) return null
   const mediaType = sniffMediaType(decoded)
   if (mediaType === null || mediaType !== m[1]) return null

@@ -42,7 +42,7 @@ export const memoryCommand = async (app: App, a: string | undefined) => {
       app.notice(t('（无项目记忆）用法: /remember <text> 写入'))
       return
     }
-    for (const f of readdirSync(dir).filter((x) => x.endsWith('.md'))) {
+    for (const f of readdirSync(dir, { recursive: true, encoding: 'utf8' }).filter((x) => x.endsWith('.md'))) {
       app.notice(`- ${f}`)
     }
   } catch (err) {
