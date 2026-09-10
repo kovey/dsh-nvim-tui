@@ -15,7 +15,7 @@ export declare function expandHome(path: string): string;
  *  file (magic numbers live in the first bytes) — the whole file is only read
  *  once the type is known, so sniffing a large non-image no longer blocks the
  *  event loop on a full read. */
-export declare function readImageFile(path: string, _knownMediaType?: string | null): SaveImageAttachment;
+export declare function readImageFile(path: string): SaveImageAttachment;
 /**
  * Parse a pasted `data:image/…;base64,…` URL into the SaveImageAttachment
  * shape; null when the string is not a valid supported image data URL.

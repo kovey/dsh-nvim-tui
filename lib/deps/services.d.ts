@@ -13,7 +13,7 @@ export declare const dshHome: () => string;
 /** The profile patch path: the RUNNING profile's cordis.patch.yml.
  *  The running profile always bundles dsh-nvim-tui (the TUI is mounted
  *  through it), so a loader/argv resolution is authoritative; the directory
- *  scan is only a last resort when neither resolves. */
+ *  scan runs ONLY when the running profile cannot be resolved at all. */
 export declare function findProfilePatchPath(app: App): string | null;
 /** Structural row ids already present in the patch file (comments ignored). */
 export declare function readPatchRowIds(path: string): Set<string>;

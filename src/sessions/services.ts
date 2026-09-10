@@ -282,6 +282,12 @@ export const switchTo = async (app: App, id: string) => {
     app.notice(`切换会话失败: ${(err as Error).message}`)
     return
   }
+  // The jobs cache/badge/board belong to the ACTIVE session: without this the
+  // statusline kept showing the previous session's jobs for up to 30s (the
+  // idle heartbeat interval).
+  app.slices.ui.refreshBgJobs()
+  app.slices.ui.ensureSpinner()
+  app.slices.ui.updateStatusline()
   // Sync the runtime's GLOBAL view pointers with the Lua side. The resume
   // path attaches with background:true (S6 — row actions must not move the
   // visible view), so setChatWin/setReasoning never ran for it; without this

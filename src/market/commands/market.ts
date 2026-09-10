@@ -67,7 +67,15 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
     return
   }
   const installed = readInstalledPlugins(profileName)
-  const patchText = readPatch(patchPath(profileName))
+  let patchText: string
+  try {
+    patchText = readPatch(patchPath(profileName))
+  } catch (err) {
+    // Never continue with an empty patch: the toggle rewrites the file and a
+    // read failure would land as a WIPE of the user's rows.
+    app.notice(`读取 cordis.patch.yml 失败（已中止，未做任何写入）: ${(err as Error).message}`)
+    return
+  }
   const disabledIds = readDisabledIds(patchText)
   const loader = app.svc('loader')
   const loaderEntries = typeof loader?.entries === 'function' ? loader.entries().filter((e) => !e.options?.group) : []

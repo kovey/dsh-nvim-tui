@@ -39,4 +39,6 @@ export declare function whaleRowsIndented(width: number, rows?: WhaleRenderRow[]
  * and a horizontal indent baked into the text. Returns null when the window
  * is too small (min 40×22, like tianshu).
  */
+/** Layout maths for the hero block. Called from the smoke suite (layout
+ *  contract) — the feed's own hero path sizes itself. */
 export declare function layoutWhaleRows(height: number, width: number, rows?: WhaleRenderRow[]): WhaleRenderRow[] | null;

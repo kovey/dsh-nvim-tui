@@ -15,7 +15,7 @@ import { persistedHeader } from '../kernel/app.js'
 import type { App, AppSlices, WritableSlice } from '../kernel/app.js'
 import { registerNvimNotification } from '../kernel/rpc.js'
 import {
-  attachSession, createSession, resumeSession, switchTo, selectSession,
+  createSession, resumeSession, switchTo, selectSession,
   forkSession, welcomeLines, updateTitle, disposeLiveSession,
 } from './services.js'
 import { installSessionsCommand } from './commands/sessions.js'
@@ -182,7 +182,6 @@ export function installSessions(app: App): void {
     switchTo: async () => {},
     selectSession: async () => {},
     forkSession: async () => undefined,
-    attachSession: async () => {},
     listSubagentChildren: async () => [],
     seedRunningSubagents: async () => {},
     cleanSubagentChain: async () => false,
@@ -292,7 +291,6 @@ export function installSessions(app: App): void {
   }
 
 
-  app.slices.sessions.attachSession = (handle, modelRef) => attachSession(app, handle, modelRef).then(() => {})
   app.slices.ui.welcomeLines = welcomeLines
   app.slices.sessions.createSession = (cwdPath) => createSession(app, cwdPath).then(() => {})
   app.slices.sessions.resumeSession = (id) => resumeSession(app, id).then(() => {})

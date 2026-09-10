@@ -18,12 +18,10 @@ export const trajectoryCommand = (app: App) => {
   }
   const turn = turnStart.data?.turn
   const lines = [`回合 #${turn ?? '?'} 步骤轨迹`, '']
-  let step = 0
   let toolCount = 0
   for (const e of events) {
     const data = e.data as { turn?: number; step?: number; message?: ChatMessage; name?: string; arguments?: string; error?: unknown } | undefined
     if (e.type === 'turn/start') {
-      step = data?.turn === turn ? (data?.step ?? 0) : step
       continue
     }
     if (data === undefined || data.turn !== turn) continue

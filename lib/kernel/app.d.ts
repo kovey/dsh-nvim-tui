@@ -255,7 +255,6 @@ export interface AppSlices {
         switchTo: (id: string) => Promise<void>;
         selectSession: (id: string) => Promise<void>;
         forkSession: (directive: string | undefined) => Promise<string | undefined>;
-        attachSession: (handle: AgentHandle, modelRef: ModelRef) => Promise<void>;
         listSubagentChildren: (parentId: string) => Promise<Array<{
             id: string;
             label: string;

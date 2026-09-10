@@ -66,7 +66,7 @@ export function expandHome(path: string): string {
  *  file (magic numbers live in the first bytes) — the whole file is only read
  *  once the type is known, so sniffing a large non-image no longer blocks the
  *  event loop on a full read. */
-export function readImageFile(path: string, _knownMediaType?: string | null): SaveImageAttachment {
+export function readImageFile(path: string): SaveImageAttachment {
   const resolved = expandHome(path)
   const raw = readFileSync(resolved)
   let mediaType = sniffMediaType(raw)

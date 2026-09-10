@@ -57,7 +57,10 @@ export declare function repoRoot(url: string): string;
 export declare function installSpec(entry: MarketEntry): string;
 /** Profile patch (user layer) path. */
 export declare function patchPath(profileName: string): string;
-/** Read the user patch file ('' when absent). */
+/** Read the user patch file. ABSENT is '' (a fresh profile legitimately has
+ *  no patch), but any OTHER failure (permissions, EISDIR, transient IO)
+ *  THROWS: the toggle path rewrites the whole file from this text, and
+ *  collapsing a read error to '' silently erased the user's patch. */
 export declare function readPatch(path: string): string;
 /** Parse the disabled ids we manage: a row `- id: X` whose BODY contains a
  *  `disabled: true` line (the body may also carry config keys — the marker
@@ -96,12 +99,6 @@ export declare function readRepoPackage(url: string, timeoutMs?: number): Promis
  * down at the next boot; the npm tarball ships the built lib/.
  */
 export declare function resolveNpmSpec(entry: MarketEntry, timeoutMs?: number): Promise<string | undefined>;
-/** Post-install sanity: the package's declared main entry must exist on
- *  disk. Source-only repos (no committed lib/, no prepare script — pnpm ≥10
- *  blocks build scripts by default) install as metadata-only and would take
- *  the whole host down at the next boot with ERR_MODULE_NOT_FOUND (exactly
- *  the dsh-context incident). Returns the dep name when the entry is
- *  missing, null when healthy. */
 export declare function installedMainMissing(profileName: string, depKey: string): string | null;
 /** Open a URL in the OS browser (macOS `open`; others fall back to echo). */
 export declare function openUrl(url: string): void;

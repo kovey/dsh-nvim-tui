@@ -271,9 +271,17 @@ export function patchPath(profileName: string): string {
   return join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'profiles', profileName, 'cordis.patch.yml')
 }
 
-/** Read the user patch file ('' when absent). */
+/** Read the user patch file. ABSENT is '' (a fresh profile legitimately has
+ *  no patch), but any OTHER failure (permissions, EISDIR, transient IO)
+ *  THROWS: the toggle path rewrites the whole file from this text, and
+ *  collapsing a read error to '' silently erased the user's patch. */
 export function readPatch(path: string): string {
-  try { return readFileSync(path, 'utf8') } catch { return '' }
+  try {
+    return readFileSync(path, 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return ''
+    throw err
+  }
 }
 
 /** Parse the disabled ids we manage: a row `- id: X` whose BODY contains a
@@ -436,23 +444,78 @@ export async function resolveNpmSpec(entry: MarketEntry, timeoutMs = 10000): Pro
  *  the whole host down at the next boot with ERR_MODULE_NOT_FOUND (exactly
  *  the dsh-context incident). Returns the dep name when the entry is
  *  missing, null when healthy. */
+/** Candidate package names derived from one dependency spec: `name`,
+ *  `name@1.2`, `@scope/name@1.2`, `owner/repo`, `…/repo.git`,
+ *  `…/repo-1.2.3.tgz`, `file:../dir`. The old `key.includes(spec)` fuzzy test
+ *  matched unrelated packages (and URL/tarball specs matched nothing at all,
+ *  so `pnpm remove <URL>` ran and silently failed on a HEALTHY install). */
+const packageNameCandidates = (depKey: string): string[] => {
+  const out: string[] = []
+  const push = (v: string): void => {
+    const t = v.trim().replace(/^file:/, '').replace(/[/\\]+$/, '')
+    if (t !== '' && !out.includes(t)) out.push(t)
+  }
+  push(depKey)
+  // scoped name with optional version
+  const scoped = depKey.match(/^(@[^/]+\/[^@/]+)/)
+  if (scoped !== null) push(scoped[1])
+  // strip protocol/query, keep the last path segment
+  const noQuery = depKey.split(/[?#]/)[0]
+  const seg = noQuery.split('/').filter((x) => x !== '').pop() ?? ''
+  push(seg.replace(/\.git$/, ''))
+  // tarball / archive: `name-1.2.3.tgz` → `name`
+  push(seg.replace(/\.(tgz|tar\.gz|zip)$/, '').replace(/-\d+\.\d+[\w.+-]*$/, ''))
+  // plain `name@version`
+  const at = noQuery.match(/^([^@/]+)@/)
+  if (at !== null) push(at[1])
+  return out
+}
+
+/** String targets inside a package.json `exports` map. */
+const exportTargets = (exportsField: unknown, depth = 0): string[] => {
+  if (depth > 4 || exportsField === null || exportsField === undefined) return []
+  if (typeof exportsField === 'string') return [exportsField]
+  if (Array.isArray(exportsField)) return exportsField.flatMap((v) => exportTargets(v, depth + 1))
+  if (typeof exportsField === 'object') {
+    return Object.values(exportsField as Record<string, unknown>).flatMap((v) => exportTargets(v, depth + 1))
+  }
+  return []
+}
+
 export function installedMainMissing(profileName: string, depKey: string): string | null {
   const installed = readInstalledPlugins(profileName)
-  let pkgName = depKey
-  if (!installed.deps.has(depKey)) {
+  const candidates = packageNameCandidates(depKey)
+  let pkgName: string | undefined
+  if (installed.deps.has(depKey)) pkgName = depKey
+  else {
     for (const key of installed.deps.keys()) {
-      if (key.includes(depKey) || depKey.includes(key)) { pkgName = key; break }
+      if (candidates.includes(key)) { pkgName = key; break }
     }
   }
+  if (pkgName === undefined) {
+    // Unresolvable spec (URL/tarball/alias): do NOT claim the entry is
+    // missing — that used to trigger a destructive source switch (and a
+    // `pnpm remove <URL>` that cannot work).
+    return null
+  }
   const dir = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'profiles', profileName)
+  const pkgDir = join(dir, 'node_modules', pkgName)
   try {
-    const manifest = JSON.parse(readFileSync(join(dir, 'node_modules', pkgName, 'package.json'), 'utf8')) as { main?: string }
+    const manifest = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
+      main?: string
+      exports?: unknown
+    }
     const main = manifest.main ?? 'index.js'
-    if (!existsSync(join(dir, 'node_modules', pkgName, main))) return pkgName
+    if (existsSync(join(pkgDir, main))) return null
+    // `exports`-only packages legitimately have no `main` file.
+    if (manifest.exports !== undefined) {
+      const targets = exportTargets(manifest.exports).filter((t) => t.startsWith('./'))
+      if (targets.some((t) => existsSync(join(pkgDir, t)))) return null
+    }
+    return pkgName
   } catch {
     return pkgName
   }
-  return null
 }
 
 /** Open a URL in the OS browser (macOS `open`; others fall back to echo). */
@@ -554,9 +617,14 @@ export const runPluginCliP = (
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   // A wedged CLI (lock wait / hung network / interactive prompt) must not
-  // hang the progress float forever: hard-stop after 5 minutes.
+  // hang the progress float forever. SIGTERM first, then an unconditional
+  // SIGKILL 5s later — pnpm ignores SIGTERM while it holds its store lock, so
+  // the old single-SIGTERM "hard stop" could keep the flow pending forever.
+  let killed = false
   const killer = setTimeout(() => {
+    killed = true
     try { child.kill('SIGTERM') } catch { /* already gone */ }
+    setTimeout(() => { try { child.kill('SIGKILL') } catch { /* gone */ } }, 5000)
   }, 5 * 60_000)
   let out = ''
   const bump = (chunk: string): void => {
@@ -568,9 +636,11 @@ export const runPluginCliP = (
   child.stdout.on('data', (d: Buffer) => bump(d.toString()))
   child.stderr.on('data', (d: Buffer) => bump(d.toString()))
   child.on('error', (e) => { clearTimeout(killer); pg.log('无法启动 dsh CLI: ' + e.message); resolve({ code: null, tail: out }) })
-  child.on('exit', (code) => {
+  // 'close' (not 'exit'): stdio pipes are flushed by then — resolving on
+  // 'exit' truncated the tail log the error classifier reads.
+  child.on('close', (code, signal) => {
     clearTimeout(killer)
-    if (code === null && child.killed) pg.log('dsh CLI 超时已终止')
+    if (killed) pg.log(`dsh CLI 超时已终止（signal=${signal ?? 'SIGTERM/SIGKILL'}）`)
     resolve({ code, tail: out })
   })
 })
@@ -608,7 +678,16 @@ export const verifyOrRepairMain = async (
     }
     pg.log(`✗ ${c.label} 安装后仍未通过校验`)
   }
-  pg.bar('⚠ 已安装但入口缺失（建议反馈给插件作者）')
+  // Every candidate failed AFTER the original was removed: put it back so the
+  // user is not left with a plugin that is neither installed nor reported as
+  // such.
+  pg.bar('↩ 候选源均失败：恢复原安装…')
+  const restored = await runPluginCliP(profileName, ['add', spec], pg)
+  if (restored.code === 0) {
+    pg.bar('⚠ 已恢复原安装，但入口文件仍缺失（建议反馈给插件作者）')
+    return false
+  }
+  pg.bar('✗ 原安装也未能恢复——请在 profile 目录执行 dsh plugin add ' + spec)
   return false
 }
 

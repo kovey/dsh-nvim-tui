@@ -20,6 +20,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { NeovimClient } from 'neovim'
 import type { FeedRenderer } from '../feed/feed.js'
+import { t } from './i18n.js'
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js'
 import type { RunnerConfig } from './types.js'
 import type {
@@ -238,7 +239,6 @@ export interface AppSlices {
     switchTo: (id: string) => Promise<void>
     selectSession: (id: string) => Promise<void>
     forkSession: (directive: string | undefined) => Promise<string | undefined>
-    attachSession: (handle: AgentHandle, modelRef: ModelRef) => Promise<void>
     listSubagentChildren: (parentId: string) => Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number }>>
     seedRunningSubagents: (parentId: string) => Promise<void>
     cleanSubagentChain: (parentId: string, childId: string) => Promise<boolean>
@@ -515,9 +515,11 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
       }
       return accepted
     },
-    commandCatalog: () => app.commandSpecs.map(({ name, desc }) => ({ name, desc })),
+    commandCatalog: () => app.commandSpecs.map(({ name, desc }) => ({ name, desc: t(desc) })),
     refreshCommandCatalog: async (): Promise<void> => {
-      const entries = app.commandSpecs.map(({ name, desc }) => ({ name, desc }))
+      // t() at PUSH time (not at registration): /locale re-pushes the catalog
+      // and the descriptions must follow the new locale both ways.
+      const entries = app.commandSpecs.map(({ name, desc }) => ({ name, desc: t(desc) }))
       const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
       const skills = svc('skills')
       if (rec !== undefined && skills !== undefined) {

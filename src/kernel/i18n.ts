@@ -22,10 +22,18 @@ export function locale(): Locale {
   return current
 }
 
+/** Reverse index (en → zh) filled while translating. Command descriptions
+ *  are translated ONCE at registration; without this, switching back to zh
+ *  could not restore the original literal (the en string has no zh key). */
+const REVERSE = new Map<string, string>()
+
 /** Translate one zh literal; unknown keys return the literal unchanged. */
 export function t(zh: string): string {
-  if (current !== 'en') return zh
-  return EN_DICT[zh] ?? zh
+  if (current !== 'en') return REVERSE.get(zh) ?? zh
+  const en = EN_DICT[zh]
+  if (en === undefined) return zh
+  REVERSE.set(en, zh)
+  return en
 }
 
 // ---------------------------------------------------------------------------

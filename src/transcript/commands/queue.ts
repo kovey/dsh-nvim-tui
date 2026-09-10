@@ -38,7 +38,11 @@ export const queueCommand = async (app: App): Promise<void> => {
   if (sel === null || sel === 'none') return
   if (sel === 'clear') {
     if (typeof inbox?.clear !== 'function') { app.notice(t('inbox 不可用')); return }
-    try { inbox.clear(); app.notice(t('已清空排队消息')) } catch (err) { app.notice(`清空失败: ${(err as Error).message}`) }
+    try {
+      inbox.clear()
+      app.notice(t('已清空排队消息'))
+      app.slices.ui.updateStatusline()
+    } catch (err) { app.notice(`清空失败: ${(err as Error).message}`) }
     return
   }
   let picked: { list: 'nextTurn' | 'nextStep'; id: string } | undefined
@@ -53,6 +57,7 @@ export const queueCommand = async (app: App): Promise<void> => {
     try {
       const ok = inbox.remove(picked.id)
       app.notice(ok === true ? '已从队列移除' : '该消息已被处理')
+      app.slices.ui.updateStatusline()
     } catch (err) { app.notice(`移除失败: ${(err as Error).message}`) }
   } else if (act === 'edit') {
     app.slices.agent.setPendingQueueEdit({ list: picked.list, messageId: picked.id })

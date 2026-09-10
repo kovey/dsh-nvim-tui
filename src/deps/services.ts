@@ -86,13 +86,16 @@ export const dshHome = () => process.env.DSH_HOME ?? join(homedir(), '.dsh')
 /** The profile patch path: the RUNNING profile's cordis.patch.yml.
  *  The running profile always bundles dsh-nvim-tui (the TUI is mounted
  *  through it), so a loader/argv resolution is authoritative; the directory
- *  scan is only a last resort when neither resolves. */
+ *  scan runs ONLY when the running profile cannot be resolved at all. */
 export function findProfilePatchPath(app: App): string | null {
   const profilesDir = join(dshHome(), 'profiles')
   const running = runningProfileName(app)
   if (running !== undefined) {
-    const patch = join(profilesDir, running, 'cordis.patch.yml')
-    if (existsSync(patch)) return patch
+    // Authoritative: the RUNNING profile. A missing file is fine — the write
+    // path creates it. Falling back to a directory scan here made `/deps
+    // install` able to write into a DIFFERENT profile when the running one
+    // had no patch yet.
+    return join(profilesDir, running, 'cordis.patch.yml')
   }
   try {
     for (const name of readdirSync(profilesDir)) {
@@ -145,6 +148,31 @@ function loaderEntryConfig<T = Record<string, unknown>>(app: App, id: string): T
  *  ancestor owns node_modules/ — robust for npm-global
  *  (…/lib/node_modules) and pnpm layouts alike (counting dirname layers
  *  broke on npm-global: bin.js sits four levels deeper than the root). */
+/** Directory of the running dsh PACKAGE (`…/node_modules/@deepseek-ai/dsh`).
+ *  Host plugins live in ITS node_modules — the profile's own node_modules
+ *  only holds profile-level packages, so resolving against the profile made
+ *  `packageExists` false for every host plugin and `/deps install` a no-op. */
+const findDshPackageDir = (): string | undefined => {
+  const starts = [process.argv[1], fileURLToPath(import.meta.url)]
+  for (const start of starts) {
+    if (typeof start !== 'string' || start === '') continue
+    let dir = dirname(start)
+    for (let i = 0; i < 12; i++) {
+      const pj = join(dir, 'package.json')
+      if (existsSync(pj)) {
+        try {
+          const name = (JSON.parse(readFileSync(pj, 'utf8')) as { name?: unknown }).name
+          if (name === '@deepseek-ai/dsh') return dir
+        } catch {}
+      }
+      const parent = dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+  }
+  return undefined
+}
+
 const findInstallRoot = (): string | undefined => {
   let dir = dirname(fileURLToPath(import.meta.url)) // lib/deps
   for (let i = 0; i < 10; i++) {
@@ -158,15 +186,24 @@ const findInstallRoot = (): string | undefined => {
 
 export function packageExists(pkg: string, file: string): boolean {
   try {
-    const installRoot = process.env.DSH_NVIM_TUI_INSTALL_ROOT ?? findInstallRoot()
-    if (installRoot === undefined) return false
     const pkgName = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : pkg.split('/')[0]
     const rel = pkgName + '/' + file
-    const candidates = [
-      join(installRoot, 'node_modules', rel),
-      join(installRoot, 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', rel),
-    ]
-    return candidates.some((c) => existsSync(c))
+    const dshDir = findDshPackageDir()
+    const roots = [
+      process.env.DSH_NVIM_TUI_INSTALL_ROOT,
+      dshDir,
+      dshDir === undefined ? undefined : dirname(dirname(dshDir)), // …/lib/node_modules
+      findInstallRoot(), // the profile root
+    ].filter((r): r is string => typeof r === 'string' && r !== '')
+    for (const root of roots) {
+      for (const candidate of [
+        join(root, 'node_modules', rel),
+        join(root, 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', rel),
+      ]) {
+        if (existsSync(candidate)) return true
+      }
+    }
+    return false
   } catch {
     return false
   }

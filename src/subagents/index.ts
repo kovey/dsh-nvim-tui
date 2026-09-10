@@ -40,10 +40,15 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
       if (typeof persistence?.open === 'function') {
         // 0.1.5: open a read handle, read the validated log, close the handle.
         const handle = await persistence.open(childId, 'read')
-        const result = handle === undefined ? undefined : await handle.read?.()
-        events = (result?.events ?? []) as SessionEvent[]
-        if (handle !== undefined) {
-          try { await handle.close?.() } catch {}
+        // try/finally: a THROWING read used to skip close() and leak the
+        // session handle (both the view and the chat path had this shape).
+        try {
+          const result = handle === undefined ? undefined : await handle.read?.()
+          events = (result?.events ?? []) as SessionEvent[]
+        } finally {
+          if (handle !== undefined) {
+            try { await handle.close?.() } catch {}
+          }
         }
       } else {
         // pre-0.1.5 hosts: read-only inspection.
@@ -126,10 +131,13 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
       if (typeof persistence?.open === 'function') {
         // 0.1.5: open a read handle, read the validated log, close the handle.
         const handle = await persistence.open(childId, 'read')
-        const result = handle === undefined ? undefined : await handle.read?.()
-        events = (result?.events ?? []) as SessionEvent[]
-        if (handle !== undefined) {
-          try { await handle.close?.() } catch {}
+        try {
+          const result = handle === undefined ? undefined : await handle.read?.()
+          events = (result?.events ?? []) as SessionEvent[]
+        } finally {
+          if (handle !== undefined) {
+            try { await handle.close?.() } catch {}
+          }
         }
       } else {
         // pre-0.1.5 hosts: read-only inspection.

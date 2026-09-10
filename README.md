@@ -208,7 +208,7 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 
 | 分组 | 命令 | 作用 |
 |---|---|---|
-| 系统 | `/exit` `/quit` `/restart` | 退出（清理有 2.5s 上限 + 强制兜底）/ 重启 dsh 进程 |
+| 系统 | `/exit` `/quit` `/restart` | 退出（teardown 2.5s 上限 + 硬兜底 5s；restart 9s）/ 重启 dsh 进程 |
 | 系统 | `/help` `/sessions` `/panel` | 分组列出全部命令 / 工作区分组会话浏览器（含移入工作区·移出分组）/ 活动面板 |
 | 系统 | `/settings [edit \| set <ns> <key.path> <value>]` `/bell [on\|off]` | 设置总览（官方 descriptor 形状渲染 + 用户覆盖星标，i/o 直接打开 settings.yaml 编辑）/ 类型化写入 / 回合结束响铃开关 |
 | 系统 | `/deps [install]` | 依赖体检（缺什么 / 一键装配） |
@@ -220,9 +220,9 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 会话 | `/compact` | 手动压缩上下文（compaction 引擎；返回压缩条数与 token 数） |
 | 会话 | `/goal [new <目标>\|pause\|resume\|complete\|clear]` | 查看/管理目标（状态栏同步显示 🎯 进度） |
 | 会话 | `/plan [on\|off\|status]` | 计划模式开关（状态栏显示 📋） |
-| 会话 | `/rewind [第N条]` | 回退：选择一条用户消息边界，截断其后的会话内容并重建界面 |
+| 会话 | `/rewind [第N条]` | 回退到某条用户消息（`session.truncate`；dsh 0.1.5-rc.1 已移除该能力 → 该宿主上仅提示降级） |
 | 会话 | `/rename <新标题>` | 钉住会话标题 |
-| 会话 | `/search <关键词>` | 跨会话全文搜索（session-query-sqlite），命中可一键恢复 |
+| 会话 | `/search <关键词>` | 跨会话全文搜索（`session-query-sqlite`，**默认 `openAt: never` 未启用**——先 `/deps install` 建索引），命中可一键恢复 |
 | 会话 | `/tasks [kill <job-id>]` | 任务列表**弹窗**（打开期间**实时刷新**，选中即取消）+ 聊天区**钉底任务板**（⚙ 块实时更新，全部结束才提交进聊天流） |
 | 会话 | `/todo [任务内容]` | 添加/查看待办任务（**弹窗实时同步** + 钉底待办板，todo/write 事件，状态栏 📋 计数） |
 | 会话 | `/skills [技能名]` | 技能目录浏览（浮窗查看详情） |

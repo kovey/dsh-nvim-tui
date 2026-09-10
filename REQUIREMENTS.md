@@ -181,7 +181,7 @@ dsh --profile nvim-tui
 
 | 分组 | 命令 | 需求 |
 |---|---|---|
-| 系统 | `/exit` `/quit` `/restart` | 退出（清理有 2.5s 上限 + 强制兜底）/ 重启 dsh 进程 |
+| 系统 | `/exit` `/quit` `/restart` | 退出（清理：`closeNvimWindow` 最坏 ~1.95s + teardown 2.5s 上限，硬兜底 5s；restart 9s）/ 重启 dsh 进程 |
 | 系统 | `/help` `/sessions` `/panel` | 分组列出全部命令 / 会话浮窗 / 活动面板 |
 | 系统 | `/settings [edit]` `/bell [on\|off]` | 设置总览（可打开 settings.yaml）/ 回合结束响铃开关（审批始终响铃） |
 | 会话 | `/new [目录]` `/clear` | 新建会话（可指定 cwd，含目录选择器浮窗）/ 清屏 |
@@ -192,9 +192,9 @@ dsh --profile nvim-tui
 | 会话 | `/compact` | 手动压缩上下文（compaction 引擎；返回压缩条数与 token 数） |
 | 会话 | `/goal [new <目标>\|pause\|resume\|complete\|clear]` | 查看/管理目标（状态栏同步显示 🎯 进度） |
 | 会话 | `/plan [on\|off\|status]` | 计划模式开关（状态栏显示 📋） |
-| 会话 | `/rewind [第N条]` | 回退：选择一条用户消息边界，截断其后的会话内容并重建界面 |
+| 会话 | `/rewind [第N条]` | 回退：选择一条用户消息边界**截断**其后内容并重建界面。**宿主能力依赖**：`session.truncate` 在 dsh 0.1.5-rc.1 已移除 → 该宿主上命令只提示降级（不再提供截断），请在旧宿主使用或改用 `/fork` + 新会话 |
 | 会话 | `/rename <新标题>` | 钉住会话标题 |
-| 会话 | `/search <关键词>` | 跨会话全文搜索（session-query-sqlite），命中可一键恢复 |
+| 会话 | `/search <关键词>` | 跨会话全文搜索（`session-query-sqlite`）。**默认未启用**：该行默认 `openAt: never`，用 `/deps install`（或用 `/settings set session-query-sqlite openAt startup`）启用索引后才能命中 |
 | 会话 | `/tasks [kill <job-id>]` | 任务（jobs）列表/取消单个 |
 | 会话 | `/skills [技能名]` | 技能目录浏览（浮窗查看详情） |
 | 会话 | `/fb up\|down [备注]` | 对最后一条助手消息点赞/点踩（message-feedback） |
@@ -227,7 +227,9 @@ dsh --profile nvim-tui
   LLM 适配器在请求时解析为 data URL。
 - **R-IMG-2 原生识图**：模型目录声明 `inputModalities: [text, image]`，且网关对模型
   透传 `image_url`（自建 text-only 网关会以 `unknown variant image_url, expected text` 拒绝）。
-- **R-IMG-3 识图桥**（text-only 模型/网关推荐）：装配 `dsh-vision-bridge`（提供
+- **R-IMG-3 识图（OCR 桥已移除）**：`dsh-vision-bridge` 桥已在 v0.3.2 移除，不再推荐装配；
+  当前路径见 README「图片消息」小节（原生多模态优先，其次 catalog 中 image 能力的官方模型）。
+  （历史描述：装配 `dsh-vision-bridge`（提供
   `visionBridge` 服务），图片在进入模型前经本地 macOS Vision OCR
   （`~/.dsh/scripts/feishu-ocr`，零成本离线；可选远程视觉模型兜底）转成文字描述注入。
   此时模型目录应保持 `[text]`，否则桥按"原生识图"跳过转换。
@@ -237,7 +239,8 @@ dsh --profile nvim-tui
   macOS 无参数时读剪贴板（pbpaste）、`<C-v>` 排队、粘贴
   `data:image/...;base64,...` 到输入框回车自动作为图片附件。
 - **R-IMG-6 旧会话遗留**：装桥之前失败发送留下的带图消息会永久留在会话历史里，
-  导致该会话后续每轮都被适配器拒绝——用 `/rewind` 回退到带图消息之前即可修复
+  导致该会话后续每轮都被适配器拒绝——**旧宿主**可用 `/rewind` 回退到带图消息之前修复；
+  0.1.5-rc.1 无 `session.truncate`，改用新会话或 `/fork` 规避
   （新会话不会再产生这类残留）。
 
 ### 5.4 会话管理（M2）
@@ -245,8 +248,10 @@ dsh --profile nvim-tui
 - **R-SESS-1 会话隔离**：每个会话独立的 chat buffer 与事件流。
 - **R-SESS-2 会话列表**：`/sessions` 浮窗显示标题 + **完整会话 id**
   （`session/title` 事件，LLM/fallback 自动生成）与持久化历史（标记 `历史`）。
-- **R-SESS-3 列表过滤**：只显示当前工作目录（`cwd` 匹配）的项目级会话；
-  子代理/派发会话（裸 UUID id，无 `session-` 前缀）与其他项目的会话不展示。
+- **R-SESS-3 列表过滤**：`/sessions` 按工作区分组展示项目级会话（`session-` 前缀）；
+  子代理/派发会话（裸 UUID id）不出现在列表（经 `/subagents` 进入）；**其他工作目录的
+  会话以「（其他目录）」行显式展示并可恢复**（跨目录 resume 受宿主支持），归档会话从
+  各分组隐藏。
 - **R-SESS-4 持久化与恢复**：退出时 flush 全部活跃会话（jsonl.zstd 持久化）；
   下次启动历史会话出现在列表，`<CR>` 选中即通过 `agents.resume` 恢复并重放转录。
 - **R-SESS-5 自动续会话（claude --continue 式）**：启动时默认恢复本项目的
@@ -266,7 +271,7 @@ dsh --profile nvim-tui
 - **R-VIZ-3 状态行（右）**：模型 · effort（`◎max`）· **缓存命中%**（会话累计）·
   **上下文占用% + `◧ 已用/窗口`**（**最近一步**的 billed 输入，与窗口同口径可比）·
   **`Σ` 会话累计 token** · 会话时长 · **预估成本**（内置公开定价表，未知模型诚实
-  降级不显示）· provider 路由；running 时带旋转动画 + 运行时长，180ms 刷新；
+  降级不显示）· provider 路由；running 时带旋转动画 + 运行时长，**450ms** 刷新；
   idle 30s 低频刷新。
 - **R-VIZ-4 活动面板（`<C-o>`）**：思考过程 + 工具使用记录都收进右侧面板，聊天区
   只显示**浮动活动指示**（`·· thinking · 12.3s` / `🔧 bash · 2.1s`），活动结束即消失、
@@ -288,8 +293,9 @@ dsh --profile nvim-tui
 ### 5.6 用户配置与插件兼容
 
 - **R-PLUG-1 默认加载用户配置**：colorscheme / statusline / LSP 等全部生效；
-  dsh_tui 在 `VimEnter`（用户配置加载完成后）接管窗口布局，并在 300ms/1.2s 时检查
-  布局是否被插件（如 dashboard）顶掉并自动重建。
+  dsh_tui 在 `VimEnter`（用户配置加载完成后）接管窗口布局（`apply_layout`）。
+  布局被 dashboard 一类插件顶掉时**不会自动重建**——用 `/restart` 或重新
+  `:lua require("dsh_tui").apply_layout()` 恢复（`config.loadUserConfig: false` 可纯净启动）。
 - **R-PLUG-2 纯净启动**：给 runner 行加 `config: { loadUserConfig: false }`。
 - **R-PLUG-3 沙箱/CI 隔离**：headless 测试模式自动隔离 XDG 目录，实现干净环境。
 
@@ -342,9 +348,9 @@ dsh --profile nvim-tui
 
 ## 6. 非功能需求
 
-- **R-NFR-1 性能**：状态栏 running 时 180ms 刷新、idle 30s 低频刷新；流式渲染对上次
+- **R-NFR-1 性能**：状态栏 running 时 450ms 刷新、idle 30s 低频刷新；流式渲染对上次
   视图 diff 后增量 `set_lines`；消息节流刷新。
-- **R-NFR-2 可靠性**：退出清理有 2.5s 上限 + 强制兜底；审批请求走瀑布回执 + 信号
+- **R-NFR-2 可靠性**：退出清理 teardown 上限 2.5s + 硬兜底 5s（restart 9s，且旧 nvim 未退出时**取消重启**）；审批请求走瀑布回执 + 信号
   取消；历史会话恢复失败降级为新建会话（记错误日志 + `⚠` 提示），绝不拖垮整个 TUI；
   回合失败显式渲染。
 - **R-NFR-3 可移植性**：无 TTY 环境（沙箱/CI）走 `--headless` 模式，XDG 隔离；
@@ -375,7 +381,7 @@ dsh --profile nvim-tui
 | M3 | 工具调用与流转可视化：工具卡片、状态行（statusline）、subagent/workflow 卡片、extmark 着色 + 轻 markdown、增量渲染 | ✅ 完成 |
 | M4 | 交互能力：审批浮窗（`approval/request` 瀑布回执 + 信号取消）、用户提问浮窗（`userQuestions.registerProvider`，单选/多选/取消）、`/model` 浮窗选择与热切、`/fork` 分叉、`/sessions`、多行输入 + 历史 + 斜杠命令补全菜单（`/` 自动弹出，Tab/Enter/Esc 交互） | ✅ 完成 |
 | M5 | 打磨与分发：主题覆盖（config.theme）、状态栏模型名、npm 发布准备（prepublish 冒烟门禁）、一键安装验证（dsh plugin add）、配置项文档化 | ✅ 完成 |
-| M6 | 完整 TUI：`/stop` 中断、`/steer` 引导、`/compact` 压缩、`/goal` 目标管理（状态栏 🎯）、`/plan` 计划模式（状态栏 📋）、`/rewind` 回退重建、`/rename`、`/search` 跨会话搜索、`/tasks`、`/skills` 浏览、`/mcp` 统计、`/fb` 消息反馈、终端标题、多模态（原生 + 视觉桥）、剪贴板读图、暗色主题、REPL 提示符与补全菜单 | ✅ 完成 |
+| M6 | 完整 TUI：`/stop` 中断、`/steer` 引导、`/compact` 压缩、`/goal` 目标管理（状态栏 🎯）、`/plan` 计划模式（状态栏 📋）、`/rewind` 回退重建、`/rename`、`/search` 跨会话搜索、`/tasks`、`/skills` 浏览、`/mcp` 统计、`/fb` 消息反馈、终端标题、多模态（原生识图模型自动切换；OCR 桥已于 v0.3.2 移除）、剪贴板读图、暗色主题、REPL 提示符与补全菜单 | ✅ 完成 |
 | M7 | 子代理与官方能力对齐：`/subagents`、`/permission`、`/attach` + `@` 补全、`/deliverables`、`/workflow`、`/settings [edit]`、`/trajectory`、`/layout default|panel`、`/bell`、`/new [目录]` + 目录选择器、markdown 渲染增强（标题/引用/链接/行内码） | ✅ 完成 |
 
 ## 9. 测试与验收
