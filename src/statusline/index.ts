@@ -308,6 +308,7 @@ export function installStatusline(app: App): void {
     updateStatusline: () => {},
     refreshBgJobs: () => {},
     foldEvent: () => {},
+    pendingNotices: [],
   })
 
   app.slices.ui.foldEvent = (rec, event) => foldEvent(app, rec, event)

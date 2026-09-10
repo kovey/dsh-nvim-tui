@@ -472,7 +472,10 @@ export class FeedRenderer {
       }
       const markId = await this.nvim.request('nvim_buf_set_extmark', [
         this.bufId, ns, range.startRow, 0,
-        { end_row: range.endRow, end_col: 0, priority: 1 },
+        // end_row is EXCLUSIVE: +1 so the card's LAST row (the action-hint
+        // line) is inside the mark — activating a card with the cursor on
+        // that row used to fail (api.lua checks `row < end_row`).
+        { end_row: range.endRow + 1, end_col: 0, priority: 1 },
       ]) as number
       this.cardRanges.set(cardId, { markId, startRow: range.startRow, endRow: range.endRow })
     }
@@ -817,6 +820,12 @@ export class FeedRenderer {
         this.base.push('── turn end ──')
         this.turnStartedAt = null
         this.turnMarkerBase = null
+        // A tool/result that never arrived (scheduler crash, interrupted
+        // turn) must not leave the "🔧 running" activity row pinned forever:
+        // the flush tail then keeps re-scheduling every 500ms. Same for a
+        // subagent whose end event never came.
+        this.toolActivity = null
+        this.subagents.clear()
         this.schedule()
         break
       case 'todo/write': {
@@ -930,15 +939,24 @@ export class FeedRenderer {
 
   subagentStart(info: { runId?: string; provider?: string; id?: string }): void {
     const now = Date.now()
-    this.subagents.set(info.runId ?? '?', { provider: info.provider ?? '?', startedAt: now })
+    this.subagents.set(FeedRenderer.subagentKey(info), { provider: info.provider ?? '?', startedAt: now })
     this.pushSubagent(`◇ subagent ${info.provider ?? '?'} · ${FeedRenderer.truncate(String(info.id ?? ''), 16)}`)
   }
 
   subagentEnd(info: { runId?: string; provider?: string; id?: string; stopReason?: string }): void {
-    const run = info.runId ? this.subagents.get(info.runId) : undefined
+    // start/end MUST agree on the key: a missing runId used to store under
+    // '?' and delete under '' → the entry leaked forever and kept the 500ms
+    // activity ticker alive with a ghost "◇ provider · Ns" row.
+    const key = FeedRenderer.subagentKey(info)
+    const run = this.subagents.get(key)
     const elapsed = run ? Date.now() - run.startedAt : null
-    this.subagents.delete(info.runId ?? '')
+    this.subagents.delete(key)
     this.pushSubagent(`◇ subagent ${info.provider ?? '?'} · ${info.stopReason ?? 'settled'}${elapsed === null ? '' : ` · ${formatElapsed(elapsed)}`}`)
+  }
+
+  /** One identity for a subagent run across start/end/elapsed lookups. */
+  static subagentKey(info: { runId?: string; id?: string } | undefined): string {
+    return info?.runId ?? info?.id ?? '?'
   }
 
   workflowStart(info: { id?: string; meta?: { name?: string } }): void {
@@ -1313,7 +1331,13 @@ export class FeedRenderer {
       parsed.push(p)
     }
     closeDiffBlock()
-    const lines = parsed.map((p) => p.text)
+    // LAST-LINE-OF-DEFENSE: nvim's nvim_buf_set_lines/nvim_buf_set_text reject
+    // any line containing "\n" ("replacement string item contains newlines"),
+    // which kills the WHOLE render pipeline (E5108) until the next clean
+    // flush. Host/model-provided text (workflow phase titles, stopReason,
+    // error details, ext-card action labels) is only folded at SOME entry
+    // points, so sanitize every final row here.
+    const lines = parsed.map((p) => p.text.replace(/\r?\n/g, ' '))
 
     // Blue whale pixel art: the empty state is a hero block — big banner +
     // title ABOVE, the animated whale (wink / bubbles / bob cycle) in the
@@ -1464,7 +1488,11 @@ export class FeedRenderer {
       // intersection), so same-row ranges are the one geometry that both
       // renders and survives clearing.
       if (startRow < lines.length) {
-        const tokenBlocks = codeBlocks.filter((b) => b.row >= startRow)
+        // OVERLAP (not b.row >= startRow): a code block registered when its
+        // closing fence arrives STARTED above the changed window, so a
+        // start-row filter never matched it and streamed code stayed
+        // unhighlighted forever.
+        const tokenBlocks = codeBlocks.filter((b) => b.row + b.lines.length >= startRow && b.row <= lines.length)
         const rows = parsed.slice(startRow).map((p) => ({
           group: p.group ?? '',
           spans: p.spans,

@@ -26,6 +26,7 @@ import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { App, SessionRec } from './app.js'
 import type { DifficultyRoutingConfig, DifficultyTier } from './types.js'
+import { effortSupported } from './vision.js'
 
 /** Statusline / notice icons and labels per tier. */
 export const TIER_ICONS: Record<DifficultyTier, string> = { easy: '🟢', medium: '🟡', hard: '🔴' }
@@ -116,14 +117,22 @@ async function classifyViaLlm(
       signal,
     }
     for await (const chunk of prepared.stream(request)) assembler.push(chunk)
+    // The host normalizes adapter/iteration failures into a terminal finish
+    // chunk instead of throwing — treating an ABORTED/errored stream as a
+    // valid 'medium' verdict silently mis-rated every timeout. Only a clean
+    // stop with an explicit verdict counts; anything else falls back to rules.
+    const finish = assembler.finish
+    if (finish === undefined || finish.kind !== 'stop') return null
     const out = assembler.blocks()
       .filter((b) => b.type === 'text')
       .map((b) => (b as { text: string }).text)
       .join(' ')
       .toLowerCase()
+    if (out === '') return null
     if (/hard|困难|复杂|难/.test(out)) return 'hard'
     if (/easy|简单|轻松/.test(out)) return 'easy'
-    return 'medium'
+    if (/medium|中等|一般|普通/.test(out)) return 'medium'
+    return null
   } catch {
     return null
   }
@@ -219,15 +228,34 @@ async function applyTierSwitch(
   // switches — e.g. tiers.hard = { model: <默认>, effort: 'max' }).
   if (route.provider === current.provider && route.model === current.model &&
     (route.reasoningEffort ?? null) === (current.reasoningEffort ?? null)) return
-  // 0.1.5: verify the tier model exists in the catalog — a missing model
-  // would kill the whole turn with NO_ADAPTER instead of degrading.
-  const llm = app.runtimeCtx.get('llm') as { resolveModelInfo?: (p: string, m: string) => Promise<unknown> } | undefined
-  if (typeof llm?.resolveModelInfo === 'function') {
-    const info = await llm.resolveModelInfo(route.provider, route.model).catch(() => undefined)
+  // 0.1.5: verify the tier model exists in the catalog — `resolveModelInfo`
+  // alone does NOT prove membership (the deepseek adapter answers for any id),
+  // so prefer the real catalog list and fall back to a resolution probe.
+  const llm = app.runtimeCtx.get('llm') as {
+    resolveModelInfo?: (p: string, m: string) => Promise<{ reasoning?: { efforts?: ReadonlyArray<{ id?: string }> } } | undefined>
+    listModels?: (p: string) => Promise<Array<{ id?: string }>>
+  } | undefined
+  let info: { reasoning?: { efforts?: ReadonlyArray<{ id?: string }> } } | undefined
+  if (typeof llm?.listModels === 'function') {
+    const models = await llm.listModels(route.provider).catch(() => undefined)
+    if (Array.isArray(models) && models.length > 0 && !models.some((m) => m?.id === route.model)) {
+      if (notify) app.notice(`难度路由跳过: 档位模型 ${route.provider}/${route.model} 不在模型目录中（检查 difficultyRouting.tiers 配置）`)
+      return
+    }
+    info = await llm.resolveModelInfo?.(route.provider, route.model).catch(() => undefined)
+  } else if (typeof llm?.resolveModelInfo === 'function') {
+    info = await llm.resolveModelInfo(route.provider, route.model).catch(() => undefined)
     if (info === undefined || info === null) {
       if (notify) app.notice(`难度路由跳过: 档位模型 ${route.provider}/${route.model} 不在模型目录中（检查 difficultyRouting.tiers 配置）`)
       return
     }
+  }
+  // An effort the tier model rejects would kill the turn before dispatch.
+  if (!effortSupported(info, route.reasoningEffort)) {
+    if (notify && route.reasoningEffort !== undefined) {
+      app.notice(`档位模型 ${route.model} 不支持 ◎${route.reasoningEffort} — 本回合按模型默认推理等级`)
+    }
+    delete route.reasoningEffort
   }
   rec.modelRef.current = route
   rec.model = route.model

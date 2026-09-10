@@ -303,6 +303,11 @@ export declare class FeedRenderer {
         id?: string;
         stopReason?: string;
     }): void;
+    /** One identity for a subagent run across start/end/elapsed lookups. */
+    static subagentKey(info: {
+        runId?: string;
+        id?: string;
+    } | undefined): string;
     workflowStart(info: {
         id?: string;
         meta?: {

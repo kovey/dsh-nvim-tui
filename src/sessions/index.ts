@@ -31,6 +31,19 @@ import { installLayoutCommand } from './commands/layout.js'
 const WSS = (d: AppSlices['sessions']) => d as WritableSlice<AppSlices['sessions']>
 
 /** Fill the sessions module's App slots and register its commands. */
+/** Is one child session actually driving a turn right now? The host's
+ *  listChildren `activity` field only reports residency, so prefer the TUI's
+ *  subagent event registry and fall back to the live agent's own status. */
+const childRunning = (app: App, id: string): boolean => {
+  if (app.slices.sessions.runningSubagents.has(id)) return true
+  try {
+    const agent = (app.runtimeCtx.agents as { get?: (i: string) => { status?: unknown } | undefined }).get?.(id)
+    return agent?.status === 'running'
+  } catch {
+    return false
+  }
+}
+
 /** Children of one parent session (live + history, TTL-cleaned chains
  *  hidden) — the /subagents directory source. */
 const listSubagentChildren = async (app: App, parentId: string): Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number }>> => {
@@ -54,7 +67,10 @@ const listSubagentChildren = async (app: App, parentId: string): Promise<Array<{
       const children = entries.filter((e) => e?.kind === 'child').map((e) => ({
         id: e.id,
         label: e.label ?? e.id.slice(0, 8),
-        running: e.activity === 'running',
+        // The host's `activity` only means "resident in the session store",
+        // NOT "driving a turn" — a settled child stays resident. Live truth
+        // is the TUI's subagent event registry or the agent's own status.
+        running: childRunning(app, e.id),
         mode: e.mode,
         createdAt: createdAtOf(e.id),
       })).filter((c) => c.running || !hidden.has(c.id))

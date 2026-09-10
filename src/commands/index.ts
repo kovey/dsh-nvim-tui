@@ -183,10 +183,23 @@ export function installCommands(app: App): void {
   }
   A.setDirSettle = (fn) => { A.dirSettle = fn }
   A.resolveDirPicker = (picked) => { const fn = A.dirSettle; A.dirSettle = null; fn?.(picked) }
-  A.setPendingRename = (v) => { A.pendingRename = v }
+  /** Release the temporary background live session a rename target owns.
+   *  Its only other release point is onInput CONSUMING the rename — a
+   *  replaced/cleared target used to strand an agent handle + nvim buffers
+   *  forever (pre-review: "accumulated forever"). */
+  const releaseRenameTarget = (target: typeof A.pendingRename): void => {
+    if (target !== null && target.kind === 'session' && target.background === true) {
+      void app.slices.sessions.disposeLiveSession(target.id)
+    }
+  }
+  A.setPendingRename = (v) => {
+    if (A.pendingRename !== v) releaseRenameTarget(A.pendingRename)
+    A.pendingRename = v
+  }
   A.setLivePopup = (v) => { A.livePopup = v }
   A.setPendingQueueEdit = (v) => { A.pendingQueueEdit = v }
   A.clearPendings = () => {
+    releaseRenameTarget(A.pendingRename)
     A.pendingRename = null
     A.pendingQueueEdit = null
     A.pendingImages = []
@@ -235,7 +248,7 @@ export function installCommands(app: App): void {
   app.slices.agent.pasteClipboardImage = () => pasteClipboardImage(app)
   app.slices.agent.stopCommand = () => stopCommand(app)
   app.slices.agent.openDirPicker = (startPath) => openDirPicker(app, startPath)
-  app.slices.agent.atQuery = (query) => atQuery(app, query)
+  app.slices.agent.atQuery = (query, start) => atQuery(app, query, start)
   app.slices.agent.applyModelSelection = (next) => applyModelSelection(app, next)
   app.slices.agent.pickModel = (arg) => pickModel(app, arg)
   app.slices.agent.onInput = (text) => onInput(app, text)

@@ -9,6 +9,22 @@ import type { App } from '../../kernel/app.js'
  *  (`llm-<provider>.models`, the same catalog the vision-model switch and
  *  /settings overview use). Best-effort: returns [] when the section is
  *  absent or the schema is unrecognized. */
+/** Settings namespace for one provider route. The route id and the settings
+ *  section name are NOT derivable from each other — 0.1.5 ships provider
+ *  `deepseek-official` with ns `llm-deepseek` — so resolve it from the host's
+ *  configurable-provider directory instead of guessing `llm-<id>` only. */
+export const providerSettingsNs = (app: App, providerId: string): string | undefined => {
+  const llm = app.svc('llm')
+  try {
+    for (const p of llm?.listConfigurableProviders?.() ?? []) {
+      const id = String((p as { provider?: unknown })?.provider ?? '')
+      const ns = String((p as { settingsNs?: unknown })?.settingsNs ?? '')
+      if (id === providerId && ns !== '') return ns
+    }
+  } catch {}
+  return undefined
+}
+
 export const configuredModels = (app: App, providerId: string, settingsNs?: string): string[] => {
   const settings = app.svc('settings')
   if (typeof settings?.describe !== 'function') return []
@@ -55,7 +71,7 @@ export const modelCatalogRows = (app: App): Array<{ label: string; value: string
   for (const p of live) {
     const id = String(p.id ?? p.provider ?? '?')
     liveIds.add(id)
-    const models = configuredModels(app, id)
+    const models = configuredModels(app, id, providerSettingsNs(app, id))
     if (models.length > 0) {
       rows.push({ label: `● ${id} · ${String(p.name ?? '')}`, value: `prov:${id}` })
       for (const m of models) {

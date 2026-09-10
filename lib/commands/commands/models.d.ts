@@ -3,6 +3,11 @@ import type { App } from '../../kernel/app.js';
  *  (`llm-<provider>.models`, the same catalog the vision-model switch and
  *  /settings overview use). Best-effort: returns [] when the section is
  *  absent or the schema is unrecognized. */
+/** Settings namespace for one provider route. The route id and the settings
+ *  section name are NOT derivable from each other — 0.1.5 ships provider
+ *  `deepseek-official` with ns `llm-deepseek` — so resolve it from the host's
+ *  configurable-provider directory instead of guessing `llm-<id>` only. */
+export declare const providerSettingsNs: (app: App, providerId: string) => string | undefined;
 export declare const configuredModels: (app: App, providerId: string, settingsNs?: string) => string[];
 /** Shared catalog rows for the /models directory AND the /model picker:
  *  current header (`act:current`), provider group rows (`prov:<id>`),

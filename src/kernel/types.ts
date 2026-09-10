@@ -478,7 +478,11 @@ export interface ModelSelection {
 
 /** LLM service (model info / providers). */
 export interface LlmService {
-  resolveModelInfo: (provider: string, model: string) => Promise<{ inputModalities?: string[] } | undefined>
+  resolveModelInfo: (provider: string, model: string) => Promise<{
+    inputModalities?: string[]
+    /** Supported reasoning efforts; ABSENT means the model rejects any effort. */
+    reasoning?: { efforts?: ReadonlyArray<{ id?: string }> }
+  } | undefined>
   listProviders: () => Array<{ id?: string; name?: string; provider?: string }>
   listConfigurableProviders?: () => Array<{ provider?: string; displayName?: string; settingsNs?: string }>
   /** 0.1.5: full model catalog for one provider (vision-candidate fallback). */

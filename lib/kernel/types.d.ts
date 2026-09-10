@@ -743,6 +743,12 @@ export interface ModelSelection {
 export interface LlmService {
     resolveModelInfo: (provider: string, model: string) => Promise<{
         inputModalities?: string[];
+        /** Supported reasoning efforts; ABSENT means the model rejects any effort. */
+        reasoning?: {
+            efforts?: ReadonlyArray<{
+                id?: string;
+            }>;
+        };
     } | undefined>;
     listProviders: () => Array<{
         id?: string;

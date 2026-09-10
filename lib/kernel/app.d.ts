@@ -3,7 +3,7 @@ import type { NeovimClient } from 'neovim';
 import type { FeedRenderer } from '../feed/feed.js';
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js';
 import type { RunnerConfig } from './types.js';
-import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspacesService } from './types.js';
+import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspacesService } from './types.js';
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
 /** The active session's working directory (falls back to the process cwd
  *  when no session is attached) — local-file commands must resolve against
@@ -39,6 +39,7 @@ export interface ServiceMap {
     sessionProjectionCache: SessionProjectionsService;
     pluginInventory: PluginInventoryService;
     loader: LoaderService;
+    llm: LlmService;
     sessionReferenceResolver: SessionReferenceService;
     sessionTitle: SessionTitleService;
     messageFeedback: MessageFeedbackService;
@@ -296,6 +297,8 @@ export interface AppSlices {
         }>;
         readonly renderedDiffCalls: WeakMap<FeedRenderer, Set<string>>;
         readonly pendingEchoes: Map<string, string[]>;
+        /** Notices emitted before the first session attached (flushed on attach). */
+        readonly pendingNotices: unknown[];
     };
     /** Extension surface (ext-api.ts owns; installs run before boot). */
     ext: {
@@ -498,6 +501,10 @@ export interface App {
         setActive: (id: string) => Promise<any>;
     };
     requestExit: (code?: number) => void;
+    /** Drain notices buffered before any session was active into `feed`. */
+    flushPendingNotices: (feed: {
+        appendNotice: (t: unknown) => void;
+    }) => void;
     notice: (text: unknown) => void;
     openPicker: (title: string, items: Array<{
         label: string;

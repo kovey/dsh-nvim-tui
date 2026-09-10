@@ -93,9 +93,15 @@ export function parseImageDataUrl(dataUrl: string): SaveImageAttachment | null {
 }
 
 /** Strip image data URLs from a submitted line; returns {text, images}. */
+/** ALL data URLs in one text. DATA_URL_RE is deliberately non-global (it is
+ *  shared with .exec, where lastIndex would leak), so stripping must use a
+ *  GLOBAL clone — with the shared regex only the FIRST URL was removed and
+ *  every later pasted image silently stayed in the prompt as raw text. */
+const DATA_URL_SCAN_RE = new RegExp(DATA_URL_RE.source, 'g')
+
 export function splitImageDataUrls(text: string): { text: string; images: string[] } {
   const images: string[] = []
-  const clean = text.replace(DATA_URL_RE, (whole) => {
+  const clean = text.replace(DATA_URL_SCAN_RE, (whole) => {
     images.push(whole)
     return ''
   }).replace(/[ \t]+/g, ' ').trim()

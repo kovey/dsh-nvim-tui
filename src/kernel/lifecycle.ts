@@ -8,7 +8,7 @@
  * @module dsh-nvim-tui/lifecycle
  */
 import { appendFileSync } from 'node:fs'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { flushTtyInput, resetTerminalModes } from './term.js'
 import type { App, AppSlices, WritableSlice } from './app.js'
 
@@ -186,16 +186,43 @@ export function installLifecycle(app: App): void {
           // job holder, so the shell keeps waiting and never reclaims the
           // terminal (no prompt, no input race). It exits only when the
           // successor's whole tree has exited.
+          // setsid keeps the successor out of the dying job group; it needs
+          // python3. A host without python3 must NOT lose the restart — fall
+          // back to a direct exec (no setsid) instead of `sh` exiting 127,
+          // which used to be logged as a SUCCESSFUL restart with no successor.
+          const hasPython3 = ((): boolean => {
+            try {
+              return spawnSync('python3', ['-c', 'pass'], { stdio: 'ignore', timeout: 3000 }).status === 0
+            } catch { return false }
+          })()
+          const shCmd = hasPython3
+            ? 'sleep 2; exec python3 -c "import os,sys; os.setsid(); os.execv(sys.argv[1], sys.argv[1:])" "$@"'
+            : 'sleep 2; exec "$@"'
+          if (!hasPython3) app.exitDiag('restart-no-python3', 'falling back to a direct exec (no setsid)')
           const next = spawn('/bin/sh',
-            ['-c', 'sleep 2; exec python3 -c "import os,sys; os.setsid(); os.execv(sys.argv[1], sys.argv[1:])" "$@"',
-              'sh', process.argv[0], ...process.argv.slice(1)],
+            ['-c', shCmd, 'sh', process.argv[0], ...process.argv.slice(1)],
             { stdio: 'inherit' })
           app.exitDiag('restart-spawned')
           await new Promise<void>((resolve) => {
             let done = false
             const fin = (): void => { if (!done) { done = true; resolve() } }
-            next.once('exit', fin)
-            next.once('error', fin)
+            next.once('exit', (code2, signal2) => {
+              if (code2 !== 0 || signal2 !== null) {
+                // The successor tree failed BEFORE taking over (127 = missing
+                // interpreter, a config crash, a signal). Say so on the real
+                // stderr — console.* is silenced from boot on.
+                app.exitDiag('restart-successor-failed', `code=${code2}`, `signal=${signal2}`)
+                try {
+                  process.stderr.write(`[dsh-nvim-tui] 重启失败：后继进程退出 code=${code2}${signal2 ? ` signal=${signal2}` : ''} — 请手动重新运行 dsh\n`)
+                } catch {}
+              }
+              fin()
+            })
+            next.once('error', (err: unknown) => {
+              app.exitDiag('restart-spawn-error', String(err))
+              try { process.stderr.write(`[dsh-nvim-tui] 重启失败：无法启动后继进程 (${String(err)})\n`) } catch {}
+              fin()
+            })
           })
           app.exitDiag('restart-successor-exited')
           app.requestExit(code)

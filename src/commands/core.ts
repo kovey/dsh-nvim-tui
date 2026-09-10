@@ -17,7 +17,7 @@ import { t } from '../kernel/i18n.js'
 import { matchIntent } from './nlcmd.js'
 import { activeSessionCwd } from '../kernel/app.js'
 import { routeDifficultyForTurn } from '../kernel/difficulty.js'
-import { findVisionModel } from '../kernel/vision.js'
+import { findVisionModel, effortSupported } from '../kernel/vision.js'
 import { readClipboardImage, splitImageDataUrls, parseImageDataUrl } from '../feed/images.js'
 import { queueSubagentPromptKey } from '../kernel/types.js'
 import type { ApprovalRequest, InboxLike, LlmService, MessageContent, SaveImageAttachment } from '../kernel/types.js'
@@ -78,7 +78,12 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
         app.notice(`没有可用的官方识图模型（settings.yaml 的 llm-deepseek.models 需包含声明 image 模态的模型，如 deepseek-flash 或 deepseek-v4-flash-vision-exp）`)
         return
       }
-      rec.modelRef.current = { ...sel, model: visionModel }
+      // The vision model may not accept the current reasoning effort — the
+      // host throws UNSUPPORTED_REASONING_EFFORT before the adapter even sees
+      // the image, so drop an unsupported effort for this turn.
+      const vInfo = await llm?.resolveModelInfo(sel.provider, visionModel).catch(() => undefined)
+      const keepEffort = effortSupported(vInfo as { reasoning?: { efforts?: ReadonlyArray<{ id?: string }> } } | undefined, sel.reasoningEffort)
+      rec.modelRef.current = keepEffort ? { ...sel, model: visionModel } : { provider: sel.provider, model: visionModel }
       rec.visionTmp = { prev: sel, switchAt: Date.now() }
       // An active difficulty switch must survive past THIS image turn too:
       // its turn/end restore would otherwise clobber the vision switch and
@@ -86,7 +91,7 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
       if (rec.difficulty !== undefined && rec.difficulty.tmp !== null) {
         rec.difficulty.tmp.switchAt = Date.now()
       }
-      app.notice(`📎 图片消息: 临时切换官方识图模型 ${sel.provider}/${visionModel}（回合结束自动切回 ${sel.provider}/${sel.model}）`)
+      app.notice(`📎 图片消息: 临时切换官方识图模型 ${sel.provider}/${visionModel}${keepEffort ? '' : `（该模型不支持 ◎${sel.reasoningEffort}，本回合按模型默认）`}（回合结束自动切回 ${sel.provider}/${sel.model}）`)
       app.slices.ui.updateStatusline()
     } else if (rec.visionTmp !== null) {
       // Another image message queued while an image turn is still pending:

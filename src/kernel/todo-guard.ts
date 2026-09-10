@@ -83,14 +83,15 @@ export function todoGuardReminder(
 }
 
 /** Session log access (0.1.5 `snapshotEvents()`, pre-alpha.4 `events`). */
+/** Session log access. Every supported host (0.1.2-rc.1 … 0.1.5-rc.1)
+ *  exposes `snapshotEvents()`; the pre-alpha.4 `events` property is gone. */
 function sessionEventsOf(session: unknown): SessionEventLike[] {
-  const s = session as { snapshotEvents?: () => unknown; events?: unknown } | undefined
+  const s = session as { snapshotEvents?: () => unknown } | undefined
   try {
     if (typeof s?.snapshotEvents === 'function') {
       const got = s.snapshotEvents()
       if (Array.isArray(got)) return got as SessionEventLike[]
     }
-    if (Array.isArray(s?.events)) return s!.events as SessionEventLike[]
   } catch {}
   return []
 }

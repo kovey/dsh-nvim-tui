@@ -257,6 +257,11 @@ const INTENTS: IntentSpec[] = [
   },
 ]
 
+/** Sentence particles: an input carrying these is chat, never a command hint. */
+const SENTENCE_RE = /[了吗呢吧啊呀哦]|[是有不没别]|怎么|如何|为什么|什么/
+/** Explicit command→argument separator (space / full-width or ASCII colon). */
+const ARG_SEPARATOR_RE = /[:： ]/
+
 /** Exact phrases for destructive commands — used as the `contains` blocklist. */
 const DESTRUCTIVE = new Set(['clear', 'stop', 'exit', 'quit', 'restart', 'compact', 'rewind'])
 
@@ -269,6 +274,12 @@ function matchOnce(input: string, withContains: boolean): NlMatch | null {
     for (const p of spec.patterns ?? []) {
       const m = p.re.exec(input)
       if (m === null) continue
+      // Verb-anchored patterns have an OPTIONAL separator, so a chat sentence
+      // can be swallowed whole («插件市场里有很多插件» → /market 里有很多插件).
+      // Accept a pattern match only with an explicit separator, or when the
+      // input carries no sentence particles — otherwise fall through to the
+      // agent (which can still run the command itself).
+      if (!ARG_SEPARATOR_RE.test(input) && SENTENCE_RE.test(input)) continue
       const arg = p.arg !== undefined ? p.arg(m) : (m[1] ?? '').trim()
       return { name: spec.name, arg: arg === '' ? undefined : arg }
     }
@@ -317,7 +328,6 @@ export function matchIntent(raw: string): NlMatch | null {
   // Loose noun hints last («打开帮助面板» → help via 帮助/面板). Only
   // NOUN-LIKE inputs qualify — a sentence with particles («状态栏不见了»,
   // «帮我看看记忆») is chat for the agent, never a command hint.
-  const SENTENCE_RE = /[了吗呢吧啊呀哦]|[是有不没别]|怎么|如何|为什么|什么/
   for (const candidate of [input, strippedLead, strippedBoth]) {
     if (candidate === '' || SENTENCE_RE.test(candidate)) continue
     hit = matchOnce(candidate, true)

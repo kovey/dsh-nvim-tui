@@ -24,7 +24,7 @@ import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types
 import type { RunnerConfig } from './types.js'
 import type {
   AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService,
-  DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService,
+  DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService,
   MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService,
   PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore,
   LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService,
@@ -78,6 +78,7 @@ export interface ServiceMap {
   sessionProjectionCache: SessionProjectionsService
   pluginInventory: PluginInventoryService
   loader: LoaderService
+  llm: LlmService
   sessionReferenceResolver: SessionReferenceService
   sessionTitle: SessionTitleService
   messageFeedback: MessageFeedbackService
@@ -257,6 +258,8 @@ export interface AppSlices {
     readonly pendingFileSnaps: Map<string, { display: string; before: string | null }>
     readonly renderedDiffCalls: WeakMap<FeedRenderer, Set<string>>
     readonly pendingEchoes: Map<string, string[]>
+    /** Notices emitted before the first session attached (flushed on attach). */
+    readonly pendingNotices: unknown[]
   }
   /** Extension surface (ext-api.ts owns; installs run before boot). */
   ext: {
@@ -377,6 +380,8 @@ export interface App {
     setActive: (id: string) => Promise<any>
   }
   requestExit: (code?: number) => void
+  /** Drain notices buffered before any session was active into `feed`. */
+  flushPendingNotices: (feed: { appendNotice: (t: unknown) => void }) => void
   notice: (text: unknown) => void
   openPicker: (title: string, items: Array<{ label: string; value: string; active?: boolean }>) => Promise<string | null>
   /** Live picker: same float, but `update` re-renders the OPEN popup in
@@ -469,12 +474,6 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     requestExit: () => {},
     notice: () => {},
     openPicker: async () => null,
-    openLivePicker: (title: string, items: Array<{ label: string; value: string }>) => ({
-      pick: app.openPicker(title, items),
-      update: (next: Array<{ label: string; value: string }>) => {
-        void luaCall('require("dsh_tui").update_picker(...)', [next]).catch(() => {})
-      },
-    }),
     guard: (label: string, fn: (...args: any[]) => Promise<unknown>) => async (...args: any[]) => {
       try {
         await fn(...args)
@@ -537,13 +536,31 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     else process.exit(code)
   }
 
-  if (headless) appendFileSync(`${dumpPath}.applies`, `apply ${new Date().toISOString()}\n`)
-
   app.slices.ui.activeFeed = () => {
     const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
     return rec?.feed
   }
-  app.notice = (text: unknown): void => { app.slices.ui.activeFeed()?.appendNotice(text) }
+  app.notice = (text: unknown): void => {
+    // Startup window: before the first session attaches there is NO feed to
+    // render into, and every real failure notice (session-history load,
+    // onboarding, profile warnings…) was silently dropped. Buffer them and
+    // flush into the first ACTIVE session's feed.
+    const feed = app.slices.ui.activeFeed()
+    if (feed === undefined) {
+      const q = app.slices.ui.pendingNotices
+      q.push(text)
+      if (q.length > 20) q.shift()
+      return
+    }
+    feed.appendNotice(text)
+  }
+
+  /** Flush notices buffered before any session was active (owner: sessions). */
+  app.flushPendingNotices = (feed: { appendNotice: (t: unknown) => void }): void => {
+    const q = app.slices.ui.pendingNotices
+    if (q.length === 0) return
+    for (const t of q.splice(0, q.length)) feed.appendNotice(t)
+  }
 
   app.openPicker = (title: string, items: Array<{ label: string; value: string; active?: boolean }>) =>
     new Promise<string | null>((resolve) => {

@@ -1,0 +1,6 @@
+process.on('unhandledRejection', (e) => { console.log('LOGGED-UR', e && e.message) })
+process.on('uncaughtException', (e) => { console.log('LOGGED-UE', e && e.message) })
+setTimeout(() => { Promise.reject(new Error('boom-rejection')) }, 0)
+setTimeout(() => { console.log('STILL-ALIVE-AFTER-REJECTION') }, 20)
+setTimeout(() => { throw new Error('boom-sync-in-callback') }, 40)
+setTimeout(() => { console.log('STILL-ALIVE-AFTER-THROW'); process.exit(7) }, 60)

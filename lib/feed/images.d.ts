@@ -13,7 +13,6 @@ export declare function readImageFile(path: string, _knownMediaType?: string | n
  * shape; null when the string is not a valid supported image data URL.
  */
 export declare function parseImageDataUrl(dataUrl: string): SaveImageAttachment | null;
-/** Strip image data URLs from a submitted line; returns {text, images}. */
 export declare function splitImageDataUrls(text: string): {
     text: string;
     images: string[];
