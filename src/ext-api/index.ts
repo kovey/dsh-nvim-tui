@@ -31,7 +31,7 @@ export const EXT_API_VERSION = '0.1.0'
 export const EXT_HANDLER_TIMEOUT_MS = 30_000
 
 import type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardHandle, TuiExtApi } from '../kernel/ext-types.js'
-
+import { t, tf } from '../kernel/i18n.js'
 // Public contract re-exports: the type definitions moved to kernel/ext-types.ts
 export type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult, ExtPickerOpts, ExtPanelOpts, ExtPanelHandles, ExtRegionOpts, ExtRegionHandles, ExtCommandSpec, ExtLuaLayer, ExtUiLayer, TuiExtApi } from '../kernel/ext-types.js'
 
@@ -183,7 +183,7 @@ export function installExtApi(app: App): void {
       try {
         cb(payload)
       } catch (err) {
-        app.notice(`⚠ 扩展事件 ${event} 处理失败: ${(err as Error).message}`)
+        app.notice(tf('⚠ 扩展事件 {0} 处理失败: {1}', [event, (err as Error).message]))
       }
     }
   }
@@ -287,7 +287,7 @@ export function installExtApi(app: App): void {
           try {
             cb(last.payload)
           } catch (err) {
-            app.notice(`⚠ 扩展事件 ${event} 处理失败: ${(err as Error).message}`)
+            app.notice(tf('⚠ 扩展事件 {0} 处理失败: {1}', [event, (err as Error).message]))
           }
         }
       }
@@ -513,7 +513,7 @@ export function installExtApi(app: App): void {
         try {
           cb(sessionId, event)
         } catch (err) {
-          app.notice(`⚠ 扩展会话事件 ${event.type} 处理失败: ${(err as Error).message}`)
+          app.notice(tf('⚠ 扩展会话事件 {0} 处理失败: {1}', [event.type, (err as Error).message]))
         }
       }
     }
@@ -573,7 +573,7 @@ export function installExtApi(app: App): void {
       app.slices.ext.setPendingCardInput(null)
       const r = feed2.resolveCardAction(mark, idx)
       if (r === null || r.action === undefined) {
-        app.notice('⚠ 卡片已失效')
+        app.notice(t('⚠ 卡片已失效'))
         return
       }
       const act = r.action
@@ -585,13 +585,13 @@ export function installExtApi(app: App): void {
             feed2.fireCardAction(r.cardId, act.value)
             return
           }
-          void app.openPicker(String(act.confirmText ?? `确认执行「${act.label}」？`), [
+          void app.openPicker(String(act.confirmText ?? tf('确认执行「{0}」？', [act.label])), [
             { label: '确认', value: 'yes' },
             { label: '取消', value: 'no' },
           ]).then((sel) => {
             if (sel === 'yes') {
               try { feed2.fireCardAction(r.cardId, act.value) }
-              catch (err) { app.notice(`⚠ 卡片操作失败: ${(err as Error).message}`) }
+              catch (err) { app.notice(tf('⚠ 卡片操作失败: {0}', [(err as Error).message])) }
             }
           })
           return
@@ -607,12 +607,12 @@ export function installExtApi(app: App): void {
           if (typeof act.inputDefault === 'string' && act.inputDefault !== '') {
             void app.luaCall('require("dsh_tui").fill_input(...)', [act.inputDefault]).catch(() => {})
           }
-          app.notice(`✎ ${prompt}（Enter 提交 · 空输入取消）`)
+          app.notice(tf('✎ {0}（Enter 提交 · 空输入取消）', [prompt]))
           return
         }
         feed2.fireCardAction(r.cardId, act.value)
       } catch (err) {
-        app.notice(`⚠ 卡片操作失败: ${(err as Error).message}`)
+        app.notice(tf('⚠ 卡片操作失败: {0}', [(err as Error).message]))
       }
     }
     try {
@@ -627,7 +627,7 @@ export function installExtApi(app: App): void {
           label: (a.kind === 'confirm' ? '⚠ ' : a.kind === 'input' ? '✎ ' : '') + a.label,
           value: a.value,
         }))
-        void app.openPicker('卡片操作', items).then((value) => {
+        void app.openPicker(t('卡片操作'), items).then((value) => {
           if (value === null) return
           const idx = res.findIndex((i) => i.value === value) + 1
           if (idx > 0) dispatch(feed, idx)
@@ -637,7 +637,7 @@ export function installExtApi(app: App): void {
       // Direct 1-9: the dispatcher handles the kind.
       dispatch(feed, action as number)
     } catch (err) {
-      app.notice(`⚠ 卡片操作失败: ${(err as Error).message}`)
+      app.notice(tf('⚠ 卡片操作失败: {0}', [(err as Error).message]))
     }
   })
 }

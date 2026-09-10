@@ -10,7 +10,7 @@ const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 export const bellCommand = (app: App, a: string | undefined) => {
   const arg = (a ?? '').trim()
   if (arg !== '' && arg !== 'on' && arg !== 'off') {
-    app.notice('用法: /bell [on|off]')
+    app.notice(t('用法: /bell [on|off]'))
     return
   }
   if (arg !== '') W(app.slices.agent).bellOn = arg === 'on'

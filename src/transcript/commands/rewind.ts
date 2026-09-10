@@ -1,5 +1,5 @@
 /** dsh_tui command: /rewind — one command per file. */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { ChatMessage, MessageContent } from '../../kernel/types.js'
 import type { App } from '../../kernel/app.js'
 
@@ -83,9 +83,9 @@ export const rewindCommand = async (app: App, a: string | undefined) => {
       app.slices.ui.maybePushFileDiff(rec.feed, e)
     }
     void rec.feed.flush()
-    app.notice(`已回退到 #${target.seq}（其后内容已截断）`)
+    app.notice(tf('已回退到 #{0}（其后内容已截断）', [target.seq ?? '?']))
   } catch (err) {
-    app.notice(`回退失败: ${(err as Error).message}`)
+    app.notice(tf('回退失败: {0}', [(err as Error).message]))
   }
 }
 

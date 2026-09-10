@@ -1,6 +1,6 @@
 /** dsh_tui command: /settings — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { apiKeyConfigured, keyRefForProvider, credentialsPath } from '../../kernel/apikey.js'
 import type { App } from '../../kernel/app.js'
 
@@ -41,7 +41,7 @@ export const settingsCommand = async (app: App, a: string | undefined) => {
       }
       node[path[path.length - 1]] = value
       try {
-        if (typeof settings.update !== 'function') throw new Error('update 不可用')
+        if (typeof settings.update !== 'function') throw new Error(t('update 不可用'))
         await settings.update(ns, patch)
         // Never echo secret-looking values: the transcript is persisted and
         // visible in the chat buffer (api keys, tokens, credentials paths).
@@ -49,9 +49,9 @@ export const settingsCommand = async (app: App, a: string | undefined) => {
         const shown = SECRET_RE.test(`${ns}.${m[2]}`) || SECRET_RE.test(raw)
           ? '••••（已隐藏）'
           : JSON.stringify(value)
-        app.notice(`已更新设置 ${ns}.${m[2]} = ${shown}`)
+        app.notice(tf('已更新设置 {0}.{1} = {2}', [ns, m[2], shown]))
       } catch (err) {
-        app.notice(`设置更新失败: ${(err as Error).message}`)
+        app.notice(tf('设置更新失败: {0}', [(err as Error).message]))
       }
       return
     }
@@ -62,7 +62,7 @@ export const settingsCommand = async (app: App, a: string | undefined) => {
         return
       }
       await app.luaCall('require("dsh_tui").open_file_tab(...)', [path]).catch(() => {})
-      app.notice(`已在 nvim 新标签页打开 settings 文档: ${path}（保存后热重载）`)
+      app.notice(tf('已在 nvim 新标签页打开 settings 文档: {0}（保存后热重载）', [path]))
       return
     }
     // Official SettingsDescriptor shape: { ns, schema, value, revision,
@@ -100,10 +100,10 @@ export const settingsCommand = async (app: App, a: string | undefined) => {
       }
       if (total > 60) break
     }
-    lines.push('', '常用修改: i/o 在此打开配置文件编辑（保存后热重载）；/settings set <key.path> <value> 即时写入；/model /effort /theme /permission 即时生效')
-    void app.luaCall('require("dsh_tui").show_lines_float(...)', ['设置', lines, typeof docPath === 'string' ? docPath : null]).catch(() => {})
+    lines.push('', t('常用修改: i/o 在此打开配置文件编辑（保存后热重载）；/settings set <key.path> <value> 即时写入；/model /effort /theme /permission 即时生效'))
+    void app.luaCall('require("dsh_tui").show_lines_float(...)', [t('设置'), lines, typeof docPath === 'string' ? docPath : null]).catch(() => {})
   } catch (err) {
-    app.notice(`settings 失败: ${(err as Error).message}`)
+    app.notice(tf('settings 失败: {0}', [(err as Error).message]))
   }
 }
 

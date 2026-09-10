@@ -33,6 +33,7 @@ import { restoreGlance } from '../statusline/commands/glance.js'
 import { maybeOnboard } from './onboarding.js'
 import type { AppSlices, WritableSlice } from '../kernel/app.js'
 import type { App } from '../kernel/app.js'
+import { tf } from '../kernel/i18n.js'
 const W = (d: AppSlices['runtime']) => d as WritableSlice<AppSlices['runtime']>
 
 /** Synchronous runtime-domain defaults — MUST run before every other
@@ -192,7 +193,7 @@ export async function boot(app: App): Promise<void> {
           app.notice(`⚠ ${String(r.error ?? '扩展接口握手失败')}`)
         }
       })
-      .catch((err: unknown) => app.notice(`⚠ 扩展接口握手失败: ${(err as Error).message}`))
+      .catch((err: unknown) => app.notice(tf('⚠ 扩展接口握手失败: {0}', [(err as Error).message])))
     // /glance visibility set persists across restarts via vim.g.
     void app.luaCall('return vim.g.dsh_tui_glance', [])
       .then((saved: unknown) => restoreGlance(saved))

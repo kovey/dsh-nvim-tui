@@ -1,6 +1,6 @@
 /** dsh_tui command: /search — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -16,7 +16,7 @@ export const searchCommand = async (app: App, a: string | undefined) => {
     app.notice(t('session-query 服务未装配（profile 加入 dsh-session-query-sqlite 后可用）'))
     return
   }
-  app.notice(`搜索中: ${query}…`)
+  app.notice(tf('搜索中: {0}…', [query]))
   try {
     const page = await sessionQuery.searchSessions({
       query,
@@ -28,14 +28,14 @@ export const searchCommand = async (app: App, a: string | undefined) => {
       app.notice(t('没有匹配的会话'))
       return
     }
-    const sel = await app.openPicker(`搜索结果（${hits.length}）`,
+    const sel = await app.openPicker(tf('搜索结果（{0}）', [hits.length]),
       hits.map((h) => ({
         label: `${String(h.header?.id ?? '?')} · ${String(h.bestMatch?.snippet ?? '').slice(0, 48)}`,
         value: String(h.header?.id),
       })))
     if (sel !== null) await app.slices.sessions.selectSession(sel)
   } catch (err) {
-    app.notice(`搜索失败: ${(err as Error).message}`)
+    app.notice(tf('搜索失败: {0}', [(err as Error).message]))
   }
 }
 

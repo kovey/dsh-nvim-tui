@@ -145,7 +145,7 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
         events = (inspection?.events ?? []) as SessionEvent[]
       }
     } catch (err) {
-      app.notice(`读取子代理会话失败: ${(err as Error).message}`)
+      app.notice(tf('读取子代理会话失败: {0}', [(err as Error).message]))
       return
     }
   }

@@ -1,6 +1,6 @@
 /** dsh_tui command: /yolo — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -21,7 +21,7 @@ export const yoloCommand = (app: App, a: string | undefined) => {
     app.slices.ui.updateStatusline()
     app.notice(`审批策略: ${policy === 'never' ? 'never（不再询问 · 需要审批的操作自动拒绝）' : 'ask（逐项询问）'}`)
   } catch (err) {
-    app.notice(`yolo 失败: ${(err as Error).message}`)
+    app.notice(tf('yolo 失败: {0}', [(err as Error).message]))
   }
 }
 

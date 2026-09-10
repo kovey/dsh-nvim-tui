@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto'
 import { isAbsolute, join } from 'node:path'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { t } from '../kernel/i18n.js'
+import { t, tf } from '../kernel/i18n.js'
 import { matchIntent } from './nlcmd.js'
 import { activeSessionCwd } from '../kernel/app.js'
 import { routeDifficultyForTurn } from '../kernel/difficulty.js'
@@ -45,7 +45,7 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
   // Surface the queueing so the message doesn't look lost. (Use /btw to
   // fork a side session instead.)
   if (rec.status !== undefined && rec.status.startsWith('● running')) {
-    app.slices.ui.activeFeed()?.appendNotice('已排队：当前回合结束后处理')
+    app.slices.ui.activeFeed()?.appendNotice(t('已排队：当前回合结束后处理'))
   }
   // 难度路由（M1-M3）：发送前按难度切换本会话模型，回合结束自动切回。
   // 内部兜底，失败不阻断发送。
@@ -53,7 +53,7 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
     await routeDifficultyForTurn(app, rec, text, (images?.length ?? 0) > 0)
   }
   if (images !== undefined && images.length > 0 && (text ?? '').trim() === '') {
-    text = '📎 图片消息'
+    text = t('📎 图片消息')
   }
   const content: MessageContent[] = [{ type: 'text', text }]
   if (images !== undefined && images.length > 0) {
@@ -75,7 +75,7 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
     if (curInfo?.inputModalities?.includes('image') !== true) {
       const visionModel = await findVisionModel(app, sel.provider)
       if (visionModel === undefined) {
-        app.notice(`没有可用的官方识图模型（settings.yaml 的 llm-deepseek.models 需包含声明 image 模态的模型，如 deepseek-flash 或 deepseek-v4-flash-vision-exp）`)
+        app.notice(t('没有可用的官方识图模型（settings.yaml 的 llm-deepseek.models 需包含声明 image 模态的模型，如 deepseek-flash 或 deepseek-v4-flash-vision-exp）'))
         return
       }
       // The vision model may not accept the current reasoning effort — the
@@ -101,7 +101,7 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
     }
     const max = attachments.imageLimits?.maxImagesPerMessage ?? 4
     if (images.length > max) {
-      app.notice(`最多附带 ${max} 张图片，已截断`)
+      app.notice(tf('最多附带 {0} 张图片，已截断', [max]))
       images = images.slice(0, max)
     }
     try {
@@ -126,7 +126,7 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
         rec.visionTmp = null
         app.slices.ui.updateStatusline()
       }
-      app.notice(`图片附加失败: ${(err as Error).message}`)
+      app.notice(tf('图片附加失败: {0}', [(err as Error).message]))
       return
     }
   }
@@ -136,7 +136,7 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
       source: { kind: 'user' },
     }))
   } catch (err) {
-    app.notice(`发送失败: ${(err as Error).message}`)
+    app.notice(tf('发送失败: {0}', [(err as Error).message]))
   }
 }
 
@@ -198,9 +198,9 @@ export const send = (app: App, text: string) => {
     void (async () => {
       try {
         await queueSubagentPrompt(app, rec.handle.agent, target.childId, text)
-        app.notice(`已发送给子代理 ${target.label}: ${text.slice(0, 60)}`)
+        app.notice(tf('已发送给子代理 {0}: {1}', [target.label, text.slice(0, 60)]))
       } catch (err) {
-        app.notice(`子代理续聊失败: ${(err as Error).message}`)
+        app.notice(tf('子代理续聊失败: {0}', [(err as Error).message]))
       }
     })()
     return
@@ -239,7 +239,7 @@ export const pasteClipboardImage = (app: App) => {
     return
   }
   app.slices.agent.pendingImages.push(image)
-  app.notice(`📎 已附加剪贴板图片（共 ${app.slices.agent.pendingImages.length} 张，回车随消息发送；/image clear 清空）`)
+  app.notice(tf('📎 已附加剪贴板图片（共 {0} 张，回车随消息发送；/image clear 清空）', [app.slices.agent.pendingImages.length]))
 }
 
 /** /stop — abort the active turn (agent.cancel with a user cause). */
@@ -255,9 +255,9 @@ export const stopCommand = (app: App) => {
   }
   try {
     rec.handle.agent.cancel({ kind: 'user' })
-    rec.feed.appendNotice('⏹ 已请求停止当前回合')
+    rec.feed.appendNotice(t('⏹ 已请求停止当前回合'))
   } catch (err) {
-    app.notice(`停止失败: ${(err as Error).message}`)
+    app.notice(tf('停止失败: {0}', [(err as Error).message]))
   }
 }
 
@@ -357,9 +357,9 @@ export const onInput = (app: App, text: string): void => {
         content: [{ type: 'text', text: text0 }],
         source: { kind: 'user' },
       }))
-      app.notice(replaced === true ? '排队消息已更新' : '该消息已被处理，无法再编辑')
+      app.notice(replaced === true ? t('排队消息已更新') : t('该消息已被处理，无法再编辑'))
     } catch (err) {
-      app.notice(`编辑排队消息失败: ${(err as Error).message}`)
+      app.notice(tf('编辑排队消息失败: {0}', [(err as Error).message]))
     }
     return
   }
@@ -382,7 +382,7 @@ export const onInput = (app: App, text: string): void => {
           const ent = ws?.list?.().find((w) => w.id === target.id)
           if (ent?.setTitle === undefined) { app.notice(t('工作区重命名不可用（workspaceRegistry 服务未装配）')); return }
           await ent.setTitle(name)
-          app.notice(`工作区已重命名: ${name}`)
+          app.notice(tf('工作区已重命名: {0}', [name]))
         } else {
           const sessionTitle = app.svc('sessionTitle')
           if (sessionTitle === undefined) { app.notice(t('session-title 服务未装配')); return }
@@ -394,7 +394,7 @@ export const onInput = (app: App, text: string): void => {
           if (target.background === true) void app.slices.sessions.disposeLiveSession(target.id)
         }
       } catch (err) {
-        app.notice(`重命名失败: ${(err as Error).message}`)
+        app.notice(tf('重命名失败: {0}', [(err as Error).message]))
         if (target.kind === 'session' && target.background === true) void app.slices.sessions.disposeLiveSession(target.id)
       }
     })()
@@ -415,7 +415,7 @@ export const onInput = (app: App, text: string): void => {
       const nlRec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
       if (nlRec === undefined) { send(app, trimmed); return }
       const candidate = `/${nl.name}${nl.arg !== undefined ? ` ${nl.arg}` : ''}`
-      const hint = `（TUI 操作判定：这句话可能是想执行命令 ${candidate}。若确实如此，请调用 tui_command 工具；若只是聊天提问，请正常回答，不要调用工具。）\n${trimmed}`
+      const hint = tf('（TUI 操作判定：这句话可能是想执行命令 {0}。若确实如此，请调用 tui_command 工具；若只是聊天提问，请正常回答，不要调用工具。）\\n{1}', [candidate, trimmed])
       nlRec.feed.pushUser(hint, [])
       const q = app.slices.ui.pendingEchoes.get(app.slices.sessions.activeId as string) ?? []
       q.push(hint)
@@ -491,9 +491,9 @@ export const onCommand = (app: App, line: string): void => {
           appendFileSync(app.errorLogPath,
             `${new Date().toISOString()} 命令 ${name}: ${e?.stack ?? String(err)}\n`)
         } catch {}
-        app.notice(`⚠ ${name} 失败: ${e?.message ?? String(err)}`)
+        app.notice(tf('⚠ {0} 失败: {1}', [name, e?.message ?? String(err)]))
       })
-  } else app.notice(`未知命令 ${name || line}（/help 查看可用命令）`)
+  } else app.notice(tf('未知命令 {0}（/help 查看可用命令）', [name || line]))
 }
 
 export const TUI_COMMAND_WHITELIST = new Set([
@@ -588,24 +588,24 @@ export function registerNotifications(): void {
       app.slices.ext.setPendingCardInput(null)
       const text = raw.trim()
       if (text === '') {
-        app.notice('已取消卡片输入')
+        app.notice(t('已取消卡片输入'))
         return
       }
       const feed = app.slices.ui.activeFeed()
       const r = feed === undefined ? null : feed.resolveCardAction(pending.mark, pending.actionIdx)
       if (r === null || r.action === undefined) {
-        app.notice('⚠ 卡片已失效，输入已取消')
+        app.notice(t('⚠ 卡片已失效，输入已取消'))
         return
       }
       try {
         feed!.fireCardAction(r.cardId, text)
       } catch (err) {
-        app.notice(`⚠ 卡片操作失败: ${(err as Error).message}`)
+        app.notice(tf('⚠ 卡片操作失败: {0}', [(err as Error).message]))
       }
       return
     }
     app.slices.ext.extFire('tui:input', { text: raw })
-    try { app.slices.agent.onInput(raw) } catch (err) { app.notice(`⚠ 输入处理失败: ${(err as Error).message}`) }
+    try { app.slices.agent.onInput(raw) } catch (err) { app.notice(tf('⚠ 输入处理失败: {0}', [(err as Error).message])) }
   })
   registerNvimNotification('dsh-command', '命令', (app, args) => {
     // A pending card INPUT claims the next submission even when it starts
@@ -615,7 +615,7 @@ export function registerNotifications(): void {
       try { app.slices.agent.onInput(String(args?.[0] ?? '')) } catch { /* handled inside */ }
       return
     }
-    try { app.slices.agent.onCommand(String(args?.[0] ?? '')) } catch (err) { app.notice(`⚠ 命令失败: ${(err as Error).message}`) }
+    try { app.slices.agent.onCommand(String(args?.[0] ?? '')) } catch (err) { app.notice(tf('⚠ 命令失败: {0}', [(err as Error).message])) }
   })
   registerNvimNotification('dsh-abort', '中止', (app) => {
     // <C-c> in the input box: same path as /stop.
@@ -637,7 +637,7 @@ export function registerNotifications(): void {
             rec.handle.agent.session.append('approval/policy', { policy: 'never' })
             rec.policy = 'never'
             app.slices.ui.updateStatusline()
-            rec.feed.appendNotice('已切换自动审批模式（never）：不再弹窗询问，需要审批的操作将自动拒绝（/yolo off 恢复逐项询问）')
+            rec.feed.appendNotice(t('已切换自动审批模式（never）：不再弹窗询问，需要审批的操作将自动拒绝（/yolo off 恢复逐项询问）'))
           } catch { /* policy switch is best-effort */ }
         }
       }
@@ -685,7 +685,7 @@ export function registerNotifications(): void {
     // all open files in a fresh tab — surface the failure instead of
     // silently ignoring the notification (previously unhandled).
     const path = String(args?.[0] ?? '')
-    app.notice(`⚠ 打开文件失败: ${path}`)
+    app.notice(tf('⚠ 打开文件失败: {0}', [path]))
   })
 }
 

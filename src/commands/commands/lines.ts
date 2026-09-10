@@ -1,6 +1,6 @@
 /** dsh_tui command: /lines — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { isAbsolute, join } from 'node:path'
 import { openDirPicker } from '../core.js'
 import type { App } from '../../kernel/app.js'
@@ -20,7 +20,7 @@ export const linesCommand = async (app: App, a: string | undefined) => {
   const abs = isAbsolute(path) ? path : join(activeSessionCwd(app), path)
   const content = await app.slices.ui.readFileSnapshot(abs)
   if (content === null) {
-    app.notice(`无法读取 ${abs}（不存在 / 目录 / 二进制 / 超过 256KB）`)
+    app.notice(tf('无法读取 {0}（不存在 / 目录 / 二进制 / 超过 256KB）', [abs]))
     return
   }
   await app.luaCall('require("dsh_tui").show_lines_float(...)', [abs, content.split('\n'), abs]).catch(() => {})

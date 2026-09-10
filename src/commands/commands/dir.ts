@@ -1,6 +1,6 @@
 /** dsh_tui command: /dir — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { isAbsolute, join } from 'node:path'
 import { openDirPicker } from '../core.js'
 import type { App } from '../../kernel/app.js'
@@ -15,7 +15,7 @@ export const dirCommand = async (app: App, a: string | undefined) => {
   const picked = await openDirPicker(app, base)
   if (picked === null) return
   const ok = await app.luaCall('return require("dsh_tui").open_file_tab(...)', [picked]).catch(() => false)
-  if (ok === true) app.notice(`已打开 ${picked}（新标签页，gt/gT 切换）`)
+  if (ok === true) app.notice(tf('已打开 {0}（新标签页，gt/gT 切换）', [picked]))
 }
 
 export function installDirCommand(app: App): void {

@@ -25,7 +25,7 @@ export const workflowCommand = (app: App) => {
       lines.push(`    · ${String(msg).slice(0, 100)}`)
     }
   }
-  void app.luaCall('require("dsh_tui").show_lines_float(...)', ['工作流运行', lines]).catch(() => {})
+  void app.luaCall('require("dsh_tui").show_lines_float(...)', [t('工作流运行'), lines]).catch(() => {})
 }
 
 export function installWorkflowCommand(app: App): void {

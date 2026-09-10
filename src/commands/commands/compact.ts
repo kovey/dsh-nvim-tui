@@ -1,6 +1,6 @@
 /** dsh_tui command: /compact — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { formatTokens } from '../../feed/stats.js'
 import type { App } from '../../kernel/app.js'
 
@@ -26,10 +26,10 @@ export const compactCommand = async (app: App) => {
     if (result === null) {
       app.notice(t('没有可压缩的历史'))
     } else {
-      app.notice(`已压缩 ${result.shadowedSeqs.length} 条历史 · 约 ${formatTokens(result.shadowedTokenCount)} tokens`)
+      app.notice(tf('已压缩 {0} 条历史 · 约 {1} tokens', [result.shadowedSeqs.length, formatTokens(result.shadowedTokenCount)]))
     }
   } catch (err) {
-    app.notice(`压缩失败: ${(err as Error).message}`)
+    app.notice(tf('压缩失败: {0}', [(err as Error).message]))
   }
 }
 

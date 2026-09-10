@@ -1,6 +1,6 @@
 /** dsh_tui command: /skills — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -21,7 +21,7 @@ export const skillsCommand = async (app: App, a: string | undefined) => {
     const showSkill = async (name: string) => {
       const def = await skills.get(name, { scope: rec.handle.agent })
       if (def === undefined) {
-        app.notice(`未知技能 ${name}`)
+        app.notice(tf('未知技能 {0}', [name]))
         return
       }
       await app.luaCall('require("dsh_tui").show_skill(...)', [{
@@ -45,7 +45,7 @@ export const skillsCommand = async (app: App, a: string | undefined) => {
     if (sel === null) return
     await showSkill(sel)
   } catch (err) {
-    app.notice(`skills 失败: ${(err as Error).message}`)
+    app.notice(tf('skills 失败: {0}', [(err as Error).message]))
   }
 }
 

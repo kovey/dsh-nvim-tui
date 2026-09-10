@@ -1,6 +1,6 @@
 /** dsh_tui command: /image — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { isAbsolute, join } from 'node:path'
 import { readImageFile, expandHome } from '../../feed/images.js'
 import { readClipboardImage } from '../../feed/images.js'
@@ -18,7 +18,7 @@ export const imageCommand = (app: App, a: string | undefined) => {
   if ((a ?? '').trim() === 'clear') {
     const n = app.slices.agent.pendingImages.length
     W(app.slices.agent).pendingImages = []
-    app.notice(n > 0 ? `已清空 ${n} 张待发送图片` : '（没有待发送图片）')
+    app.notice(n > 0 ? tf('已清空 {0} 张待发送图片', [n]) : t('（没有待发送图片）'))
     return
   }
   const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
@@ -38,7 +38,7 @@ export const imageCommand = (app: App, a: string | undefined) => {
       const abs = isAbsolute(expanded) ? expanded : join(activeSessionCwd(app), expanded)
       image = readImageFile(abs)
     } catch (err) {
-      app.notice(`读取图片失败: ${(err as Error).message}`)
+      app.notice(tf('读取图片失败: {0}', [(err as Error).message]))
       return
     }
   } else if (process.platform === 'darwin') {

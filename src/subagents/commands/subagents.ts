@@ -1,5 +1,5 @@
 /** dsh_tui command: /subagents — one command per file. */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { ageLabel, isExpired, orderSubagentChildren } from '../../kernel/subagent-clean.js'
 import type { App, AppSlices, WritableSlice } from '../../kernel/app.js'
 const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
@@ -22,7 +22,7 @@ export const subagentsCommand = async (app: App) => {
         if (await app.slices.sessions.cleanSubagentChain(app.slices.sessions.activeId, c.id)) cleaned++
       }
       if (cleaned > 0) {
-        app.notice(`🧹 已清理 ${cleaned} 条过期子代理思考链（>${ttlHours}h），列表不再显示`)
+        app.notice(tf('🧹 已清理 {0} 条过期子代理思考链（>{1}h），列表不再显示', [cleaned, ttlHours]))
         children = await app.slices.sessions.listSubagentChildren(app.slices.sessions.activeId)
       }
     }
@@ -39,7 +39,7 @@ export const subagentsCommand = async (app: App) => {
       if (!c.running && !cleanRowInserted) {
         cleanRowInserted = true
         if (settledCount > 0) {
-          rows.push({ label: `🧹 清理全部已结束思考链（${settledCount} 条）`, value: 'act:clean' })
+          rows.push({ label: tf('🧹 清理全部已结束思考链（{0} 条）', [settledCount]), value: 'act:clean' })
         }
       }
       rows.push({
@@ -59,7 +59,7 @@ export const subagentsCommand = async (app: App) => {
       for (const c of children) {
         if (!c.running && await app.slices.sessions.cleanSubagentChain(app.slices.sessions.activeId, c.id)) done++
       }
-      app.notice(`🧹 已清理 ${done} 条思考链`)
+      app.notice(tf('🧹 已清理 {0} 条思考链', [done]))
       return
     }
     const child = children.find((c) => c.id === sel)
@@ -72,7 +72,7 @@ export const subagentsCommand = async (app: App) => {
       : 'view'
     if (action === 'continue') {
       W(app.slices.agent).pendingSubagentFollowup = { childId: sel, label: child?.label ?? sel.slice(0, 8) }
-      app.notice(`下一条输入将发给子代理 ${app.slices.agent.pendingSubagentFollowup!.label}（/subagents 可取消，直接输入即发送）`)
+      app.notice(tf('下一条输入将发给子代理 {0}（/subagents 可取消，直接输入即发送）', [app.slices.agent.pendingSubagentFollowup!.label]))
       return
     }
     if (action === null) return
@@ -82,7 +82,7 @@ export const subagentsCommand = async (app: App) => {
     }
     await app.slices.agent.openSubagentView( sel, child?.label ?? sel.slice(0, 8))
   } catch (err) {
-    app.notice(`subagents 失败: ${(err as Error).message}`)
+    app.notice(tf('subagents 失败: {0}', [(err as Error).message]))
   }
 }
 

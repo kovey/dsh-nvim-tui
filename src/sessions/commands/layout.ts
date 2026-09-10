@@ -1,5 +1,5 @@
 /** dsh_tui command: /layout — one command per file. */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 /** /layout [default|panel] — window layout presets (bare cycles). */
@@ -11,13 +11,13 @@ export const layoutCommand = (app: App, a: string | undefined) => {
     layoutIdx = (layoutIdx + 1) % order.length
     name = order[layoutIdx]
   } else if (!order.includes(name)) {
-    app.notice(`未知布局 ${name}（可用: ${order.join(' ')})`)
+    app.notice(tf('未知布局 {0}（可用: {1})', [name, order.join(' ')]))
     return
   } else {
     layoutIdx = order.indexOf(name)
   }
   void app.luaCall('require("dsh_tui").apply_layout(...)', [name]).catch(() => {})
-  app.notice(`布局: ${name}`)
+  app.notice(tf('布局: {0}', [name]))
 }
 
 export function installLayoutCommand(app: App): void {

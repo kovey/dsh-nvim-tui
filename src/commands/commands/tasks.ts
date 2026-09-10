@@ -1,6 +1,6 @@
 /** dsh_tui command: /tasks — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -24,7 +24,7 @@ export const tasksCommand = async (app: App, a: string | undefined) => {
       return
     }
     const r = jobs.kill(id, rec.handle.agent, 'user asked')
-    app.notice(r === 'requested' ? `已请求取消 ${id}` : `${id} 已结束`)
+    app.notice(r === 'requested' ? tf('已请求取消 {0}', [id]) : tf('{0} 已结束', [id]))
     return
   }
   const list = jobs.list(rec.handle.agent)
@@ -46,7 +46,7 @@ export const tasksCommand = async (app: App, a: string | undefined) => {
   if (sel.startsWith('kill:')) {
     const id = sel.slice(5)
     const r = jobs.kill(id, rec.handle.agent, 'user asked')
-    app.notice(r === 'requested' ? `已请求取消 ${id}` : `${id} 已结束`)
+    app.notice(r === 'requested' ? tf('已请求取消 {0}', [id]) : tf('{0} 已结束', [id]))
   }
 }
 

@@ -177,7 +177,7 @@ export function makeSessionEventHandler(
         rec.modelRef.current = prev
         rec.model = prev.model
         if (owner.id === app.slices.sessions.activeId) {
-          app.notice(`已切回模型 ${prev.provider}/${prev.model}`)
+          app.notice(tf('已切回模型 {0}/{1}', [prev.provider, prev.model]))
           app.slices.ui.updateStatusline()
         }
       }

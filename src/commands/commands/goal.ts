@@ -1,6 +1,6 @@
 /** dsh_tui command: /goal — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -55,7 +55,7 @@ export const goalCommand = (app: App, a: string | undefined) => {
       app.notice(t('用法: /goal [show|new <objective>|pause|resume|complete|clear]'))
     }
   } catch (err) {
-    app.notice(`goal 操作失败: ${(err as Error).message}`)
+    app.notice(tf('goal 操作失败: {0}', [(err as Error).message]))
   }
 }
 

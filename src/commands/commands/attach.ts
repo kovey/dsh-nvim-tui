@@ -1,6 +1,6 @@
 /** dsh_tui command: /attach — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { isAbsolute, join } from 'node:path'
 import { readImageFile, expandHome } from '../../feed/images.js'
 
@@ -42,9 +42,9 @@ export const attachCommand = async (app: App, a: string | undefined) => {
     try {
       const ref = await attachments.saveImage(img)
       app.slices.agent.pendingImages.push({ type: 'image', attachment: ref })
-      app.notice(`📎 图片已附加: ${imageLabel(ref)}（随下一条消息发送）`)
+      app.notice(tf('📎 图片已附加: {0}（随下一条消息发送）', [imageLabel(ref)]))
     } catch (err) {
-      app.notice(`附件失败: ${(err as Error).message}`)
+      app.notice(tf('附件失败: {0}', [(err as Error).message]))
     }
     return
   }
@@ -52,7 +52,7 @@ export const attachCommand = async (app: App, a: string | undefined) => {
   // the model reads the file through its tools when needed).
   const rel = path
   await app.luaCall('require("dsh_tui").append_input(...)', [formatMention(rel) + ' ']).catch(() => {})
-  app.notice(`已引用: ${rel}（@ 路径会随消息发送，模型按需读取）`)
+  app.notice(tf('已引用: {0}（@ 路径会随消息发送，模型按需读取）', [rel]))
 }
 
 export function installAttachCommand(app: App): void {

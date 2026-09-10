@@ -9,7 +9,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { FeedRenderer } from '../feed/feed.js'
-import { t } from '../kernel/i18n.js'
+import { t, tf } from '../kernel/i18n.js'
 import { diffTexts, fileDiffsFromMeta } from '../feed/diff.js'
 import type { ChatMessage, HarnessSession, MessageContent, SessionEvent } from '../kernel/types.js'
 import type { App, SessionRec } from '../kernel/app.js'
@@ -168,7 +168,7 @@ const repairOrphanToolCalls = (rec: SessionRec): number => {
         const anyBlock = b as { name?: unknown } | undefined
         return {
           type: 'text',
-          text: `[工具调用 ${String(anyBlock?.name ?? '')} 未执行：调度器在派发前崩溃，结果未知。如确有需要请重试；若是可能产生副作用的操作，先核实外部状态再决定。]`,
+          text: tf('[工具调用 {0} 未执行：调度器在派发前崩溃，结果未知。如确有需要请重试；若是可能产生副作用的操作，先核实外部状态再决定。]', [String(anyBlock?.name ?? '')]),
         }
       }
       return b

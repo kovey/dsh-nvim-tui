@@ -1,6 +1,6 @@
 /** dsh_tui command: /preset — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -38,9 +38,9 @@ export const presetCommand = async (app: App, a: string | undefined) => {
     }
     const applied = await presets.recompose(agent.ctx, a)
     agent.session.append('agent-preset/selected', { agentPreset: applied.id })
-    app.notice(`已切换预设: ${applied.id}`)
+    app.notice(tf('已切换预设: {0}', [applied.id]))
   } catch (err) {
-    app.notice(`preset 失败: ${(err as Error).message}`)
+    app.notice(tf('preset 失败: {0}', [(err as Error).message]))
   }
 }
 

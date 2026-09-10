@@ -1,5 +1,5 @@
 /** dsh_tui command: /glance — one command per file. */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 const GLANCE_SEGMENTS = ['cache', 'context', 'tokens', 'cost', 'elapsed', 'total']
@@ -20,7 +20,7 @@ export const glanceCommand = (app: App, a: string | undefined) => {
   }
   const seg = GLANCE_SEGMENTS.find((s) => a.startsWith(s))
   if (!seg) {
-    app.notice(`未知段 ${a}（可选: ${GLANCE_SEGMENTS.join(' ')})`)
+    app.notice(tf('未知段 {0}（可选: {1})', [a, GLANCE_SEGMENTS.join(' ')]))
     return
   }
   if (hiddenGlance.has(seg)) hiddenGlance.delete(seg)

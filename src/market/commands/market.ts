@@ -1,5 +1,5 @@
 /** dsh_tui command: /market — one command per file. */
-import { locale, t } from '../../kernel/i18n.js'
+import { locale, t, tf } from '../../kernel/i18n.js'
 import { runningProfileName } from '../../kernel/profile.js'
 import { renameSync } from 'node:fs'
 import { join } from 'node:path'
@@ -21,7 +21,7 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
   // another profile's patch would silently do nothing for the running one.
   const profileName = runningProfileName(app) ?? String(app.config.marketProfile ?? '')
   if (profileName === '') {
-    app.notice('无法确定当前运行的 profile（请用 dsh --profile <name> 启动；/market 需要知道目标 profile）')
+    app.notice(t('无法确定当前运行的 profile（请用 dsh --profile <name> 启动；/market 需要知道目标 profile）'))
     return
   }
   const registryBase = typeof app.config.marketRegistryBase === 'string' && app.config.marketRegistryBase !== ''
@@ -35,17 +35,17 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
       writeCatalog(catalog)
       app.notice(`${catalog.entries.length} ${t('个插件已更新（按 GitHub 星标倒序）')}`)
     } catch (err) {
-      app.notice(`市场同步失败: ${(err as Error).message}（仍可用本地缓存）`)
+      app.notice(tf('市场同步失败: {0}（仍可用本地缓存）', [(err as Error).message]))
     }
     return
   }
   if (arg === 'update-all') {
     const pg = openProgress(app, '更新全部插件')
     void (async () => {
-      pg.log('· dsh plugin update（可能需要一两分钟）…')
-      pg.bar('▸ 更新全部依赖…')
+      pg.log(t('· dsh plugin update（可能需要一两分钟）…'))
+      pg.bar(t('▸ 更新全部依赖…'))
       const r = await runPluginCliP(profileName, ['update'], pg)
-      pg.bar(r.code === 0 ? '✓ 全部插件已更新（重启 dsh 后生效）' : `✗ 更新失败 · ${firstErrorLine(r.tail)}`)
+      pg.bar(r.code === 0 ? t('✓ 全部插件已更新（重启 dsh 后生效）') : tf('✗ 更新失败 · {0}', [firstErrorLine(r.tail)]))
       pg.close(1500)
       app.notice(r.code === 0 ? t('全部插件已更新（重启 dsh 后生效）') : `update-all 失败: ${firstErrorLine(r.tail)}`)
     })()
@@ -73,7 +73,7 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
   } catch (err) {
     // Never continue with an empty patch: the toggle rewrites the file and a
     // read failure would land as a WIPE of the user's rows.
-    app.notice(`读取 cordis.patch.yml 失败（已中止，未做任何写入）: ${(err as Error).message}`)
+    app.notice(tf('读取 cordis.patch.yml 失败（已中止，未做任何写入）: {0}', [(err as Error).message]))
     return
   }
   const disabledIds = readDisabledIds(patchText)
@@ -81,7 +81,7 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
   const loaderEntries = typeof loader?.entries === 'function' ? loader.entries().filter((e) => !e.options?.group) : []
   const entries = arg === '' ? catalog.entries.slice(0, 120) : searchCatalog(catalog.entries, arg).slice(0, 120)
   if (entries.length === 0) {
-    app.notice(`没有匹配「${arg}」的插件`)
+    app.notice(tf('没有匹配「{0}」的插件', [arg]))
     return
   }
   // Installed-dep matching + update checks (only for installed rows;
@@ -114,7 +114,7 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
       value: e.name,
     }
   })
-  const sel = await app.openPicker(`插件市场（★ 倒序 · ${profileName}）`, rows)
+  const sel = await app.openPicker(tf('插件市场（★ 倒序 · {0}）', [profileName]), rows)
   if (sel === null) return
   const entry = entries.find((e) => e.name === sel)
   if (entry === undefined) return
@@ -139,12 +139,12 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
   if (act === null || act === 'cancel') return
   if (act === 'open') {
     openUrl(entry.url)
-    app.notice(`已在浏览器打开 ${entry.url}`)
+    app.notice(tf('已在浏览器打开 {0}', [entry.url]))
     return
   }
   if (act === 'toggle') {
     if (togglable.length === 0) {
-      app.notice('该插件没有可热切换的 loader 条目')
+      app.notice(t('该插件没有可热切换的 loader 条目'))
       return
     }
     // The action is the FLIP: enabled now → this toggle disables it.
@@ -164,7 +164,7 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
     // the running TUI.
     const isSelf = matching.some((le) => le.options?.name === 'dsh-nvim-tui')
     if (isSelf) {
-      app.notice('不能卸载正在运行的 TUI 插件自身')
+      app.notice(t('不能卸载正在运行的 TUI 插件自身'))
       return
     }
     const ok = await app.openPicker(t('确认卸载'), [
@@ -174,21 +174,21 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
     if (ok !== 'yes') return
   }
   const verb = act === 'install' ? 'add' : act === 'update' ? 'update' : 'remove'
-  const label = verb === 'add' ? '安装' : verb === 'update' ? '更新' : '卸载'
+  const label = verb === 'add' ? t('安装') : verb === 'update' ? t('更新') : t('卸载')
   const pg = openProgress(app, `${label} ${entry.name}`)
   try {
     if (verb === 'add') {
       // ① Resolve the best source up front (npm publish preferred: a
       // source-only repo installs as metadata-only under pnpm ≥10 and
       // breaks the next boot — the dsh-context incident).
-      pg.log('① 解析安装源…')
-      pg.bar('▸ 解析安装源…')
+      pg.log(t('① 解析安装源…'))
+      pg.bar(t('▸ 解析安装源…'))
       let spec = installSpec(entry)
       if (entry.tarball === undefined) {
         const npmSpec = await resolveNpmSpec(entry)
         if (npmSpec !== undefined) {
           spec = npmSpec
-          pg.log(`· 使用 npm 发布版: ${npmSpec}`)
+          pg.log(tf('· 使用 npm 发布版: {0}', [npmSpec]))
         } else {
           const info = await readRepoPackage(entry.url)
           pg.log(info?.hasPrepare === true
@@ -198,10 +198,10 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
       }
       // ② Install with diagnosis + automatic remedies (retry / source
       // swap / lock backup / cache reset), all streamed into the float.
-      pg.log('② 安装依赖…')
+      pg.log(t('② 安装依赖…'))
       await installWithRepair(app, entry, profileName, spec, pg)
       pg.close(1500)
-      app.notice(`${entry.name} 安装流程结束（结果见进度窗；多数插件重启 dsh 后生效）`)
+      app.notice(tf('{0} 安装流程结束（结果见进度窗；多数插件重启 dsh 后生效）', [entry.name]))
       return
     }
     // update / uninstall: run once, then one bounded remedy chain.
@@ -211,21 +211,21 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
     let r = await runPluginCliP(profileName, [verb, spec], pg)
     if (r.code !== 0) {
       const f = classifyPnpmError(r.tail)
-      pg.log(`· 诊断: ${f.message}`)
+      pg.log(tf('· 诊断: {0}', [f.message]))
       if (f.kind === 'network') {
-        pg.bar('↻ 网络错误 · 2s 后自动重试…')
+        pg.bar(t('↻ 网络错误 · 2s 后自动重试…'))
         await app.sleep(2000)
         r = await runPluginCliP(profileName, [verb, spec], pg)
       } else if (f.kind === 'lockfile') {
         const lock = join(profileDir(profileName), 'pnpm-lock.yaml')
         try {
           renameSync(lock, `${lock}.bak-${Date.now()}`)
-          pg.log('· 已备份 pnpm-lock.yaml')
-        } catch { pg.log('· 锁文件不存在，无需备份') }
-        pg.bar('↻ 锁文件冲突 · 备份后重试…')
+          pg.log(t('· 已备份 pnpm-lock.yaml'))
+        } catch { pg.log(t('· 锁文件不存在，无需备份')) }
+        pg.bar(t('↻ 锁文件冲突 · 备份后重试…'))
         r = await runPluginCliP(profileName, [verb, spec], pg)
       } else if (f.kind === 'cache') {
-        pg.bar('↻ 缓存/权限问题 · 改用临时缓存重试…')
+        pg.bar(t('↻ 缓存/权限问题 · 改用临时缓存重试…'))
         r = await runPluginCliP(profileName, [verb, spec], pg, { npm_config_cache: '/tmp/dsh-pnpm-cache' })
       }
     }
@@ -235,14 +235,14 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
     pg.close(1500)
     app.notice(`${entry.name} ${r.code === 0 ? (verb === 'remove' ? t('已卸载') : t('更新完成')) : label + t('失败')}（结果见进度窗）`)
   } catch (err) {
-    pg.log(`✗ 异常: ${(err as Error).message}`)
-    pg.bar('✗ 流程异常终止（详情见日志）')
+    pg.log(tf('✗ 异常: {0}', [(err as Error).message]))
+    pg.bar(t('✗ 流程异常终止（详情见日志）'))
     pg.close(2000)
-    app.notice(`${entry.name} ${label}流程异常: ${(err as Error).message}`)
+    app.notice(tf('{0} {1}流程异常: {2}', [entry.name, label, (err as Error).message]))
   }
 }
 
 
 export function installMarketCommand(app: App): void {
-  app.registerCommands([{ name: '/market', desc: '插件市场（GitHub ★ 倒序 · 安装/更新/卸载）', usage: '[关键词 | refresh]', group: '信息', fn: (a) => marketCommand(app, a) }])
+  app.registerCommands([{ name: '/market', desc: t('插件市场（GitHub ★ 倒序 · 安装/更新/卸载）'), usage: t('[关键词 | refresh]'), group: t('信息'), fn: (a) => marketCommand(app, a) }])
 }

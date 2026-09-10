@@ -1,6 +1,6 @@
 /** dsh_tui command: /memory — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { existsSync } from 'node:fs'
 import { unlinkSync } from 'node:fs'
 import { readdirSync } from 'node:fs'
@@ -20,11 +20,11 @@ export const memoryCommand = async (app: App, a: string | undefined) => {
       const base = resolve(dir)
       const file = resolve(dir, name)
       if (!file.startsWith(base + sep)) {
-        app.notice(`非法路径: ${target}（仅允许删除 .dsh/memory 内的文件）`)
+        app.notice(tf('非法路径: {0}（仅允许删除 .dsh/memory 内的文件）', [target]))
         return
       }
       if (!existsSync(file)) {
-        app.notice(`不存在: ${target}`)
+        app.notice(tf('不存在: {0}', [target]))
         return
       }
       // Deleting a memory file is irreversible and had NO confirmation —
@@ -35,7 +35,7 @@ export const memoryCommand = async (app: App, a: string | undefined) => {
       ])
       if (ok !== 'yes') return
       unlinkSync(file)
-      app.notice(`已删除 ${target}`)
+      app.notice(tf('已删除 {0}', [target]))
       return
     }
     if (!existsSync(dir)) {
@@ -46,7 +46,7 @@ export const memoryCommand = async (app: App, a: string | undefined) => {
       app.notice(`- ${f}`)
     }
   } catch (err) {
-    app.notice(`memory 失败: ${(err as Error).message}`)
+    app.notice(tf('memory 失败: {0}', [(err as Error).message]))
   }
 }
 

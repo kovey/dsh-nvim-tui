@@ -1,6 +1,6 @@
 /** dsh_tui command: /model — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { applyModelSelection } from '../core.js'
 import { configuredModels, modelCatalogRows, providerSettingsNs } from './models.js'
 import type { LlmService } from '../../kernel/types.js'
@@ -15,7 +15,7 @@ export const pickModel = async (app: App, arg: string | undefined): Promise<void
   if (arg) {
     const parts = arg.split('/')
     if (parts.length > 2 || parts.some((p) => p.trim() === '')) {
-      app.notice(`用法: /model [provider/model]`)
+      app.notice(t('用法: /model [provider/model]'))
       return
     }
     const provider = parts.length === 2 ? parts[0] : sel.provider
@@ -26,20 +26,20 @@ export const pickModel = async (app: App, arg: string | undefined): Promise<void
     if (llm !== undefined) {
       const live = llm.listProviders?.() ?? []
       if (!live.some((p) => String(p.id ?? p.provider ?? '') === provider)) {
-        app.notice(`未知 provider: ${provider}（用 /models 查看目录）`)
+        app.notice(tf('未知 provider: {0}（用 /models 查看目录）', [provider]))
         return
       }
       // When the catalog IS enumerable, the model id must be in it.
       const models = configuredModels(app, provider, providerSettingsNs(app, provider))
       if (models.length > 0 && !models.includes(model)) {
-        app.notice(`未知模型: ${model}（provider ${provider} 的目录不含它；用 /models 查看）`)
+        app.notice(tf('未知模型: {0}（provider {1} 的目录不含它；用 /models 查看）', [model, provider]))
         return
       }
     }
     try {
       await applyModelSelection(app, { provider, model, reasoningEffort: sel.reasoningEffort })
     } catch (err) {
-      app.notice(`模型切换失败: ${(err as Error).message}`)
+      app.notice(tf('模型切换失败: {0}', [(err as Error).message]))
     }
     return
   }
@@ -64,7 +64,7 @@ export const pickModel = async (app: App, arg: string | undefined): Promise<void
     try {
       await applyModelSelection(app, { ...JSON.parse(picked.slice(7)), reasoningEffort: sel.reasoningEffort })
     } catch (err) {
-      app.notice(`模型切换失败: ${(err as Error).message}`)
+      app.notice(tf('模型切换失败: {0}', [(err as Error).message]))
     }
     return
   }

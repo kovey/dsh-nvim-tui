@@ -1,5 +1,5 @@
 /** dsh_tui command: /sessions — one command per file. */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 import { createSession, selectSession, ensureLiveSession } from '../services.js'
 
@@ -28,7 +28,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
       rows.push({ label: `    ${sid === app.slices.sessions.activeId ? '▸' : ' '} ${title || sid.slice(0, 8)} · ${sid}`, value: `sess:${sid}` })
     }
   }
-  rows.push({ label: '未分组', value: 'ws:none' })
+  rows.push({ label: t('未分组'), value: 'ws:none' })
   for (const s of app.liveSessions.list()) {
     if (inWs.has(s.id) || archived.has(s.id) || s.header?.origin === 'subagent' || !/^session-/.test(s.id)) continue
     const rec = app.slices.sessions.live.get(s.id)
@@ -36,7 +36,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
   }
   for (const h of app.slices.sessions.historyHeaders) {
     if (inWs.has(h.id) || archived.has(h.id) || app.slices.sessions.live.has(h.id)) continue
-    rows.push({ label: `    ${h.title ?? ''} · ${h.id}（历史）`, value: `sess:${h.id}` })
+    rows.push({ label: tf('    {0} · {1}（历史）', [h.title ?? '', h.id]), value: `sess:${h.id}` })
   }
   // Persisted sessions from OTHER working directories (historyById holds
   // everything): reachable here instead of being invisible outside their
@@ -45,7 +45,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
     if (h.cwd === undefined || h.cwd === process.cwd()) continue
     if (inWs.has(h.id) || archived.has(h.id) || app.slices.sessions.live.has(h.id)) continue
     if (app.slices.sessions.historyHeaders.some((x) => x.id === h.id)) continue
-    rows.push({ label: `    ${h.title ?? ''} · ${h.id}（其他目录）`, value: `sess:${h.id}` })
+    rows.push({ label: tf('    {0} · {1}（其他目录）', [h.title ?? '', h.id]), value: `sess:${h.id}` })
   }
   const sel = await app.openPicker(t('会话（工作区分组 · Enter 打开）'), rows)
   if (sel === null) return
@@ -59,7 +59,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
     // counterpart: open / rename / archive / move to workspace. The harness
     // (0.1.2-rc.1) does not expose a durable session DELETE; archive is the
     // official way to remove a session from the lists.
-    const act = await app.openPicker(`会话 ${sid}`, [
+    const act = await app.openPicker(tf('会话 {0}', [sid]), [
       { label: '打开会话', value: 'open' },
       { label: '重命名（下一条输入作为新名称）', value: 'rename' },
       { label: '归档（从列表隐藏）', value: 'archive' },
@@ -93,10 +93,10 @@ export const sessionsCommand = async (app: App): Promise<void> => {
       }
       try {
         await ws2.archiveSession(sid)
-        app.notice(`已归档 ${sid}（从各列表隐藏）`)
+        app.notice(tf('已归档 {0}（从各列表隐藏）', [sid]))
         app.slices.sessions.refreshList()
       } catch (err) {
-        app.notice(`归档失败: ${(err as Error).message}`)
+        app.notice(tf('归档失败: {0}', [(err as Error).message]))
       }
       return
     }
@@ -111,9 +111,9 @@ export const sessionsCommand = async (app: App): Promise<void> => {
         groupRows.push({ label: `📁 ${w.title} · ${w.path}`, value: `attach:${w.id}` })
       }
       if (current !== undefined) {
-        groupRows.push({ label: `🚫 移出分组（当前: ${current.title}）`, value: 'detach' })
+        groupRows.push({ label: tf('🚫 移出分组（当前: {0}）', [current.title]), value: 'detach' })
       }
-      const pick = await app.openPicker(`会话分组 ${sid}`, groupRows)
+      const pick = await app.openPicker(tf('会话分组 {0}', [sid]), groupRows)
       if (pick === null) return
       try {
         if (pick === 'detach') {
@@ -122,7 +122,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
             return
           }
           await current.detachSession(sid)
-          app.notice(`已移出分组（会话保留为未分组）: ${sid}`)
+          app.notice(tf('已移出分组（会话保留为未分组）: {0}', [sid]))
           return
         }
         if (pick.startsWith('attach:')) {
@@ -133,11 +133,11 @@ export const sessionsCommand = async (app: App): Promise<void> => {
             return
           }
           await w.attachSession(sid)
-          app.notice(`已移入工作区 ${w.title} · ${sid}`)
+          app.notice(tf('已移入工作区 {0} · {1}', [w.title, sid]))
           return
         }
       } catch (err) {
-        app.notice(`分组操作失败: ${(err as Error).message}`)
+        app.notice(tf('分组操作失败: {0}', [(err as Error).message]))
       }
       return
     }
@@ -164,7 +164,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
       }
       for (const live of app.liveSessions.list()) pushU(live.id, app.slices.sessions.live.get(live.id)?.title, '')
       for (const h of app.slices.sessions.historyById.values()) {
-        pushU(h.id, h.title, h.cwd !== undefined && h.cwd !== process.cwd() ? '（其他目录）' : '（历史）')
+        pushU(h.id, h.title, h.cwd !== undefined && h.cwd !== process.cwd() ? t('（其他目录）') : t('（历史）'))
       }
       if (ungrouped.length === 0) {
         app.notice(t('（没有未分组的会话）'))
@@ -177,10 +177,10 @@ export const sessionsCommand = async (app: App): Promise<void> => {
     }
     const w = workspaceRows.find((x) => x.id === wid)
     if (w === undefined) {
-      app.notice(`未知工作区: ${wid}（/sessions 重新加载）`)
+      app.notice(tf('未知工作区: {0}（/sessions 重新加载）', [wid]))
       return
     }
-    const act = await app.openPicker(`工作区 ${w.title}`, [
+    const act = await app.openPicker(tf('工作区 {0}', [w.title]), [
       { label: '新建会话于此工作区', value: 'new' },
       { label: '重命名工作区（下一条输入作为新名称）', value: 'rename' },
     ])
@@ -188,7 +188,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
       await createSession(app, w.path)
     } else if (act === 'rename') {
       app.slices.agent.setPendingRename({ kind: 'workspace', id: wid })
-      app.notice(`下一条输入将作为工作区「${w.title}」的新名称（/sessions 期间可继续操作）`)
+      app.notice(tf('下一条输入将作为工作区「{0}」的新名称（/sessions 期间可继续操作）', [w.title]))
     }
     return
   }

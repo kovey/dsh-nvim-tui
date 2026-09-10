@@ -19,6 +19,7 @@ import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
 import type { ImageAttachmentRef, SaveImageAttachment } from '../kernel/types.js'
+import { tf } from '../kernel/i18n.js'
 
 /** Media types the version-one attachment path accepts (dsh-attachment). */
 const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
@@ -75,7 +76,7 @@ export function readImageFile(path: string): SaveImageAttachment {
     mediaType = EXTENSION_TYPES.get(ext) ?? null
   }
   if (mediaType === null) {
-    throw new Error(`不支持的图片格式（支持 ${ACCEPTED.join(' / ')}）: ${path}`)
+    throw new Error(tf('不支持的图片格式（支持 {0}）: {1}', [ACCEPTED.join(' / '), path]))
   }
   return { data: new Uint8Array(raw), mediaType, name: basename(resolved) }
 }

@@ -1,6 +1,6 @@
 /** dsh_tui command: /steer — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { App } from '../../kernel/app.js'
 
@@ -25,7 +25,7 @@ export const steerCommand = (app: App, a: string | undefined) => {
     rec.feed.pushBlock('steer', text)
     app.notice(t('已注入引导指令'))
   } catch (err) {
-    app.notice(`steer 失败: ${(err as Error).message}`)
+    app.notice(tf('steer 失败: {0}', [(err as Error).message]))
   }
 }
 

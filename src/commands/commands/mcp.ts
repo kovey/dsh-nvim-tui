@@ -1,6 +1,6 @@
 /** dsh_tui command: /mcp — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -26,7 +26,7 @@ export const mcpCommand = (app: App) => {
     app.notice(t('（没有已连接的 MCP server）'))
     return
   }
-  for (const [server, count] of byServer) app.notice(`🔌 ${server}: ${count} 个工具`)
+  for (const [server, count] of byServer) app.notice(tf('🔌 {0}: {1} 个工具', [server, count]))
 }
 
 export function installMcpCommand(app: App): void {

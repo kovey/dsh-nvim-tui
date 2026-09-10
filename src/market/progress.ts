@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path'
 import { execFileSync, spawn } from 'node:child_process'
 import * as tar from 'tar'
 import type { App } from '../kernel/app.js'
+import { t, tf } from '../kernel/i18n.js'
 
 /** One market entry (flattened registry record). */
 export interface MarketEntry {
@@ -581,7 +582,7 @@ export function classifyPnpmError(tail: string): PnpmFailure {
 // -- install progress UI helpers (moved from the module index) --
 /** Open the nvim progress window so long pnpm runs never look stuck. */
 export const openProgress = (app: App, title: string) => {
-  let lines: string[] = ['正在启动…']
+  let lines: string[] = [t('正在启动…')]
   let bar = '▸ 准备中'
   let lastPush = 0
   void app.luaCall('require("dsh_tui").show_progress(...)', [title, lines]).catch(() => {})
@@ -635,12 +636,12 @@ export const runPluginCliP = (
   }
   child.stdout.on('data', (d: Buffer) => bump(d.toString()))
   child.stderr.on('data', (d: Buffer) => bump(d.toString()))
-  child.on('error', (e) => { clearTimeout(killer); pg.log('无法启动 dsh CLI: ' + e.message); resolve({ code: null, tail: out }) })
+  child.on('error', (e) => { clearTimeout(killer); pg.log(t('无法启动 dsh CLI: ') + e.message); resolve({ code: null, tail: out }) })
   // 'close' (not 'exit'): stdio pipes are flushed by then — resolving on
   // 'exit' truncated the tail log the error classifier reads.
   child.on('close', (code, signal) => {
     clearTimeout(killer)
-    if (killed) pg.log(`dsh CLI 超时已终止（signal=${signal ?? 'SIGTERM/SIGKILL'}）`)
+    if (killed) pg.log(tf('dsh CLI 超时已终止（signal={0}）', [signal ?? 'SIGTERM/SIGKILL']))
     resolve({ code, tail: out })
   })
 })
@@ -657,37 +658,37 @@ export const verifyOrRepairMain = async (
 ): Promise<boolean> => {
   const missing = installedMainMissing(profileName, spec)
   if (missing === null) {
-    pg.log('✓ 入口文件校验通过')
+    pg.log(t('✓ 入口文件校验通过'))
     return true
   }
-  pg.log(`⚠ 缺少入口文件（${missing}）→ 自动寻找可用的预构建包…`)
+  pg.log(tf('⚠ 缺少入口文件（{0}）→ 自动寻找可用的预构建包…', [missing]))
   const candidates: Array<{ spec: string; label: string }> = []
   const npmSpec = await resolveNpmSpec(entry)
   if (npmSpec !== undefined) candidates.push({ spec: npmSpec, label: 'npm 发布版' })
   if (entry.tarball !== undefined) candidates.push({ spec: entry.tarball, label: 'GitHub Release tarball' })
   for (const c of candidates) {
     if (runs.has(c.spec) || c.spec === spec) continue
-    pg.log(`· 换用 ${c.label}: ${c.spec}`)
-    pg.bar(`↻ 自动修复：改用 ${c.label}…`)
+    pg.log(tf('· 换用 {0}: {1}', [c.label, c.spec]))
+    pg.bar(tf('↻ 自动修复：改用 {0}…', [c.label]))
     await runPluginCliP(profileName, ['remove', missing], pg)
     const r = await runPluginCliP(profileName, ['add', c.spec], pg)
     runs.add(c.spec)
     if (r.code === 0 && installedMainMissing(profileName, c.spec) === null) {
-      pg.bar('✓ 已自动修复（入口文件校验通过）')
+      pg.bar(t('✓ 已自动修复（入口文件校验通过）'))
       return true
     }
-    pg.log(`✗ ${c.label} 安装后仍未通过校验`)
+    pg.log(tf('✗ {0} 安装后仍未通过校验', [c.label]))
   }
   // Every candidate failed AFTER the original was removed: put it back so the
   // user is not left with a plugin that is neither installed nor reported as
   // such.
-  pg.bar('↩ 候选源均失败：恢复原安装…')
+  pg.bar(t('↩ 候选源均失败：恢复原安装…'))
   const restored = await runPluginCliP(profileName, ['add', spec], pg)
   if (restored.code === 0) {
-    pg.bar('⚠ 已恢复原安装，但入口文件仍缺失（建议反馈给插件作者）')
+    pg.bar(t('⚠ 已恢复原安装，但入口文件仍缺失（建议反馈给插件作者）'))
     return false
   }
-  pg.bar('✗ 原安装也未能恢复——请在 profile 目录执行 dsh plugin add ' + spec)
+  pg.bar(t('✗ 原安装也未能恢复——请在 profile 目录执行 dsh plugin add ') + spec)
   return false
 }
 
@@ -707,7 +708,7 @@ export const installWithRepair = async (
     pg.log(`· dsh plugin add ${s}${tag !== '' ? `（${tag}）` : ''}`)
     runs.add(s)
     const r = await runPluginCliP(profileName, ['add', s], pg, env)
-    pg.log(r.code === 0 ? '✓ 命令成功' : `✗ 退出码 ${r.code ?? '?'} · ${firstErrorLine(r.tail)}`)
+    pg.log(r.code === 0 ? t('✓ 命令成功') : tf('✗ 退出码 {0} · {1}', [r.code ?? '?', firstErrorLine(r.tail)]))
     return r
   }
   let r = await run(spec, '初始安装')
@@ -717,21 +718,21 @@ export const installWithRepair = async (
   }
   for (let attempt = 0; attempt < 3; attempt++) {
     const f = classifyPnpmError(r.tail)
-    pg.log(`· 诊断: ${f.message}`)
+    pg.log(tf('· 诊断: {0}', [f.message]))
     if (f.kind === 'network') {
-      pg.bar('↻ 网络错误 · 2s 后自动重试…')
+      pg.bar(t('↻ 网络错误 · 2s 后自动重试…'))
       await app.sleep(2000)
       r = await run(spec, '网络重试')
     } else if (f.kind === 'cache') {
-      pg.bar('↻ 缓存/权限问题 · 改用临时缓存重试…')
+      pg.bar(t('↻ 缓存/权限问题 · 改用临时缓存重试…'))
       r = await run(spec, '临时 npm 缓存', { npm_config_cache: '/tmp/dsh-pnpm-cache' })
     } else if (f.kind === 'lockfile') {
       const lock = join(profileDir(profileName), 'pnpm-lock.yaml')
       try {
         renameSync(lock, `${lock}.bak-${Date.now()}`)
-        pg.log('· 已备份 pnpm-lock.yaml')
-      } catch { pg.log('· 锁文件不存在，无需备份') }
-      pg.bar('↻ 锁文件冲突 · 备份后重试…')
+        pg.log(t('· 已备份 pnpm-lock.yaml'))
+      } catch { pg.log(t('· 锁文件不存在，无需备份')) }
+      pg.bar(t('↻ 锁文件冲突 · 备份后重试…'))
       r = await run(spec, '锁文件修复重试')
     } else if (f.kind === 'notfound') {
       // The failed spec likely CAME from resolveNpmSpec (the ① step), so a
@@ -744,29 +745,29 @@ export const installWithRepair = async (
       ].filter((c): c is string => typeof c === 'string' && c !== '' && c !== spec && !runs.has(c))
       const alt = cands[0]
       if (alt !== undefined) {
-        pg.bar('↻ 该版本不存在 · 自动换源…')
+        pg.bar(t('↻ 该版本不存在 · 自动换源…'))
         spec = alt
         r = await run(alt, '自动换源')
       } else {
-        pg.bar('✗ 找不到可用安装源（npm/源码/Release 均不可用）')
+        pg.bar(t('✗ 找不到可用安装源（npm/源码/Release 均不可用）'))
         return
       }
     } else if (f.kind === 'git') {
       const npmSpec = await resolveNpmSpec(entry)
       if (npmSpec !== undefined && !runs.has(npmSpec)) {
-        pg.bar('↻ 仓库不可访问 · 改用 npm 发布版…')
+        pg.bar(t('↻ 仓库不可访问 · 改用 npm 发布版…'))
         spec = npmSpec
         r = await run(npmSpec, 'npm 发布版修复')
       } else {
-        pg.bar('✗ 仓库不可访问且 npm 无发布版（请检查网络或反馈作者）')
+        pg.bar(t('✗ 仓库不可访问且 npm 无发布版（请检查网络或反馈作者）'))
         return
       }
     } else {
       if (attempt === 0) {
-        pg.bar('↻ 未知错误 · 重试一次…')
+        pg.bar(t('↻ 未知错误 · 重试一次…'))
         r = await run(spec, '重试')
       } else {
-        pg.bar(`✗ 安装失败（已自动尝试 ${runs.size} 次，详情见上方日志）`)
+        pg.bar(tf('✗ 安装失败（已自动尝试 {0} 次，详情见上方日志）', [runs.size]))
         return
       }
     }
@@ -775,5 +776,5 @@ export const installWithRepair = async (
       return
     }
   }
-  pg.bar(`✗ 安装失败（已自动尝试 ${runs.size} 次，详情见上方日志）`)
+  pg.bar(tf('✗ 安装失败（已自动尝试 {0} 次，详情见上方日志）', [runs.size]))
 }

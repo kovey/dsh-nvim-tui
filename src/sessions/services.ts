@@ -6,7 +6,7 @@ import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { installTodoGuard } from '../kernel/todo-guard.js'
 import { FeedRenderer } from '../feed/feed.js'
 import { statSync } from 'node:fs'
-import { t } from '../kernel/i18n.js'
+import { t, tf } from '../kernel/i18n.js'
 import { BUILD_STAMP, BUILD_VERSION } from '../kernel/app.js'
 import type { AgentHandle, SessionEvent } from '../kernel/types.js'
 import type { App, AppSlices, ModelRef, WritableSlice } from '../kernel/app.js'
@@ -97,10 +97,10 @@ export const createSession = async (app: App, cwdPath?: string) => {
   if (cwdPath) {
     const abs = resolve(cwdPath)
     try {
-      if (!statSync(abs).isDirectory()) throw new Error('不是目录')
+      if (!statSync(abs).isDirectory()) throw new Error(t('不是目录'))
       cwd = abs
     } catch (err) {
-      app.notice(`无效目录 ${cwdPath}: ${(err as Error).message}`)
+      app.notice(tf('无效目录 {0}: {1}', [cwdPath, (err as Error).message]))
       return
     }
   }
@@ -252,7 +252,7 @@ export const resumeSession = async (app: App, id: string) => {
   const sid = await ensureLiveSession(app, id)
   if (sid === undefined) return
   await switchTo(app, sid)
-  app.notice(`已恢复 ${sid}`)
+  app.notice(tf('已恢复 {0}', [sid]))
   return sid
 }
 
@@ -279,7 +279,7 @@ export const switchTo = async (app: App, id: string) => {
     // the user actually sees instead of desyncing activeId from the buffer.
     app.exitDiag('switch-active-failed', (err as Error).message)
     WSS(app.slices.sessions).activeId = previous
-    app.notice(`切换会话失败: ${(err as Error).message}`)
+    app.notice(tf('切换会话失败: {0}', [(err as Error).message]))
     return
   }
   // The jobs cache/badge/board belong to the ACTIVE session: without this the
@@ -327,7 +327,7 @@ export const selectSession = async (app: App, id: string) => {
     // cwd's (the workspace browser lists sessions from every workspace).
     await resumeSession(app, id)
   } else {
-    app.notice(`未知会话 ${id}`)
+    app.notice(tf('未知会话 {0}', [id]))
   }
 }
 
@@ -384,11 +384,11 @@ export const forkSession = async (app: App, directive: string | undefined): Prom
     }
     await switchTo(app, id)
     app.slices.sessions.refreshList()
-    app.notice(`已分叉到 ${id}（继承 ${cut} 条历史事件）`)
+    app.notice(tf('已分叉到 {0}（继承 {1} 条历史事件）', [id, cut]))
     if (directive && directive.trim()) app.slices.agent.send(directive.trim())
     return id
   } catch (err) {
-    app.notice(`分叉失败: ${(err as Error).message}`)
+    app.notice(tf('分叉失败: {0}', [(err as Error).message]))
     return undefined
   }
 }

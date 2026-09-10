@@ -1,6 +1,6 @@
 /** dsh_tui command: /permission — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -30,7 +30,7 @@ export const permissionCommand = async (app: App, a: string | undefined) => {
     }
     const name = String(a).trim()
     if (!names.includes(name)) {
-      app.notice(`未知权限预设 ${name}（可用: ${names.join(' ')})`)
+      app.notice(tf('未知权限预设 {0}（可用: {1})', [name, names.join(' ')]))
       return
     }
     const opt = permission.optionOf(name)
@@ -63,10 +63,10 @@ export const permissionCommand = async (app: App, a: string | undefined) => {
       }
     }
     permission.set(rec.handle.agent.session, name)
-    app.notice(`权限预设: ${name}${knobs}`)
+    app.notice(tf('权限预设: {0}{1}', [name, knobs]))
     app.slices.ui.updateStatusline()
   } catch (err) {
-    app.notice(`permission 失败: ${(err as Error).message}`)
+    app.notice(tf('permission 失败: {0}', [(err as Error).message]))
   }
 }
 

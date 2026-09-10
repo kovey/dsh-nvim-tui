@@ -1,6 +1,6 @@
 /** dsh_tui command: /effort — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { applyModelSelection } from '../core.js'
 import type { App } from '../../kernel/app.js'
 
@@ -19,7 +19,7 @@ export const effortCommand = async (app: App, a: string | undefined) => {
   try {
     await applyModelSelection(app, next)
   } catch (err) {
-    app.notice(`切换失败: ${(err as Error).message}`)
+    app.notice(tf('切换失败: {0}', [(err as Error).message]))
   }
 }
 

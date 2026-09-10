@@ -1,5 +1,5 @@
 /** dsh_tui command: /queue — one command per file. */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { FeedRenderer } from '../../feed/feed.js'
 import type { ChatMessage, InboxLike } from '../../kernel/types.js'
 import type { App } from '../../kernel/app.js'
@@ -29,11 +29,11 @@ export const queueCommand = async (app: App): Promise<void> => {
       })
     }
   }
-  if (nextTurn.length > 0) rows.push({ label: `── 排队回合 ${nextTurn.length} 条`, value: 'none' })
+  if (nextTurn.length > 0) rows.push({ label: tf('── 排队回合 {0} 条', [nextTurn.length]), value: 'none' })
   add('nextTurn', nextTurn, '  ')
-  if (nextStep.length > 0) rows.push({ label: `── 下一步输入 ${nextStep.length} 条`, value: 'none' })
+  if (nextStep.length > 0) rows.push({ label: tf('── 下一步输入 {0} 条', [nextStep.length]), value: 'none' })
   add('nextStep', nextStep, '  ')
-  rows.push({ label: '🗑 清空全部排队', value: 'clear' })
+  rows.push({ label: t('🗑 清空全部排队'), value: 'clear' })
   const sel = await app.openPicker(t('消息队列'), rows)
   if (sel === null || sel === 'none') return
   if (sel === 'clear') {
@@ -42,7 +42,7 @@ export const queueCommand = async (app: App): Promise<void> => {
       inbox.clear()
       app.notice(t('已清空排队消息'))
       app.slices.ui.updateStatusline()
-    } catch (err) { app.notice(`清空失败: ${(err as Error).message}`) }
+    } catch (err) { app.notice(tf('清空失败: {0}', [(err as Error).message])) }
     return
   }
   let picked: { list: 'nextTurn' | 'nextStep'; id: string } | undefined
@@ -56,9 +56,9 @@ export const queueCommand = async (app: App): Promise<void> => {
     if (typeof inbox?.remove !== 'function') { app.notice(t('inbox 不可用')); return }
     try {
       const ok = inbox.remove(picked.id)
-      app.notice(ok === true ? '已从队列移除' : '该消息已被处理')
+      app.notice(ok === true ? t('已从队列移除') : t('该消息已被处理'))
       app.slices.ui.updateStatusline()
-    } catch (err) { app.notice(`移除失败: ${(err as Error).message}`) }
+    } catch (err) { app.notice(tf('移除失败: {0}', [(err as Error).message])) }
   } else if (act === 'edit') {
     app.slices.agent.setPendingQueueEdit({ list: picked.list, messageId: picked.id })
     app.notice(t('下一条输入将替换该排队消息'))

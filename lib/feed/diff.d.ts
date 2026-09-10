@@ -1,17 +1,3 @@
-/**
- * Line diff for file-change blocks in the chat: mutation tools (write / edit
- * / replace / append / patch / str_replace_editor / fs) get a beautified
- * +/− block under their ✓ tool line, so every turn shows what changed.
- *
- * LCS over prefix/suffix-trimmed lines; hunks carry `context` unchanged
- * lines; the whole block is capped at `maxLines` so a giant rewrite can
- * never flood the chat (a `· …` notice line reports the rest).
- *
- * Rendered lines use the feed's diff prefixes:
- *   `  ` context · `- ` removed · `+ ` added · `· …` omission notice
- *
- * @module dsh-nvim-tui/diff
- */
 export interface DiffStats {
     added: number;
     removed: number;

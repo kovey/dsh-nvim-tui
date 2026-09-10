@@ -1,6 +1,6 @@
 /** dsh_tui command: /models — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { applyModelSelection } from '../core.js'
 import type { LlmService } from '../../kernel/types.js'
 import type { App } from '../../kernel/app.js'
@@ -82,14 +82,14 @@ export const modelCatalogRows = (app: App): Array<{ label: string; value: string
         })
       }
     } else {
-      rows.push({ label: `● ${id} · ${String(p.name ?? '')}（用 /model ${id}/<模型名> 切换）`, value: `prov:${id}` })
+      rows.push({ label: tf('● {0} · {1}（用 /model {2}/<模型名> 切换）', [id, String(p.name ?? ''), id]), value: `prov:${id}` })
     }
   }
   for (const p of configurable) {
     const pid = String(p.provider ?? '?')
     if (liveIds.has(pid)) continue
     rows.push({
-      label: `○ ${pid} · ${String(p.displayName ?? '')} · 未装配（配置段 ${String(p.settingsNs ?? '?')}）`,
+      label: tf('○ {0} · {1} · 未装配（配置段 {2}）', [pid, String(p.displayName ?? ''), String(p.settingsNs ?? '?')]),
       value: `prov:${pid}`,
     })
   }
@@ -121,7 +121,7 @@ export const modelsCommand = async (app: App): Promise<void> => {
     try {
       await applyModelSelection(app, { ...JSON.parse(picked.slice(7)), reasoningEffort: sel.reasoningEffort })
     } catch (err) {
-      app.notice(`模型切换失败: ${(err as Error).message}`)
+      app.notice(tf('模型切换失败: {0}', [(err as Error).message]))
     }
     return
   }

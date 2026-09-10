@@ -1,6 +1,6 @@
 /** dsh_tui command: /fb — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -47,10 +47,10 @@ export const feedbackCommand = async (app: App, a: string | undefined) => {
       ...(note !== undefined ? { note } : {}),
       ifVersion: item?.version ?? null,
     })
-    if (r.ok) app.notice(op === 'up' ? '👍 已反馈' : '👎 已反馈')
-    else app.notice(`反馈失败: ${r.error?.code ?? 'unknown'}`)
+    if (r.ok) app.notice(op === 'up' ? t('👍 已反馈') : t('👎 已反馈'))
+    else app.notice(tf('反馈失败: {0}', [r.error?.code ?? 'unknown']))
   } catch (err) {
-    app.notice(`反馈失败: ${(err as Error).message}`)
+    app.notice(tf('反馈失败: {0}', [(err as Error).message]))
   }
 }
 

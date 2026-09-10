@@ -20,7 +20,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { NeovimClient } from 'neovim'
 import type { FeedRenderer } from '../feed/feed.js'
-import { t } from './i18n.js'
+import { t, tf } from './i18n.js'
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js'
 import type { RunnerConfig } from './types.js'
 import type {
@@ -487,7 +487,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
           appendFileSync(errorLogPath,
             `${new Date().toISOString()} ${label}: ${e?.stack ?? String(err)}\n`)
         } catch {}
-        app.notice(`⚠ ${label}失败: ${e?.message ?? String(err)}`)
+        app.notice(tf('⚠ {0}失败: {1}', [label, e?.message ?? String(err)]))
       }
     },
     sleep: (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -507,7 +507,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
       const accepted: CommandSpec[] = []
       for (const s of specs) {
         if (app.commandSpecs.some((e) => e.name === s.name)) {
-          app.notice(`⚠ 命令 ${s.name} 已注册，忽略重复`)
+          app.notice(tf('⚠ 命令 {0} 已注册，忽略重复', [s.name]))
           continue
         }
         app.commandSpecs.push(s)

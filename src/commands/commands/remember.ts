@@ -1,6 +1,6 @@
 /** dsh_tui command: /remember — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { appendFileSync } from 'node:fs'
 import { activeSessionCwd } from '../../kernel/app.js'
 import { mkdirSync } from 'node:fs'
@@ -20,7 +20,7 @@ export const rememberCommand = (app: App, a: string | undefined) => {
     appendFileSync(join(dir, 'global.md'), `- ${a}\n`)
     app.notice(t('已写入 .dsh/memory/global.md'))
   } catch (err) {
-    app.notice(`写入失败: ${(err as Error).message}`)
+    app.notice(tf('写入失败: {0}', [(err as Error).message]))
   }
 }
 

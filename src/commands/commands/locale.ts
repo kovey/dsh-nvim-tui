@@ -1,6 +1,6 @@
 /** dsh_tui command: /locale — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { locale, setLocale } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
@@ -10,18 +10,18 @@ import type { App } from '../../kernel/app.js'
 export const localeCommand = (app: App, a: string | undefined): void => {
   const want = (a ?? '').trim()
   if (want === '') {
-    app.notice(`语言: ${locale() === 'en' ? 'en' : 'zh'}（/locale zh|en 切换）`)
+    app.notice(tf('语言: {0}（/locale zh|en 切换）', [locale() === 'en' ? 'en' : 'zh']))
     return
   }
   if (want !== 'zh' && want !== 'en') {
-    app.notice('用法: /locale zh|en')
+    app.notice(t('用法: /locale zh|en'))
     return
   }
   setLocale(want)
   app.slices.sessions.refreshList()
   void app.refreshCommandCatalog()
   app.slices.ui.updateStatusline()
-  app.notice(`语言已切换: ${want}`)
+  app.notice(tf('语言已切换: {0}', [want]))
 }
 
 export function installLocaleCommand(app: App): void {

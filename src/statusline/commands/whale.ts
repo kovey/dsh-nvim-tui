@@ -7,7 +7,7 @@ export const whaleCommand = (app: App, a: string | undefined) => {
   if (!feed) return
   const on = a === 'on' ? true : a === 'off' ? false : !feed.whale
   feed.setWhale(on)
-  app.notice(on ? '蓝鲸背景已开启（空态居中壁纸 + 有内容时底部水印）' : '蓝鲸背景已关闭')
+  app.notice(on ? t('蓝鲸背景已开启（空态居中壁纸 + 有内容时底部水印）') : t('蓝鲸背景已关闭'))
 }
 
 

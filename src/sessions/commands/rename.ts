@@ -1,5 +1,5 @@
 /** dsh_tui command: /rename — one command per file. */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 /** /rename <title> — pin the active session's title. */
@@ -28,7 +28,7 @@ export const renameCommand = (app: App, a: string | undefined) => {
     sessionTitle.rename(live, title)
     app.notice(t('标题已更新'))
   } catch (err) {
-    app.notice(`重命名失败: ${(err as Error).message}`)
+    app.notice(tf('重命名失败: {0}', [(err as Error).message]))
   }
 }
 

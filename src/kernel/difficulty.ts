@@ -27,6 +27,7 @@ import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { App, SessionRec } from './app.js'
 import type { DifficultyRoutingConfig, DifficultyTier } from './types.js'
 import { effortSupported } from './vision.js'
+import { t, tf } from './i18n.js'
 
 /** Statusline / notice icons and labels per tier. */
 export const TIER_ICONS: Record<DifficultyTier, string> = { easy: '🟢', medium: '🟡', hard: '🔴' }
@@ -206,7 +207,7 @@ async function syncSubagentPolicy(
       ? '子代理模型闸门已同步为难度档位模型（subagent-model-selection）'
       : '子代理模型闸门已关闭（subagent-model-selection）')
   } catch (err) {
-    app.notice(`子代理模型策略同步失败: ${(err as Error).message}`)
+    app.notice(tf('子代理模型策略同步失败: {0}', [(err as Error).message]))
   }
 }
 
@@ -239,21 +240,21 @@ async function applyTierSwitch(
   if (typeof llm?.listModels === 'function') {
     const models = await llm.listModels(route.provider).catch(() => undefined)
     if (Array.isArray(models) && models.length > 0 && !models.some((m) => m?.id === route.model)) {
-      if (notify) app.notice(`难度路由跳过: 档位模型 ${route.provider}/${route.model} 不在模型目录中（检查 difficultyRouting.tiers 配置）`)
+      if (notify) app.notice(tf('难度路由跳过: 档位模型 {0}/{1} 不在模型目录中（检查 difficultyRouting.tiers 配置）', [route.provider, route.model]))
       return
     }
     info = await llm.resolveModelInfo?.(route.provider, route.model).catch(() => undefined)
   } else if (typeof llm?.resolveModelInfo === 'function') {
     info = await llm.resolveModelInfo(route.provider, route.model).catch(() => undefined)
     if (info === undefined || info === null) {
-      if (notify) app.notice(`难度路由跳过: 档位模型 ${route.provider}/${route.model} 不在模型目录中（检查 difficultyRouting.tiers 配置）`)
+      if (notify) app.notice(tf('难度路由跳过: 档位模型 {0}/{1} 不在模型目录中（检查 difficultyRouting.tiers 配置）', [route.provider, route.model]))
       return
     }
   }
   // An effort the tier model rejects would kill the turn before dispatch.
   if (!effortSupported(info, route.reasoningEffort)) {
     if (notify && route.reasoningEffort !== undefined) {
-      app.notice(`档位模型 ${route.model} 不支持 ◎${route.reasoningEffort} — 本回合按模型默认推理等级`)
+      app.notice(tf('档位模型 {0} 不支持 ◎{1} — 本回合按模型默认推理等级', [route.model, route.reasoningEffort]))
     }
     delete route.reasoningEffort
   }
@@ -320,7 +321,7 @@ export async function routeDifficultyForTurn(app: App, rec: SessionRec, text: st
     }
     await applyTierSwitch(app, rec, est, true)
   } catch (err) {
-    app.notice(`难度路由失败（本次用默认模型）: ${(err as Error).message}`)
+    app.notice(tf('难度路由失败（本次用默认模型）: {0}', [(err as Error).message]))
   }
 }
 
@@ -338,7 +339,7 @@ export function restoreDifficulty(app: App, rec: SessionRec, notify: boolean): v
     rec.model = prev.model
     rec.provider = prev.provider
     if (notify) {
-      app.notice(`已切回模型 ${prev.provider}/${prev.model}（难度路由回合结束）`)
+      app.notice(tf('已切回模型 {0}/{1}（难度路由回合结束）', [prev.provider, prev.model]))
       app.slices.ui.updateStatusline()
     }
   }
@@ -373,12 +374,12 @@ export async function applyDifficultyCommand(app: App, rec: SessionRec, arg: 'au
       rec.provider = prev.provider
     }
     await syncSubagentPolicy(app, cfg, rec, current, false)
-    return ['难度路由已关闭（/difficulty auto 恢复）']
+    return [t('难度路由已关闭（/difficulty auto 恢复）')]
   }
   d.enabled = true
   if (arg === 'auto') {
     d.pinned = null
-    return ['难度路由: 自动（规则评估' + (cfg.classifier?.enabled === true ? ' + LLM 分类' : '') + '）']
+    return [t('难度路由: 自动（规则评估') + (cfg.classifier?.enabled === true ? t(' + LLM 分类') : '') + '）']
   }
   d.pinned = arg
   const route = tierRoute(cfg, arg, current)
@@ -402,9 +403,9 @@ export function difficultyStatusLines(app: App, rec: SessionRec): string[] {
     lines.push(`  ${TIER_ICONS[tier]} ${TIER_LABELS[tier]} → ${r === null ? '默认模型' : `${r.provider}/${r.model}${r.reasoningEffort ? ` ◎${r.reasoningEffort}` : ''}`}`)
   }
   if (cfg.classifier?.enabled === true) {
-    lines.push(`LLM 分类: 开启（${cfg.classifier.provider ?? current.provider}/${cfg.classifier.model ?? '?'}）`)
+    lines.push(tf('LLM 分类: 开启（{0}/{1}）', [cfg.classifier.provider ?? current.provider, cfg.classifier.model ?? '?']))
   }
-  if (cfg.subagentPolicy === true) lines.push('子代理模型闸门: 同步档位模型')
-  lines.push('', '用法: /difficulty [easy|medium|hard|auto|off]')
+  if (cfg.subagentPolicy === true) lines.push(t('子代理模型闸门: 同步档位模型'))
+  lines.push('', t('用法: /difficulty [easy|medium|hard|auto|off]'))
   return lines
 }

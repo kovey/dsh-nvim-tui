@@ -1,5 +1,5 @@
 /** dsh_tui command: /trajectory — one command per file. */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { FeedRenderer } from '../../feed/feed.js'
 import type { ChatMessage } from '../../kernel/types.js'
 import type { App } from '../../kernel/app.js'
@@ -17,7 +17,7 @@ export const trajectoryCommand = (app: App) => {
     return
   }
   const turn = turnStart.data?.turn
-  const lines = [`回合 #${turn ?? '?'} 步骤轨迹`, '']
+  const lines = [tf('回合 #{0} 步骤轨迹', [turn ?? '?']), '']
   let toolCount = 0
   for (const e of events) {
     const data = e.data as { turn?: number; step?: number; message?: ChatMessage; name?: string; arguments?: string; error?: unknown } | undefined
@@ -36,8 +36,8 @@ export const trajectoryCommand = (app: App) => {
       lines.push(`    ${err}`)
     }
   }
-  lines.push('', `工具调用 ${toolCount} 次`)
-  void app.luaCall('require("dsh_tui").show_lines_float(...)', ['步骤轨迹', lines]).catch(() => {})
+  lines.push('', tf('工具调用 {0} 次', [toolCount]))
+  void app.luaCall('require("dsh_tui").show_lines_float(...)', [t('步骤轨迹'), lines]).catch(() => {})
 }
 
 /** /export — write the rendered transcript to a markdown file. */

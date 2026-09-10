@@ -1,5 +1,5 @@
 /** dsh_tui command: /archive — one command per file. */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 
 /** /archive [id] — hide a session from every list (non-destructive). */
@@ -18,9 +18,9 @@ export const archiveCommand = async (app: App, a: string | undefined): Promise<v
   try {
     await ws.archiveSession(target)
     app.slices.sessions.refreshList()
-    app.notice(`已归档 ${target}（从各列表隐藏）`)
+    app.notice(tf('已归档 {0}（从各列表隐藏）', [target]))
   } catch (err) {
-    app.notice(`归档失败: ${(err as Error).message}`)
+    app.notice(tf('归档失败: {0}', [(err as Error).message]))
   }
 }
 

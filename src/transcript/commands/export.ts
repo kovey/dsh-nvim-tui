@@ -1,5 +1,5 @@
 /** dsh_tui command: /export — one command per file. */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { App } from '../../kernel/app.js'
@@ -11,9 +11,9 @@ export const exportCommand = async (app: App) => {
     const lines = await app.slices.runtime.nvim!.request('nvim_buf_get_lines', [rec.feed.bufId, 0, -1, false])
     const path = join(process.cwd(), `dsh-export-${new Date().toISOString().replace(/[:.]/g, '-')}.md`)
     writeFileSync(path, `# ${rec.title ?? rec.id}\n\n` + lines.join('\n') + '\n')
-    app.notice(`已导出: ${path}`)
+    app.notice(tf('已导出: {0}', [path]))
   } catch (err) {
-    app.notice(`导出失败: ${(err as Error).message}`)
+    app.notice(tf('导出失败: {0}', [(err as Error).message]))
   }
 }
 

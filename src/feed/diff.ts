@@ -12,6 +12,7 @@
  *
  * @module dsh-nvim-tui/diff
  */
+import { tf } from '../kernel/i18n.js'
 
 export interface DiffStats {
   added: number
@@ -70,7 +71,7 @@ function addOnly(text: string, maxLines: number): DiffBlock {
   const keep = raw.slice(0, room)
   const lines = keep.map((l) => '+ ' + l)
   const truncated = raw.length > room
-  if (truncated) lines.push(`· 其余新增 ${raw.length - room} 行省略 ·`)
+  if (truncated) lines.push(tf('· 其余新增 {0} 行省略 ·', [raw.length - room]))
   return { lines, stats: { added: raw.length, removed: 0 }, truncated }
 }
 
@@ -80,7 +81,7 @@ function delOnly(text: string, maxLines: number): DiffBlock {
   const keep = raw.slice(0, room)
   const lines = keep.map((l) => '- ' + l)
   const truncated = raw.length > room
-  if (truncated) lines.push(`· 其余删除 ${raw.length - room} 行省略 ·`)
+  if (truncated) lines.push(tf('· 其余删除 {0} 行省略 ·', [raw.length - room]))
   return { lines, stats: { added: 0, removed: raw.length }, truncated }
 }
 
@@ -100,7 +101,7 @@ function wholeReplace(a: string[], b: string[], maxLines: number): DiffBlock {
     kept++
   }
   const total = a.length + b.length
-  if (truncated) lines.push(`· 其余 ${total - kept} 行省略 ·`)
+  if (truncated) lines.push(tf('· 其余 {0} 行省略 ·', [total - kept]))
   return { lines, stats: { added: b.length, removed: a.length }, truncated }
 }
 
@@ -227,7 +228,7 @@ export function diffTexts(before: string | null, after: string | null, opts: Dif
     rendered += chunk.length
   }
   if (truncated) {
-    lines.push(`· 其余 ${totalRender - rendered} 行省略 ·`)
+    lines.push(tf('· 其余 {0} 行省略 ·', [totalRender - rendered]))
   }
   return { lines, stats: { added, removed }, truncated }
 }

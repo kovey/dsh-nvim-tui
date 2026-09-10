@@ -1,6 +1,6 @@
 /** dsh_tui command: /status — one command per file (self-registering,
  *  wired by the commands module index). */
-import { t } from '../../kernel/i18n.js'
+import { t, tf } from '../../kernel/i18n.js'
 import { modeLabel } from '../../feed/stats.js'
 import type { App } from '../../kernel/app.js'
 
@@ -13,7 +13,7 @@ export const statusCommand = (app: App) => {
     return
   }
   app.notice(`${rec.id} · ${rec.title ?? t('（无标题）')} · ${rec.status ?? '○ idle'}`)
-  app.notice(`模型 ${rec.model ?? '?'} · 权限 ${modeLabel(rec.mode)} · 审批 ${rec.policy ?? 'ask'}`)
+  app.notice(tf('模型 {0} · 权限 {1} · 审批 {2}', [rec.model ?? '?', modeLabel(rec.mode), rec.policy ?? 'ask']))
 }
 
 export function installStatusCommand(app: App): void {
