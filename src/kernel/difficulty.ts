@@ -37,14 +37,14 @@ const HARD_PATTERN = /(重构|架构|设计|排查|调试|性能|优化|安全|�
 /** Short chatty acknowledgements → easy. */
 const CHATTY_PATTERN = /^(好|好的|行|可以|收到|谢谢|继续|ok|okay|yes|no|嗯|哦|哈|对|是|明白|了解)\b/i
 
-export function routingConfig(app: App): DifficultyRoutingConfig {
+function routingConfig(app: App): DifficultyRoutingConfig {
   const raw = app.config.difficultyRouting
   if (raw !== null && typeof raw === 'object') return raw as DifficultyRoutingConfig
   return {}
 }
 
 /** Full selection for a tier (provider omitted = inherit current). */
-export function tierRoute(
+function tierRoute(
   cfg: DifficultyRoutingConfig,
   tier: DifficultyTier,
   current: { provider: string; model: string },
@@ -131,7 +131,7 @@ async function classifyViaLlm(
 // estimation entry (pin → classifier → rules)
 // ---------------------------------------------------------------------------
 
-export async function estimateDifficulty(
+async function estimateDifficulty(
   app: App, rec: SessionRec, text: string, hasImages: boolean,
 ): Promise<{ tier: DifficultyTier; source: 'pin' | 'rules' | 'classifier' } | null> {
   const d = rec.difficulty
@@ -208,11 +208,19 @@ export async function routeDifficultyForTurn(app: App, rec: SessionRec, text: st
   try {
     const d = rec.difficulty
     if (d.enabled !== true) return
+    // An image turn is pending (the vision temp switch owns the session
+    // model): do NOT layer a difficulty switch — the vision restore at
+    // turn/end would clobber it, and the difficulty restore would then
+    // land on the vision model. The next message re-estimates normally.
+    if (rec.visionTmp !== null) return
     const est = await estimateDifficulty(app, rec, text, hasImages)
     if (est === null) return
     // A routed turn is still pending and the queued message keeps the same
     // tier → extend the switch window (visionTmp semantics). A different
-    // tier cannot switch mid-pending-turn; the next turn re-estimates.
+    // tier cannot switch while the pending turn is running (a modelRef
+    // change would re-route that turn's next steps) — the queued message
+    // runs on the default model after the restore, and the NEXT message
+    // re-estimates.
     if (d.tmp !== null) {
       if (d.tmp.tier === est.tier) d.tmp.switchAt = Date.now()
       return

@@ -11,6 +11,4 @@
  * @module dsh-nvim-tui/kernel/vision
  */
 import type { App } from './app.js';
-/** Known image-capable model ids, in preference order (0.1.5 catalog). */
-export declare const PREFERRED_VISION_MODEL_IDS: readonly string[];
 export declare function findVisionModel(app: App, provider: string): Promise<string | undefined>;

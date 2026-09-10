@@ -109,11 +109,12 @@ const isZstdArtifact = (path: string): boolean => {
   } catch { return false }
 }
 
-/** Clean one settled chain: hide it (ledger + workspace archive) and free
- *  the stored bulk via the official raw-artifact rewrite. */
+/** Clean one settled chain: hide it (ledger + workspace archive) and, on
+ *  pre-0.1.5 hosts, free the stored bulk via the raw-artifact rewrite.
+ *  0.1.5 owns its storage (no raw artifacts / no truncate API) — hiding is
+ *  bookkeeping only, so it must NOT depend on the truncation succeeding. */
 const cleanSubagentChain = async (app: App, parentId: string, childId: string): Promise<boolean> => {
   const persistence = app.svc('sessionPersistence')
-  let truncated = false
   try {
     if (persistence?.supportsRawArtifacts === true &&
       app.liveSessions.get(childId) === undefined) {
@@ -127,17 +128,13 @@ const cleanSubagentChain = async (app: App, parentId: string, childId: string): 
         if (path !== undefined && headerLine !== '' && isZstdArtifact(path)) {
           writeFileSync(path + '.tmp', encodeHeaderOnlyLog(headerLine))
           renameSync(path + '.tmp', path)
-          truncated = true
         }
       }
     }
   } catch {}
-  if (!truncated) return false
-  {
-    const ws = app.svc('workspaceRegistry')
-    if (typeof ws?.archiveSession === 'function') {
-      try { await ws.archiveSession(childId) } catch {}
-    }
+  const ws = app.svc('workspaceRegistry')
+  if (typeof ws?.archiveSession === 'function') {
+    try { await ws.archiveSession(childId) } catch {}
   }
   const cleaned = readCleanedIds()
   const arr = cleaned[parentId] ?? []

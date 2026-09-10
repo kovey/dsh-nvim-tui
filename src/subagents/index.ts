@@ -43,7 +43,7 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
         const result = handle === undefined ? undefined : await handle.read?.()
         events = (result?.events ?? []) as SessionEvent[]
         if (handle !== undefined) {
-          try { handle.close?.() } catch {}
+          try { await handle.close?.() } catch {}
         }
       } else {
         // pre-0.1.5 hosts: read-only inspection.
@@ -129,7 +129,7 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
         const result = handle === undefined ? undefined : await handle.read?.()
         events = (result?.events ?? []) as SessionEvent[]
         if (handle !== undefined) {
-          try { handle.close?.() } catch {}
+          try { await handle.close?.() } catch {}
         }
       } else {
         // pre-0.1.5 hosts: read-only inspection.

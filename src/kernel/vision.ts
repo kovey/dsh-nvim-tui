@@ -14,7 +14,7 @@ import type { App } from './app.js'
 import type { LlmService } from './types.js'
 
 /** Known image-capable model ids, in preference order (0.1.5 catalog). */
-export const PREFERRED_VISION_MODEL_IDS: readonly string[] = [
+const PREFERRED_VISION_MODEL_IDS: readonly string[] = [
   'deepseek-flash',
   'deepseek-v4-flash-vision-exp',
   'deepseek-vl2',
