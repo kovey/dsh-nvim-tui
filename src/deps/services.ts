@@ -6,6 +6,7 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { runningProfileName } from '../kernel/profile.js'
 import type { App, AppSlices } from '../kernel/app.js'
 
 /** One assembly row: package identity + the exact YAML appended to the patch. */
@@ -81,23 +82,17 @@ export interface DepReport {
 
 export const dshHome = () => process.env.DSH_HOME ?? join(homedir(), '.dsh')
 
-/** Resolve the running profile name from the dsh process argv. */
-function runningProfileName(): string | undefined {
-  const argv = process.argv
-  const idx = argv.indexOf('--profile')
-  if (idx >= 0 && argv[idx + 1] !== undefined && !argv[idx + 1].startsWith('-')) return argv[idx + 1]
-  const eq = argv.find((a) => a.startsWith('--profile='))
-  if (eq !== undefined) return eq.slice('--profile='.length)
-  return undefined
-}
-
-/** The profile patch path: profile whose bundles include dsh-nvim-tui.
- *  The RUNNING profile wins when detectable — writing another profile's
- *  patch would never hot-reload into this process. */
-export function findProfilePatchPath(): string | null {
+/** The profile patch path: the RUNNING profile's cordis.patch.yml.
+ *  The running profile always bundles dsh-nvim-tui (the TUI is mounted
+ *  through it), so a loader/argv resolution is authoritative; the directory
+ *  scan is only a last resort when neither resolves. */
+export function findProfilePatchPath(app: App): string | null {
   const profilesDir = join(dshHome(), 'profiles')
-  const prefer = runningProfileName()
-  let fallback: string | null = null
+  const running = runningProfileName(app)
+  if (running !== undefined) {
+    const patch = join(profilesDir, running, 'cordis.patch.yml')
+    if (existsSync(patch)) return patch
+  }
   try {
     for (const name of readdirSync(profilesDir)) {
       const pkgPath = join(profilesDir, name, 'package.json')
@@ -107,14 +102,12 @@ export function findProfilePatchPath(): string | null {
           dsh?: { profile?: { bundles?: string[] } }
         }
         if ((pkg.dsh?.profile?.bundles ?? []).includes('dsh-nvim-tui')) {
-          const patch = join(profilesDir, name, 'cordis.patch.yml')
-          if (prefer !== undefined && name === prefer) return patch
-          if (fallback === null) fallback = patch
+          return join(profilesDir, name, 'cordis.patch.yml')
         }
       } catch {}
     }
   } catch {}
-  return fallback
+  return null
 }
 
 /** Structural row ids already present in the patch file (comments ignored). */
@@ -311,7 +304,7 @@ export async function checkAll(app: App, s: AppSlices['agent'], patchPath: strin
 // ---------------------------------------------------------------------------
 
 export const installCommand = async (app: App, s: AppSlices['agent']): Promise<void> => {
-  const patchPath = findProfilePatchPath()
+  const patchPath = findProfilePatchPath(app)
   if (patchPath === null) {
     app.notice('未定位 profile 的 cordis.patch.yml（DSH_HOME/profiles 下没有包含 dsh-nvim-tui bundle 的 profile），无法自动装配')
     return
@@ -356,10 +349,10 @@ export const installCommand = async (app: App, s: AppSlices['agent']): Promise<v
   try {
     let block = ''
     if (insertBlocks.length > 0) {
-      block += '\n# [nvim-tui /deps] 自动装配行\n- insert:\n' + insertBlocks.join('\n') + '\n'
+      block += '\n# [dsh-nvim-tui /deps] 自动装配行\n- insert:\n' + insertBlocks.join('\n') + '\n'
     }
     if (topBlocks.length > 0) {
-      block += '\n# [nvim-tui /deps] 自动装配（覆盖型）\n' + topBlocks.join('\n') + '\n'
+      block += '\n# [dsh-nvim-tui /deps] 自动装配（覆盖型）\n' + topBlocks.join('\n') + '\n'
     }
     appendFileSync(patchPath, block)
     app.notice(`已装配 ${appended.length} 项（写入 ${patchPath.replace(dshHome(), '~')}，loader 热重载中…）`)

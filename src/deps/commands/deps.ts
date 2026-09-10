@@ -13,7 +13,7 @@ export const depsCommand = async (app: App, s: AppSlices['agent'], a: string | u
     app.notice('用法: /deps（体检报告）· /deps install（一键装配可修复项）')
     return
   }
-  const patchPath = findProfilePatchPath()
+  const patchPath = findProfilePatchPath(app)
   const reports = await checkAll(app, s, patchPath)
   const lines = [
     `依赖体检 · ${reports.length} 项（profile patch: ${patchPath === null ? '未定位（仅报告模式）' : patchPath.replace(dshHome(), '~')}）`,

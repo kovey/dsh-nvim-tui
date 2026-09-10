@@ -226,16 +226,6 @@ export function searchCatalog(entries: MarketEntry[], query: string): MarketEntr
     e.category.toLowerCase().includes(q))
 }
 
-/** Resolve the running profile name from the dsh process argv. */
-export function runningProfileName(): string | undefined {
-  const argv = process.argv
-  const idx = argv.indexOf('--profile')
-  if (idx >= 0 && argv[idx + 1] !== undefined && !argv[idx + 1].startsWith('-')) return argv[idx + 1]
-  const eq = argv.find((a) => a.startsWith('--profile='))
-  if (eq !== undefined) return eq.slice('--profile='.length)
-  return undefined
-}
-
 /** Installed-state snapshot for the running profile (fs-based). */
 export interface InstalledPlugins {
   /** dependency name → declared semver from the profile manifest */

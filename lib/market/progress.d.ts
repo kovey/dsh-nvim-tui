@@ -40,8 +40,6 @@ export declare function writeCatalog(catalog: MarketCatalog, path?: string): voi
 export declare function isFresh(catalog: MarketCatalog | null, ttlMs?: number): boolean;
 /** Filter by a case-insensitive substring over name/description. */
 export declare function searchCatalog(entries: MarketEntry[], query: string): MarketEntry[];
-/** Resolve the running profile name from the dsh process argv. */
-export declare function runningProfileName(): string | undefined;
 /** Installed-state snapshot for the running profile (fs-based). */
 export interface InstalledPlugins {
     /** dependency name → declared semver from the profile manifest */

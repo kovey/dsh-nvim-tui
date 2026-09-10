@@ -10,10 +10,11 @@ export interface DepReport {
     fixId?: string;
 }
 export declare const dshHome: () => string;
-/** The profile patch path: profile whose bundles include dsh-nvim-tui.
- *  The RUNNING profile wins when detectable — writing another profile's
- *  patch would never hot-reload into this process. */
-export declare function findProfilePatchPath(): string | null;
+/** The profile patch path: the RUNNING profile's cordis.patch.yml.
+ *  The running profile always bundles dsh-nvim-tui (the TUI is mounted
+ *  through it), so a loader/argv resolution is authoritative; the directory
+ *  scan is only a last resort when neither resolves. */
+export declare function findProfilePatchPath(app: App): string | null;
 /** Structural row ids already present in the patch file (comments ignored). */
 export declare function readPatchRowIds(path: string): Set<string>;
 export declare function packageExists(pkg: string, file: string): boolean;

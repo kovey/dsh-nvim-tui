@@ -1,12 +1,13 @@
 /** dsh_tui command: /market — one command per file. */
 import { locale, t } from '../../kernel/i18n.js'
+import { runningProfileName } from '../../kernel/profile.js'
 import { renameSync } from 'node:fs'
 import { join } from 'node:path'
 import type { App } from '../../kernel/app.js'
 import type { MarketEntry } from '../progress.js'
 import {
   fetchCatalog, readCatalog, writeCatalog, isFresh, searchCatalog,
-  readInstalledPlugins, runningProfileName, installSpec, openUrl,
+  readInstalledPlugins, installSpec, openUrl,
   openProgress, runPluginCliP, installWithRepair, resolveNpmSpec, readRepoPackage,
   patchPath, readPatch, readDisabledIds, setDisabledRows, writePatch,
   isNpmName, latestVersion, depMatchesEntry,
@@ -15,7 +16,14 @@ import {
 
 export const marketCommand = async (app: App, a: string | undefined): Promise<void> => {
   const arg = (a ?? '').trim()
-  const profileName = runningProfileName() ?? String(app.config.marketProfile ?? 'nvim-tui')
+  // Target profile = the profile this process booted with (loader root
+  // include entry → argv → explicit config). NEVER guess `nvim-tui`: writing
+  // another profile's patch would silently do nothing for the running one.
+  const profileName = runningProfileName(app) ?? String(app.config.marketProfile ?? '')
+  if (profileName === '') {
+    app.notice('无法确定当前运行的 profile（请用 dsh --profile <name> 启动；/market 需要知道目标 profile）')
+    return
+  }
   const registryBase = typeof app.config.marketRegistryBase === 'string' && app.config.marketRegistryBase !== ''
     ? app.config.marketRegistryBase
     : undefined
