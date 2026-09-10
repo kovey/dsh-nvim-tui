@@ -160,7 +160,7 @@ export const queueSubagentPrompt = async (app: App, parentAgent: unknown, childI
       mode: 'continuable',
       delivery: 'queue',
       content: [{ type: 'text', text }],
-    }, new AbortController().signal)
+    }, AbortSignal.timeout(30000))
     return
   }
   // pre-0.1.5 face: the symbol-keyed queue method on the service instance.
@@ -178,7 +178,7 @@ export const queueSubagentPrompt = async (app: App, parentAgent: unknown, childI
     childId,
     [{ type: 'text', text }],
     { kind: 'user' },
-    new AbortController().signal,
+    AbortSignal.timeout(30000),
   )
 }
 
@@ -300,19 +300,31 @@ export const atQuery = async (app: App, query: string, start = 0): Promise<void>
   const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   const agent = rec?.handle.agent
   let items: Array<{ path: string; mention: string }> = []
+  const atSignal = AbortSignal.timeout(4000)
   try {
     const fr = app.svc('fileReferences')
     if (typeof fr?.list === 'function' && agent) {
-      const cands = await fr.list(agent, query, new AbortController().signal)
+      const cands = await fr.list(agent, query, atSignal)
       items = (cands ?? []).map((c) => ({ path: c.path, mention: formatMention(c.path) }))
-    } else {
-      items = await localFileCandidates(activeSessionCwd(app), query)
     }
-  } catch {}
+  } catch (err) {
+    // A THROWING service (index still building, permissions, host error) used
+    // to leave the menu silently empty while a MISSING service degraded to
+    // the local scan — same symptom, opposite handling. Diagnose, then fall
+    // through to the scan below.
+    app.exitDiag('at-query-service', (err as Error).message)
+  }
+  if (items.length === 0) {
+    try {
+      items = await localFileCandidates(activeSessionCwd(app), query)
+    } catch (err) {
+      app.exitDiag('at-query-local-scan', (err as Error).message)
+    }
+  }
   const sessionRef = app.svc('sessionReferenceResolver')
   if (agent !== undefined && typeof sessionRef?.listCandidates === 'function') {
     try {
-      const cands = await sessionRef.listCandidates(agent, query, 8, new AbortController().signal)
+      const cands = await sessionRef.listCandidates(agent, query, 8, atSignal)
       for (const c of cands) {
         // Canonical mention: @[label](dsh-session:<base64url(JSON id)>).
         const uri = 'dsh-session:' + Buffer.from(JSON.stringify(c.sessionId), 'utf8').toString('base64url')

@@ -95,6 +95,8 @@ export async function boot(app: App): Promise<void> {
     // the input box, or a wedged startup). Flush the queue, then reset modes.
     flushTtyInput()
     resetTerminalModes()
+    // Flipped once connect + attach + listener wiring have all succeeded.
+    let wired = false
     const spawned = await spawnNvim({
       extraArgs: app.headless ? ['--headless'] : [],
       isolateXdg: app.headless, // sandbox/CI: private XDG dirs for the child
@@ -105,12 +107,13 @@ export async function boot(app: App): Promise<void> {
         // quit(); only a spontaneous nvim death closes the UI.
         app.exitDiag('nvim-exit', `code=${code}`, `signal=${signal}`, `disposed=${app.slices.runtime.disposed}`)
         if (!app.slices.runtime.disposed) {
-          // Boot is still connecting (startup config error, spawn failure):
-          // do NOT pre-empt with quit(0) — the pending connect will fail and
-          // boot's catch must exit NON-ZERO. (Pre-review: onExit's quit(0)
-          // set quitting=true, so the catch's quit(1) became a no-op and
-          // every startup failure exited 0.)
-          if (app.slices.runtime.nvim === null) {
+          // BOOT IS NOT DONE YET (connect / preload wait / attach / wiring):
+          // record the exit and let boot's catch exit NON-ZERO. The old test
+          // was `nvim === null`, which stopped being true the moment the
+          // socket connected — an nvim dying during attach then took the
+          // quit(0) path, set `quitting`, and made the catch's quit(1) a
+          // no-op: every such startup failure exited 0 with no message.
+          if (!wired) {
             W(app.slices.runtime).childExitDuringBoot = { code, signal }
             return
           }
@@ -124,9 +127,17 @@ export async function boot(app: App): Promise<void> {
     // nvim now owns the terminal; keep our own process silent so DSH
     // logging cannot corrupt the TUI.
     const silent = () => {}
+    const originals = { log: console.log, warn: console.warn, error: console.error }
     console.log = silent
     console.warn = silent
     console.error = silent
+    // Restore on teardown: the hijack is process-wide and used to outlive the
+    // TUI (a runner-row reload left every later host log silently dropped).
+    app.slices.runtime.hostDisposers.push(() => {
+      console.log = originals.log
+      console.warn = originals.warn
+      console.error = originals.error
+    })
 
     const nvim = await connectNvim(spawned.sockPath, {
       child: spawned.child,
@@ -134,6 +145,25 @@ export async function boot(app: App): Promise<void> {
     })
     if (app.slices.runtime.disposed) return
     W(app.slices.runtime).nvim = nvim
+    // INBOUND WIRING FIRST — before anything can reach back into the runner.
+    // `attach` assigns the Lua-side channel and synchronously emits the
+    // User DshTuiAttach autocmd; extensions subscribing there call
+    // vim.rpcrequest(channel, 'dsh-ext', …) and rpcnotify(...) immediately.
+    // With the listeners installed only AFTER attach, those requests had no
+    // responder (the Lua side blocked inside attach → deadlock, bounded-reply
+    // guarantees never ran) and every early notification was dropped.
+    nvim.on('disconnect', () => {
+      // A teardown-initiated socket EOF must not re-trigger quit: the runner
+      // row can be reloaded (hmr) while dsh keeps running.
+      if (!app.slices.runtime.disposed) void app.quit(0)
+    })
+    nvim.on('request', (method: string, args: unknown[], resp: { send: (r: unknown) => void }) => {
+      handleDshExtRequest(app, method, args, resp)
+    })
+    nvim.on('notification', (method: string, args: unknown[]) => {
+      if (app.slices.runtime.disposed) return
+      void dispatchNvimNotification(app, method, args)
+    })
     const channelId = await nvim.channelId
     if (app.slices.runtime.disposed) return
     W(app.slices.runtime).channelIdValue = channelId
@@ -178,27 +208,12 @@ export async function boot(app: App): Promise<void> {
     }
 
     // 2) wiring — three thin loops, all behavior lives in owner modules.
-    app.slices.runtime.nvim!.on('disconnect', () => {
-      // A teardown-initiated socket EOF must not re-trigger quit: the runner
-      // row can be reloaded (hmr) while dsh keeps running.
-      if (!app.slices.runtime.disposed) void app.quit(0)
-    })
-    // dsh-ext bus: nvim plugins issue vim.rpcrequest(channel, 'dsh-ext', …)
-    // and the runner answers from the extId dispatch table (luaExt.on).
-    // Handler + bounded-response semantics live in ext-api.ts.
-    app.slices.runtime.nvim!.on('request', (method: string, args: unknown[], resp: { send: (r: unknown) => void }) => {
-      handleDshExtRequest(app, method, args, resp)
-    })
-    // nvim notifications: one guarded table lookup — the old 22-branch
-    // if-else chain is gone; each `dsh-*` method is registered by its
-    // owner module at install time (rpc.ts).
-    app.slices.runtime.nvim!.on('notification', (method: string, args: unknown[]) => {
-      if (app.slices.runtime.disposed) return
-      void dispatchNvimNotification(app, method, args)
-    })
+    // (disconnect / request / notification listeners were installed right
+    //  after connect — see the INBOUND WIRING block above.)
     // Host events (agent/status, subagent/*, workflow/*, approval/questions):
     // one loop over the registry (host-events.ts).
     wireHostEvents(app)
+    wired = true // connect + attach + listeners are live: a later nvim death is an ordinary close
 
     // Session elapsed / stats tick slowly while idle (the spinner interval
     // already covers the running state at 180ms).
@@ -234,6 +249,15 @@ export async function boot(app: App): Promise<void> {
     // console.error is hijacked to silent after spawn (the child owns the
     // terminal) — a boot fatal MUST still reach the user/CI: stderr direct.
     process.stderr.write(`[dsh-nvim-tui] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`)
+    if (app.slices.runtime.quitting) {
+      // quit(0) already claimed the exit (nvim died mid-boot): quit(1) would
+      // be a no-op and CI/wrappers would read the startup failure as success.
+      try {
+        const child = app.slices.runtime.child
+        if (child !== null && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+      } catch {}
+      process.exit(1)
+    }
     void app.quit(1)
   }
 }

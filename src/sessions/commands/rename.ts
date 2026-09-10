@@ -20,7 +20,12 @@ export const renameCommand = (app: App, a: string | undefined) => {
     return
   }
   try {
-    sessionTitle.rename(app.liveSessions.get(rec.id), title)
+    const live = app.liveSessions.get(rec.id)
+    if (live === undefined) {
+      app.notice(t('会话已不在线（可能已退出或未成功恢复），无法重命名'))
+      return
+    }
+    sessionTitle.rename(live, title)
     app.notice(t('标题已更新'))
   } catch (err) {
     app.notice(`重命名失败: ${(err as Error).message}`)

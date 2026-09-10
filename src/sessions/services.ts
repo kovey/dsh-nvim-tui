@@ -116,7 +116,14 @@ export const createSession = async (app: App, cwdPath?: string) => {
       installTodoGuard(agentCtx, todoGuardEnabled(app))
     },
   })
-  const id = await attachSession(app, handle, modelRef)
+  let id: string
+  try {
+    id = await attachSession(app, handle, modelRef)
+  } catch (err) {
+    // A half-mounted attach must not leak the freshly created agent.
+    await rollbackAttach(app, handle.agent.session.id, handle)
+    throw err
+  }
   await switchTo(app, id)
   app.slices.sessions.refreshList()
   void app.refreshCommandCatalog()
@@ -135,8 +142,19 @@ export const createSession = async (app: App, cwdPath?: string) => {
  *  AgentHandle, and two FeedRenderers writing the same buffers). */
 const resuming = new Map<string, Promise<string | undefined>>()
 
-export const ensureLiveSession = (app: App, id: string): Promise<string | undefined> => {
-  if (app.slices.sessions.live.has(id)) return Promise.resolve(id)
+/** In-flight disposes: `agents.resume` on an id whose AgentHandle is still
+ *  being disposed hits the host's `session "…" already exists` guard, so a
+ *  reopen must WAIT for the dispose instead of racing it. */
+const disposing = new Map<string, Promise<void>>()
+
+export const ensureLiveSession = async (app: App, id: string): Promise<string | undefined> => {
+  // Wait out an in-flight dispose of the same id BEFORE the live check —
+  // the record is deleted only once its handle is really gone.
+  const pendingDispose = disposing.get(id)
+  if (pendingDispose !== undefined) {
+    try { await pendingDispose } catch {}
+  }
+  if (app.slices.sessions.live.has(id)) return id
   const inflight = resuming.get(id)
   if (inflight !== undefined) return inflight
   const p = doResumeSession(app, id).finally(() => {
@@ -162,22 +180,41 @@ const doResumeSession = async (app: App, id: string): Promise<string | undefined
   })
   const sid = await attachSession(app, handle, modelRef, { background: true })
   const rec = app.slices.sessions.live.get(sid)!
-  const events = app.slices.trans.sessionEvents(handle.agent.session)
-  rec.feed.appendNotice(`history replay: ${events.length} events`)
-  for (const event of events) {
-    // The replay path bypasses boot/session-events' hook table, so replay
-    // the hooks the UI depends on for RESTORED state — the title is a log
-    // event in 0.1.5 (session/title) and used to be lost on resume.
-    if (event.type === 'session/title') {
-      const d = event.data as { title?: unknown } | undefined
-      if (typeof d?.title === 'string' && d.title !== '') rec.title = d.title
+  try {
+    const events = app.slices.trans.sessionEvents(handle.agent.session)
+    rec.feed.appendNotice(`history replay: ${events.length} events`)
+    for (const event of events) {
+      // The replay path bypasses boot/session-events' hook table, so replay
+      // the hooks the UI depends on for RESTORED state — the title is a log
+      // event in 0.1.5 (session/title) and used to be lost on resume.
+      if (event.type === 'session/title') {
+        const d = event.data as { title?: unknown } | undefined
+        if (typeof d?.title === 'string' && d.title !== '') rec.title = d.title
+      }
+      app.slices.ui.foldEvent(rec, event)
+      rec.feed.applyEvent(event, { history: true })
+      app.slices.ui.maybePushFileDiff(rec.feed, event)
     }
-    app.slices.ui.foldEvent(rec, event)
-    rec.feed.applyEvent(event, { history: true })
-    app.slices.ui.maybePushFileDiff(rec.feed, event)
+  } catch (err) {
+    // A failed replay used to leave a HALF-MOUNTED record behind: `live` kept
+    // the broken session, `ensureLiveSession`'s early return then handed it
+    // back forever (the session could never be opened again), and the agent
+    // handle leaked. Roll the whole attach back and rethrow for the caller's
+    // fallback path.
+    app.exitDiag('resume-replay-failed', (err as Error).message)
+    await rollbackAttach(app, sid, handle)
+    throw err
   }
   app.slices.sessions.refreshList()
   return sid
+}
+
+/** Undo a half-mounted attach: drop the live record, dispose the handle and
+ *  reclaim the nvim chat buffer. Best-effort — never throws. */
+const rollbackAttach = async (app: App, sid: string, handle: { dispose: () => Promise<unknown> }): Promise<void> => {
+  try { app.slices.sessions.live.delete(sid) } catch {}
+  try { await handle.dispose() } catch (err) { app.exitDiag('rollback-dispose-failed', (err as Error).message) }
+  void app.luaCall('return require("dsh_tui").close_chat(...)', [sid]).catch(() => {})
 }
 
 /** Dispose one live session that is NOT the active view (background-resumed
@@ -187,15 +224,27 @@ export const disposeLiveSession = async (app: App, id: string): Promise<void> =>
   if (id === app.slices.sessions.activeId) return
   const rec = app.slices.sessions.live.get(id)
   if (rec === undefined) return
-  app.slices.sessions.live.delete(id)
+  const p = (async (): Promise<void> => {
+    // DISPOSE FIRST, delete after: deleting the record up front exposed a
+    // window where a reopen resumed the still-registered session and hit the
+    // host's `session "…" already exists` guard (plus two FeedRenderers on
+    // one buffer).
+    try {
+      await rec.handle.dispose()
+    } catch (err) {
+      app.exitDiag('disposeLiveSession', (err as Error).message)
+    }
+    app.slices.sessions.live.delete(id)
+    // Reclaim the chat buffer on the nvim side (runner-side LRU close_chat).
+    void app.luaCall('return require("dsh_tui").close_chat(...)', [id]).catch(() => {})
+    app.slices.sessions.refreshList()
+  })()
+  disposing.set(id, p)
   try {
-    await rec.handle.dispose()
-  } catch (err) {
-    app.exitDiag('disposeLiveSession', (err as Error).message)
+    await p
+  } finally {
+    if (disposing.get(id) === p) disposing.delete(id)
   }
-  // Reclaim the chat buffer on the nvim side (runner-side LRU close_chat).
-  void app.luaCall('return require("dsh_tui").close_chat(...)', [id]).catch(() => {})
-  app.slices.sessions.refreshList()
 }
 
 
@@ -310,7 +359,13 @@ export const forkSession = async (app: App, directive: string | undefined): Prom
         installTodoGuard(agentCtx, todoGuardEnabled(app))
       },
     })
-    const id = await attachSession(app, handle, modelRef)
+    let id: string
+    try {
+      id = await attachSession(app, handle, modelRef)
+    } catch (err) {
+      await rollbackAttach(app, handle.agent.session.id, handle)
+      throw err
+    }
     await switchTo(app, id)
     app.slices.sessions.refreshList()
     app.notice(`已分叉到 ${id}（继承 ${cut} 条历史事件）`)

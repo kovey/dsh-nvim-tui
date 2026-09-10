@@ -528,7 +528,8 @@ export interface App {
     exitDiag: (kind: string, ...detail: unknown[]) => void;
     quit: (code?: number) => Promise<void>;
     teardown: () => Promise<void>;
-    closeNvimWindow: () => Promise<void>;
+    /** Close the nvim window; resolves TRUE only when the child is dead. */
+    closeNvimWindow: () => Promise<boolean>;
     /** Command registry (kernel bootstrap facility: every module registers
      *  its specs at install time, so the mechanism exists from t=0). */
     registerCommands: (specs: CommandSpec[]) => CommandSpec[];

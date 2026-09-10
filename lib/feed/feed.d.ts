@@ -117,6 +117,10 @@ export declare class FeedRenderer {
         name: string;
         startedAt: number;
     } | null;
+    /** Consecutive reasoning-panel write failures (self-heal trigger). */
+    reasoningFailures: number;
+    /** Card extmark failures (diagnostics only — one bad card must not stop the batch). */
+    cardFailures: number;
     base: string[];
     tail: string;
     reasoningTail: string;

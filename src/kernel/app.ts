@@ -395,7 +395,8 @@ export interface App {
   exitDiag: (kind: string, ...detail: unknown[]) => void
   quit: (code?: number) => Promise<void>
   teardown: () => Promise<void>
-  closeNvimWindow: () => Promise<void>
+  /** Close the nvim window; resolves TRUE only when the child is dead. */
+  closeNvimWindow: () => Promise<boolean>
   /** Command registry (kernel bootstrap facility: every module registers
    *  its specs at install time, so the mechanism exists from t=0). */
   registerCommands: (specs: CommandSpec[]) => CommandSpec[]
@@ -490,7 +491,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     exitDiag: () => {},
     quit: async () => {},
     teardown: async () => {},
-    closeNvimWindow: async () => {},
+    closeNvimWindow: async () => true,
     commandSpecs: [],
     // Command registry (kernel bootstrap facility: EVERY module registers
     // its specs at install time, so the mechanism must exist from t=0 —
