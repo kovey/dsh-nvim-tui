@@ -10,6 +10,8 @@ import type { App } from '../kernel/app.js';
 /** /market [关键词 | refresh] — plugin marketplace: curated
  *  awesome-dsh-plugin catalog sorted by GitHub stars (desc), with
  *  install / update / uninstall through the official `dsh plugin` CLI. */
+/** /plugin [install|remove <spec> | list] — direct `dsh plugin` access for
+ *  plugins the curated catalog does not list (npm name / owner-repo / git URL). */
 /** Live progress float driver: streams log lines + a bottom bar into the
  *  enable/disable through the profile patch layer (HMR, no restart). */
 export declare function installMarketInstall(app: App): void;

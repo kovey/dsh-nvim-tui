@@ -247,6 +247,7 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 信息 | `/lines [路径]` | 文件行视图（只读浮窗，`i` 打开编辑；无参时弹目录选择器） |
 | 信息 | `/plugins` | 宿主插件清单（loader 条目只读投影） |
 | 信息 | `/market [关键词 \| refresh \| update-all]` | **插件市场**：awesome-dsh-plugin 精选目录（2140+ 插件）按 GitHub ★ 倒序，安装/更新/卸载（`dsh plugin` CLI，重启生效）+ **热启停**（cordis.patch.yml + HMR 免重启）+ `↑` 更新标记 + update-all，磁盘缓存 + 离线可用 |
+| 信息 | `/plugin [install\|remove <spec> \| list]` | **市场目录之外的直装入口**：`spec` 可为 npm 包名 / `owner/repo` / git URL，直接交给官方 CLI，小众或私有插件在 `/market` 里搜不到时用它；`install` 成功后重启 dsh 生效（`/market` 负责目录浏览，两者互补） |
 | 模型 | `/models` | 模型/供应商目录（活路由 + 可配置 provider 清单 + 当前选择） |
 | 会话 | `/attach [路径]` | 附加文件/目录（图片 = durable attachment，其余 = @ 路径引用）；`@` 输入即文件引用补全 |
 | 会话 | `/image <路径> [提示]` | **多模态识图**：本地图片（png/jpg/webp/gif，支持 `~/`）随提示发送；macOS 无参数时读剪贴板图片；`/image clear` 清空 `<C-v>` 队列 |
@@ -505,7 +506,7 @@ src/                          TypeScript 源码（strict，唯一手写源；根
   statusline/ 状态栏域：index.ts（渲染/折叠统计 + agent/status 宿主事件）+ commands/ 4 命令文件
   ext-api/    扩展 API 域：install + handleDshExtRequest + announceReady + 4 个 dsh-ext 通知
   deps/       依赖体检：index.ts + services.ts（体检机制）+ commands/deps.ts
-  market/     插件市场：index.ts + progress.ts（数据层 + 安装进度 UI）+ commands/market.ts
+  market/     插件市场：index.ts + progress.ts（数据层 + 安装进度 UI）+ commands/market.ts + commands/plugin.ts（目录外直装）
 lib/                          tsc 编译产物（.js + .d.ts；dsh 加载入口 main → lib/index.js）
 nvim/lua/dsh_tui/             nvim 侧 UI（按职责拆分的 Lua 模块）
   init.lua      公共门面：完整的 M.* API 转发 + 跨模块意图编排（submit/菜单路由）+ start()

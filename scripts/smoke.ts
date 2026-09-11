@@ -24,6 +24,7 @@ import { runningBadge } from '../lib/statusline/index.js'
 import stringWidth from 'string-width'
 import { matchSessionEventFilter } from '../lib/ext-api/index.js'
 import { readPatchRowIds, packageExists } from '../lib/deps/index.js'
+import { parsePluginArgs } from '../lib/market/commands/plugin.js'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN } from '../lib/kernel/todo-guard.js'
 import { encodeSessionLog, encodeHeaderOnlyLog } from '../lib/kernel/subagent-clean.js'
@@ -1801,6 +1802,43 @@ description:
     log(`packageExists probes (no env injection): ${inStore.length}/${hostPlugins.length} store packages detected`)
   } else {
     log('skip packageExists probes (no profile store found)')
+  }
+
+  // 9f4. /plugin 参数解析（市场目录之外的直装入口）。纯函数：装/卸/列表/错误分支。
+  {
+    assert.deepEqual(parsePluginArgs(undefined), { kind: 'usage' }, '/plugin with no args shows usage')
+    assert.deepEqual(parsePluginArgs('   '), { kind: 'usage' }, 'blank arg shows usage')
+    assert.deepEqual(parsePluginArgs('help'), { kind: 'usage' }, '/plugin help shows usage')
+    assert.deepEqual(parsePluginArgs('list'), { kind: 'list' }, '/plugin list lists installed')
+    assert.deepEqual(parsePluginArgs('ls'), { kind: 'list' }, '/plugin ls alias')
+    // install / add (and the CLI's own verb) all map to add.
+    for (const verb of ['install', 'add']) {
+      assert.deepEqual(parsePluginArgs(`${verb} dsh-context`), { kind: 'add', spec: 'dsh-context' }, `${verb} <npm name>`)
+      assert.deepEqual(parsePluginArgs(`${verb} owner/repo`), { kind: 'add', spec: 'owner/repo' }, `${verb} owner/repo`)
+      assert.deepEqual(
+        parsePluginArgs(`${verb} git+https://example.com/a.git`),
+        { kind: 'add', spec: 'git+https://example.com/a.git' },
+        `${verb} git URL`,
+      )
+    }
+    for (const verb of ['remove', 'uninstall', 'rm']) {
+      assert.deepEqual(parsePluginArgs(`${verb} dsh-context`), { kind: 'remove', spec: 'dsh-context' }, `${verb} <spec>`)
+    }
+    // A spec may contain spaces (local path) and is passed through verbatim.
+    assert.deepEqual(
+      parsePluginArgs('install /Users/me/my plugin'),
+      { kind: 'add', spec: '/Users/me/my plugin' },
+      'spec with spaces preserved',
+    )
+    // Verb casing + surrounding whitespace are tolerated.
+    assert.deepEqual(parsePluginArgs('  INSTALL   dsh-context  '), { kind: 'add', spec: 'dsh-context' }, 'casing/space tolerant')
+    // Errors: unknown verb → usage; missing spec; a leading '-' would be
+    // parsed by the CLI as a flag, so it must be rejected by the parser.
+    assert.deepEqual(parsePluginArgs('frobnicate x'), { kind: 'usage' }, 'unknown verb falls back to usage')
+    assert.deepEqual(parsePluginArgs('install'), { kind: 'missing-spec', sub: 'install' }, 'missing spec reported')
+    assert.deepEqual(parsePluginArgs('remove'), { kind: 'missing-spec', sub: 'remove' }, 'missing spec reported (remove)')
+    assert.deepEqual(parsePluginArgs('install --frozen'), { kind: 'bad-spec', spec: '--frozen' }, 'leading dash rejected')
+    log('plugin arg parser: verbs/aliases/spec-passthrough/error branches ok')
   }
 
   // 9g3. /difficulty 难度路由（M2 规则定档：纯函数）。
