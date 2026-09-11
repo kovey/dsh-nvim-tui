@@ -3,91 +3,138 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [v0.3.5（2026-09-10）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.5)
+## [v0.4.0（2026-09-10）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.0)
 
 覆盖提交：
 [`5ff1b28`](https://github.com/kovey/dsh-nvim-tui/commit/5ff1b28) ·
 [`7e27a05`](https://github.com/kovey/dsh-nvim-tui/commit/7e27a05) ·
 [`aff0b0d`](https://github.com/kovey/dsh-nvim-tui/commit/aff0b0d) ·
-[`6ddae4d`](https://github.com/kovey/dsh-nvim-tui/commit/6ddae4d)
+[`6ddae4d`](https://github.com/kovey/dsh-nvim-tui/commit/6ddae4d) ·
+[`63bbb69`](https://github.com/kovey/dsh-nvim-tui/commit/63bbb69) ·
+[`82770e5`](https://github.com/kovey/dsh-nvim-tui/commit/82770e5) ·
+[`2bb6855`](https://github.com/kovey/dsh-nvim-tui/commit/2bb6855) ·
+[`fc797d8`](https://github.com/kovey/dsh-nvim-tui/commit/fc797d8) ·
+[`a14c7a7`](https://github.com/kovey/dsh-nvim-tui/commit/a14c7a7) ·
+[`d530126`](https://github.com/kovey/dsh-nvim-tui/commit/d530126) ·
+[`1a9d5fe`](https://github.com/kovey/dsh-nvim-tui/commit/1a9d5fe) ·
+[`c350c24`](https://github.com/kovey/dsh-nvim-tui/commit/c350c24) ·
+[`386dbdd`](https://github.com/kovey/dsh-nvim-tui/commit/386dbdd) ·
+[`09a5829`](https://github.com/kovey/dsh-nvim-tui/commit/09a5829) ·
+[`986ed41`](https://github.com/kovey/dsh-nvim-tui/commit/986ed41) ·
+[`637f809`](https://github.com/kovey/dsh-nvim-tui/commit/637f809) ·
+[`5438bc6`](https://github.com/kovey/dsh-nvim-tui/commit/5438bc6) ·
+[`5271090`](https://github.com/kovey/dsh-nvim-tui/commit/5271090) ·
+[`e82ee37`](https://github.com/kovey/dsh-nvim-tui/commit/e82ee37)
 
-**dsh v0.1.5-rc.1 全面适配**（peer 依赖锚点 `^0.1.5-rc.1`，逐包核对官方
-release notes / session V3 迁移文档 / 22 个依赖包的类型面差异）：
+> **版本说明**：原计划的 `v0.3.5` 未单独打标签发布，其全部内容并入本版；
+> 本版相对 v0.3.4 共 19 个提交，涵盖 0.1.5-rc.1 适配、两个新特性、
+> 一次全代码库审计（9 批 91 项修复）与 TypeScript 严格性拉满。
+> 升级前请先读 [UPGRADE.md](UPGRADE.md)。
 
-- **`ctx.sessions` 移除适配**：注入面改为 `['agents','agentDefaultModel']`，
-  live 会话经 `agents.get/list` 的 `Agent.session` 自建适配器（0.1.5 的
-  AgentRegistry 语义）。
+### 1. dsh v0.1.5-rc.1 全面适配（peer 锚点 `^0.1.5-rc.1`）
+
+逐包核对官方 release notes / session V3 迁移文档 / 22 个依赖包的类型面差异：
+
+- **`ctx.sessions` 移除**：live 会话存储并入 `ctx.agents`（`agents.get/list`
+  返回的 Agent 携带 `.session`）。TUI 注入面改为 `['agents','agentDefaultModel']`，
+  自建 `liveSessions` 适配器；**双宿主兼容**（0.1.2-rc.1 仍可用）。
 - **sessionPersistence 新 API**：`list()` 快照（`{header,revision,…}`）归一化；
-  冷读改 `open(id,'read').read()` + close；`supportsRawArtifacts` 缺失时
-  清理路径自动降级为仅隐藏（不再直写宿主物理文件）。
-- **V3 规范信封**：自愈修复的 surface replace 改 `startSeq/endSeq`
-  （0.1.5 拒绝旧 `start/end` 拼写）。
-- **subagents 续聊**：改走公开 `subagents.prompt(...)`（queue/steer +
-  requestId），保留旧符号键路径兼容 0.1.2 宿主。
-- **识图模型**：候选优先 `deepseek-flash`（0.1.5 新默认，自带 image），
-  并新增 `llm.listModels` 目录扫描兜底（任意 image 模态模型）。
-- **难度路由补强**：档位模型切换前经 `resolveModelInfo` 校验存在性
-  （缺失时跳过并提示，不再让回合死于 NO_ADAPTER）；0.1.5 的模型切换
-  notice（`form:'notice'`）按暗淡通知行渲染。
+  冷读改 `open(id,'read').read()` + `close()`；`supportsRawArtifacts` 缺失时
+  清理路径降级为仅隐藏。
+- **Session V3 日志**：surface replace 改 `startSeq/endSeq`；新增
+  `system/message` 事件；恢复回放补齐 `session/title`（标题不再丢）。
+- **subagents 续聊**：改走公开 `subagents.prompt(...)`（requestId + queue/steer），
+  保留旧符号键路径兼容旧宿主。
+- **识图**：候选优先 `deepseek-flash`（0.1.5 新默认，自带 image）+ `llm.listModels`
+  目录扫描兜底；识图切换会丢弃模型不支持的 `reasoningEffort`
+  （避免 `UNSUPPORTED_REASONING_EFFORT`）。
+- **工程**：`devDependencies`/lockfile 对齐 0.1.5-rc.1，并**在 0.1.5 类型面上**
+  跑通 `tsc` + 架构/域操作门禁 + smoke（compile-time 不再对着 0.1.2）。
 
-**新特性：`/difficulty` 按任务难度自动选模型（M1-M4）**：
+### 2. 新特性：`/difficulty` 按任务难度自动选模型（M1-M4）
 
-- M1 显式档位 `easy|medium|hard|auto|off` + runner config
-  `difficultyRouting.tiers`（HMR）；M2 规则定档（计划模式/活跃目标/工具
-  失败数/关键词/长度）；M3 可选 LLM 分类器（便宜模型打分，失败回退规则）；
+- M1 显式档位 `easy|medium|hard|auto|off` + runner config `difficultyRouting.tiers`
+  （HMR 生效）；M2 规则定档（计划模式/活跃目标/工具失败数/关键词/长度）；
+  M3 可选 LLM 分类器（便宜模型打分，**分类失败/超时回退规则**，不再误判为 medium）；
   M4 子代理模型闸门同步（官方 `subagent-model-selection`）。
-- 发送前临时切换会话模型，回合结束自动切回全局默认；状态栏档位徽标
-  🟢/🟡/🔴；手动 `/model` 暂停路由，`agentDefaultModel` 持久化默认不被污染。
+- 发送前临时切换会话模型，回合结束自动切回全局默认；状态栏档位徽标 🟢/🟡/🔴；
+  手动 `/model` 暂停路由（`/difficulty auto` 恢复），`agentDefaultModel` 不被污染。
+- **排队消息不再中途改模型**：回合运行中到达的消息只"停放"估算，turn/end 恢复后
+  再为排队回合切换（此前会静默改掉运行中回合的后续步骤模型）。
+- 档位模型切换前经 `listModels` 目录校验 + effort 兼容校验；`medium` 档位配置可生效；
+  `tiers.*.effort` 与当前相同 provider/model 的 effort 差异也能触发切换。
 
-**英文模式（i18n）补全**：
+### 3. 新特性：待办清单纪律守卫（逐项更新硬约束）
 
-- 补齐 154 条英文翻译并清理 142 条死键；`npm run i18n:report` 现为 **0 死键 / 0 未翻译**
-  （329 键 / 330 引用），并新增「未走 `t()`/`tf()` 的中文字面量」指标（当前 489 行）。
+- 每个 agent 作用域注入常驻 system-prompt 段落 + `agent/pre-step` 逐步提醒：
+  某一步有工具调用却没写清单、且仍有未完成项时，向**下一次请求**注入具体未完成项
+  清单（每回合上限 3 条）——把"逐项更新"从模型自觉变成代码层面的硬性要求。
+- 关闭：`config.todoGuard: false` 或 `DSH_NVIM_TUI_TODO_GUARD=0`。
+- 回归保护：smoke 新增"回合内流式输出中连续 `todo/write` 中间态即时渲染"断言。
+
+### 4. 新特性：英文模式（i18n）完整覆盖 + `/locale` 双向
+
+- 补齐全部英译并清理死键，`npm run i18n:report` 现为 **628 键 / 631 引用 /
+  0 死键 / 0 未翻译**；新增「未走 `t()`/`tf()` 的中文字面量」指标
+  （489 → 169，余量均为不应翻译项：`nlcmd` 意图匹配表、模型侧提示、RPC 名、配置键）。
 - 新增 `tf(zh, {vars})`：`t()` 用在模板字符串上永远命中不了字典（传入的是已插值串），
-  这 7 处此前在 en 模式恒显中文——已全部改为占位符模板。
-- **第二层**：包装 **235 行**从未经过 `t()` 的中文字面量（通知/状态栏/选择器/进度日志，
-  纯字面量 → `t()`、模板串 → `tf()`），并补译 184 条文案（由 deepseek-v4-flash
-  分片翻译 + 脚本逐条校验）。未包装字面量 **489 → 244**（余量多为 `nlcmd` 意图匹配表、
-  模型侧提示、RPC 诊断标签等无需翻译项）；字典最终 **563 键 / 564 引用 / 0 死键 / 0 未翻译**。
-- `/locale zh|en` 现为**双向**：`t()` 维护反向索引、命令目录在推送时翻译，
-  zh→en→zh 往返一致（此前在 en 启动后无法还原中文）。
+  这类调用在 en 模式恒显中文——已全部改为占位符模板（每个插值独立占位符，求值顺序
+  与原代码逐字一致）。
+- `/locale zh|en` **双向**：`t()` 维护反向索引、命令目录在推送时翻译，
+  zh→en→zh 往返一致。
 
-**TypeScript 严格性（按标准拉满，消除隐患）**：
+### 5. 全代码库审计（[docs/REVIEW-2026-09.md](docs/REVIEW-2026-09.md)，9 批 91 项）
 
-- 移除 `SessionRec` 的尾随索引签名（字段拼错不再静默通过）；有意保留的宿主载荷
-  索引签名与 `RunnerConfig` 补上明确注释。
-- `ApprovalRequest.signal` 改用标准 `AbortSignal`；审批/问答的 abort 监听器在
-  **结算时摘除**（此前每个正常应答的请求都留下一个监听器闭包）。
+14 个单元在 `deepseek-v4-flash` 上并行审计（157 条发现）+ 对抗性复核，随后分 9 批修复。
+高危要点：
+
+- **渲染管线阻断**：多行字符串（workflow 阶段/错误详情/卡片文案来自宿主与模型）
+  会让 `nvim_buf_set_lines` 整体失败（E5108）→ 末行统一折叠；`toolActivity` 在
+  turn/end 不清导致 500ms 自续 flush 死循环 + 幽灵"运行中"行 → 清理。
+- **启动/退出安全**：入站监听提前到 `attach` 之前（此前 `User DshTuiAttach` 里的
+  `rpcrequest` 无应答 → Lua 侧阻塞在 attach 内**双向死锁**）；启动失败退出码不再为 0；
+  `/restart` 在旧 nvim 未死时**取消重启**；退出预算覆盖 closeNvimWindow 最坏耗时
+  （此前 2000ms 早于 2.5s 清理窗口，flush 被截断）。
+- **会话生命周期**：resume 回放失败整体回滚（半挂载记录会让会话永远打不开）；
+  `disposeLiveSession` 改"先 dispose 后 delete"（消除 `session already exists` 竞态）；
+  `/sessions` 的「未分组」真正实现（此前是死行）。
+- **`/deps install` 恒为空操作**（根因）：`packageExists` 只按 profile 根解析，而
+  11 个宿主插件全在 **dsh 安装根**下 → 所有装配行被跳过。现已按 dsh 包目录解析
+  （实测 11/11 命中）。
+- **`/market` 自修复链**：候选源全失败时恢复原安装（不再留下"已卸载"却报"入口缺失"）；
+  入口判定支持 `exports`-only 包；spec→包名精确派生；CLI 超时补 SIGKILL + `'close'`。
+- **用户 patch 保护**：`readPatch` 仅在 `ENOENT` 视为空，其余读失败**中止写入**
+  （此前会把整份 `cordis.patch.yml` 改写成空）；运行 profile 可解析时不再回退目录扫描
+  （避免写进另一个 profile）。
+- **子代理**：running 语义修正（宿主 `activity` 只是"驻留"）；冷读句柄 `try/finally`
+  关闭；`/subagents` 实现"可取消"。
+- **其它**：`@` 补全服务抛错时降级本地扫描 + 4s/30s 有界超时；`~` 展开修复
+  （`/image`/`/attach`）；`splitImageDataUrls` 全局扫描（第二张粘贴图不再漏发）；
+  推理面板自愈；卡片 mark 逐卡隔离；`/rewind` 重建不再重复累加用量；`/deps` pnpm
+  版本探测修复；`estimateCost` 补齐 0.1.5 catalog（含 `deepseek-flash`）+ 族名回退；
+  `/theme` 切回 `default` 真正重置；`/density` 即时重绘并持久化；workflow 运行表按
+  会话隔离且限界；`/fb` 不再把列表失败当"无反馈"；`/memory` 递归列举。
+- 完整报告（含 14 个单元的全部发现、复现探针与"判定不是问题"的清单）随仓库发布于
+  [docs/audit-2026-09/](docs/audit-2026-09/)。
+
+### 6. TypeScript 严格性（按标准拉满）
+
+- 移除 `SessionRec` 尾随索引签名（字段拼错不再静默通过）。
 - 启用 `noUncheckedIndexedAccess`、`noPropertyAccessFromIndexSignature`、
   `exactOptionalPropertyTypes`、`verbatimModuleSyntax`、`noImplicitOverride`、
-  `noFallthroughCasesInSwitch`、`noImplicitReturns`、`allowUnreachableCode:false`
+  `noFallthroughCasesInSwitch`、`noImplicitReturns`、`allowUnreachableCode:false`，
   并修完全部暴露点（索引访问 71 / 动态属性 63 / 可选属性 36）。
+- 宿主边界（`ModelSelection.reasoningEffort`）改**条件展开**，保证"缺省 ≠ 显式
+  undefined"；`ApprovalRequest.signal` 改用标准 `AbortSignal`，审批/问答的 abort
+  监听器在结算时摘除。
 
-**界面一致性 / 低危清理**：
+### 7. 其它修复
 
-- `tf()` 包装收尾：RPC 诊断标签、picker 动作标签、分类消息等 73 行 + 补译 65 条 ——
-  字典 **628 键 / 631 引用 / 0 死键 / 0 未翻译**（`npm run i18n:report`）。
-- workflow 运行表按会话隔离且各数组限界；`/density` 即时重绘并持久化；`/theme` 切回
-  `default` 会真正清除上一预设（空 spec = 重置），并持久化/恢复。
-- `estimateCost` 增加族名回退（`*flash*`/`*pro*`）；`readImageFile` 改为 512B 前缀嗅探；
-  `/fb` 不再把列表失败当"无反馈"；`/memory` 递归列举；`/subagents` 实现"可取消"；
-  `/deps` 去重并入 loader 现有行、pnpm 版本探测修复（2s 上限）。
-
-**待办清单纪律（逐项更新硬约束）**：
-
-- 每个 agent 作用域注入常驻 system-prompt 段落 + `agent/pre-step` 逐步提醒
-  （有工具活动却未写清单、且仍有未完成项时，向下一请求注入具体未完成项清单；
-  每回合上限 3 条）——把"逐项更新"从模型自觉变成代码层面的硬性要求。
-- 关闭：`config.todoGuard: false` / `DSH_NVIM_TUI_TODO_GUARD=0`；真机验证：
-  0.1.5 会话首条 `system/message` 已包含该段落。
-
-**修复**：
-
-- `/market` 行距：★ 与星数间加空格、星块与名称间隔加大（宽字形字体不再
-  遮挡数字）。
-- `/deps install` 一步到位：写入后等待热重载就绪，超时自动重启 dsh；
-  一键装配与 `/market` 一律按启动时的真实 profile 写配置（loader include
-  条目解析，删除硬编码 `nvim-tui` 回退，解析不到时明确报错）。
+- `/market` 行距：★ 与星数间加空格、星块与名称间隔加大（宽字形字体下星星不再遮挡数字）。
+- `/deps install` 一步到位：写入后等待热重载就绪，超时自动重启 dsh；配置一律写入
+  **启动时的真实 profile**（loader include 条目解析，删除硬编码 `nvim-tui` 回退）。
+- 鲸鱼动画补齐 6 个未定义高亮组（不再回落默认色并帧间闪烁）；空文件 diff 不再
+  多出 `+ ` 行；步骤进度块不再被提升到正文之上；表格 `\|` 反转义。
 
 ## [v0.3.4（2026-09-09）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.3.4)
 

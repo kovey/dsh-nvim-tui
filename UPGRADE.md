@@ -1,33 +1,89 @@
-# 升级指南：dsh 0.1.2-rc.1 → 0.1.5-rc.1（nvim-tui v0.3.5）
+# 升级指南
 
-dsh-nvim-tui v0.3.5 将 peer 依赖锚点抬升至 **`^0.1.5-rc.1`**，并完成对
-0.1.5-rc.1 的全面适配核查。本次是 0.1.5 系列首个候选版，宿主发生了多项
-插件侧破坏性变更，TUI 的适配点如下（详见 CHANGELOG v0.3.5）：
+本文件按"宿主版本轴"记录升级步骤与注意事项。**先读与你自己相关的那一段**：
 
-- **`ctx.sessions` 服务移除**：live 会话存储并入 `ctx.agents` 注册表
-  （`agents.get/list` 返回的 Agent 携带 `.session`）。TUI 注入面改为
-  `['agents','agentDefaultModel']` 并自建 sessions 适配器。
-- **Session 生命周期/V3 日志格式**：`sessionPersistence` 改为
-  `list()`（快照 `{header,revision,…}`）+ `open(id,'read').read()` 的
-  SessionHandle 模型；V3 规范信封的 surface replace 拼写改为
-  `startSeq/endSeq`。TUI 的会话历史/子代理冷读/自愈修复全部随迁。
+| 你的现状 | 读这一节 |
+|---|---|
+| nvim-tui ≤ v0.3.4（宿主 0.1.2-rc.1） | [v0.3.4 → v0.4.0（含宿主 0.1.2-rc.1 → 0.1.5-rc.1）](#v034--v040含宿主-012-rc1--015-rc1) |
+| nvim-tui v0.4.0 已升（宿主仍 0.1.2-rc.1） | 同上（宿主段落必读：peer 锚点已改为 `^0.1.5-rc.1`） |
+| 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
+
+---
+
+## v0.3.4 → v0.4.0（含宿主 0.1.2-rc.1 → 0.1.5-rc.1）
+
+> **版本说明**：原计划的 `v0.3.5` 未单独打标签发布，其内容并入 v0.4.0。
+> v0.4.0 的 peer 依赖锚点是 **`^0.1.5-rc.1`**：与 0.1.2-rc.1 宿主**不混用**
+> （0.1.2 宿主请留在 v0.3.4）。
+
+### 必须做的三步
+
+```bash
+# 1) 升级宿主（next dist-tag 当前即 0.1.5-rc.1）
+npm i -g @deepseek-ai/dsh@next
+dsh --version                      # 期望 0.1.5-rc.1
+
+# 2) 升级插件到 v0.4.0
+dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui
+#    或固定版本：dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.0"
+
+# 3) 依赖树对齐（v0.4.0 起 devDependency/lockfile 也锚定 0.1.5-rc.1；
+#    只有从源码开发才需要）
+cd <本仓库> && rm -rf node_modules package-lock.json && npm install
+
+dsh --profile nvim-tui             # 重启生效（HMR 不足以换掉 peer 依赖）
+```
+
+### 行为变化（升级后你会看到）
+
+- **会话日志迁移到 V3**：宿主首次启动会迁移既有日志；`nvim-tui` 的历史/恢复/
+  分叉消费面已随迁（旧日志仍可读，但**不要**用旧版插件读新日志）。
+- **默认模型换代**：新会话默认 `deepseek-flash`（自带 image 模态）；识图候选
+  优先 `deepseek-flash`，并对目录中任意 image 模态模型兜底。
+- **`/rewind` 在新宿主降级**：0.1.5-rc.1 移除了 `session.truncate`，命令改为
+  明确提示不可用；规避方式：`/fork` 派生新会话，或留在 0.1.2 宿主。
+- **待办清单纪律默认开启**：每个 agent 作用域注入常驻 system-prompt 段落 +
+  `agent/pre-step` 逐步提醒（每回合最多 3 条）。关闭方式：
+  `config.todoGuard: false` 或环境变量 `DSH_NVIM_TUI_TODO_GUARD=0`。
+- **`/difficulty` 更严格**：档位模型切换前会做目录（`listModels`）与
+  `reasoningEffort` 兼容校验，不匹配时跳过并提示，而不是让回合报适配器错误。
+- **`/theme`、`/density` 偏好持久化**到 `$DSH_HOME/dsh-nvim-tui-state.json`
+  （与"上次活跃会话"同一文件）；`/theme default` 现在会真正清除上一预设。
+- **`/deps install` 真正可用**：此前因安装根解析错误而**恒为空操作**（宿主包在
+  dsh 安装根的 `node_modules` 下，旧实现只查 profile 根）；同时 `pnpm` 版本探测
+  修复。装配后按运行 profile 写入，等待热重载，必要时自动重启。
+- **`/locale zh|en` 双向**：en 模式覆盖已补全（628 键 / 0 未翻译 / 0 死键），
+  且切回中文可用（此前在 en 启动后无法还原）。
+
+### 从源码开发时新增的门禁
+
+```bash
+npm run check          # src + scripts 双 tsconfig（TypeScript 严格性已拉满）+ 架构/域操作门禁
+npm run smoke          # 无头冒烟（含 0.1.5 双宿主兼容断言）
+npm run i18n:report    # i18n 漂移报告（死键 / 未翻译 / 未包装字面量）
+```
+
+TypeScript 严格性：`strict` + `noUnusedLocals/Parameters` +
+`noUncheckedIndexedAccess` + `noPropertyAccessFromIndexSignature` +
+`exactOptionalPropertyTypes` + `verbatimModuleSyntax` + `noImplicitOverride` +
+`noFallthroughCasesInSwitch` + `noImplicitReturns` + `allowUnreachableCode:false`。
+宿主边界用**条件展开**表达"缺省 ≠ 显式 undefined"。
+
+### 宿主侧破坏性变更（插件已适配，供排查用）
+
+- **`ctx.sessions` 服务移除**：live 会话存储并入 `ctx.agents`（`agents.get/list`
+  返回的 Agent 携带 `.session`）。TUI 注入面改为 `['agents','agentDefaultModel']`
+  并自建 sessions 适配器。
+- **Session 生命周期 / V3 日志**：`sessionPersistence` 改为 `list()`（快照
+  `{header,revision,…}`）+ `open(id,'read').read()` 的 SessionHandle 模型；
+  surface replace 拼写改为 `startSeq/endSeq`；新增 `system/message` 事件。
+  TUI 的会话历史 / 子代理冷读 / 自愈修复全部随迁。
 - **subagents 续聊**：符号键 `queueSubagentPrompt` 移除，改为公开
   `subagents.prompt({requestId, parentSessionId, childSessionId,
-  mode:'continuable', delivery:'queue', content}, signal)`（双路径兼容
-  旧宿主）。
-- **默认模型换代**：新会话默认 `deepseek-flash`（DeepSeek-V41-Flash，
-  自带 image 模态）；识图候选优先 `deepseek-flash` 并新增"目录扫描任意
-  image 模态模型"兜底（不再只认硬编码 id）。
-- **新增 surface 事件 `system/message`** 与模型切换 notice
-  （`form:'notice'` 用户消息）：TUI 以暗淡通知行渲染，不进用户气泡。
-- 其余核对：Inbox 接口（nextTurn/nextStep/clear/append/prepend/replace/
-  remove/splice）、agents.create/resume（async，setup 增第二参）、
-  installModelSelection、agentDefaultModel、settings、jobs、planMode、
-  goals、skills、sessionQuery、messageFeedback、workspace、permission
-  presets、compaction、attachments、loader include 条目、`dsh --profile`
-  CLI 与 profile 目录布局——均与 0.1.5-rc.1 逐一核对签名一致。
-
-升级步骤：
+  mode:'continuable', delivery:'queue'|'steer', content}, signal)`
+  （旧宿主仍走符号键路径兼容）。
+- **默认模型换代**：新会话默认 `deepseek-flash`（DeepSeek-V41-Flash，自带
+  image 模态）。
 
 ```bash
 npm i -g @deepseek-ai/dsh@next   # next dist-tag 即 0.1.5-rc.1
@@ -40,7 +96,9 @@ dsh --version                    # 应输出 0.1.5-rc.1（运行中的进程需�
 
 ---
 
-# 升级指南：dsh 0.1.2-alpha.5 → 0.1.2-rc.1
+---
+
+# 历史指南：dsh 0.1.2-alpha.5 → 0.1.2-rc.1
 
 dsh-nvim-tui v0.2.14 将 peer 依赖锚点抬升至 **`^0.1.2-rc.1`**。升级前已做
 全量 API 核对：rc.1 与 alpha.5 的类型面**逐文件零差异**（dsh-agent /

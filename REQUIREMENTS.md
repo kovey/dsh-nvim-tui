@@ -200,11 +200,18 @@ dsh --profile nvim-tui
 | 会话 | `/fb up\|down [备注]` | 对最后一条助手消息点赞/点踩（message-feedback） |
 | 会话 | `/subagents` | 子代理目录（思考链只读回放 + continuable 续聊 `subagents.followup`） |
 | 会话 | `/workflow` | 工作流运行视图（阶段树 + agent 序列 + 日志） |
+| 会话 | `/queue` | 消息队列：查看/编辑/删除排队消息、清空（agent inbox 投影，状态栏 ⏳ 计数） |
+| 会话 | `/workspace [add <目录> [标题] \| delete <id>]` | 工作区管理（dsh-workspace：分组/排序/归档） |
+| 会话 | `/archive [会话id]` | 归档会话（从所有列表隐藏，非破坏性） |
+| 会话 | `/history` | 输入历史浏览（最新在前，Enter 回填输入框） |
+| 会话 | `/todo [任务内容]` | 添加/查看待办任务（todo_write 弹窗实时同步 + 钉底待办板 + 状态栏 📋 计数；见 §5.9 清单纪律） |
+| 会话 | `/locale [zh\|en]` | 界面语言切换（runner 侧字典化；Lua 按键提示保持中文） |
 | 会话 | `/attach [路径]` | 附加文件/目录（图片 = durable attachment，其余 = @ 路径引用）；`@` 输入即文件引用补全（fileReferences 服务 + 本地扫描降级） |
 | 会话 | `/image <路径> [提示]` | **多模态识图**：见 §5.3；`/image clear` 清空 `<C-v>` 待发送队列 |
 | 模型 | `/model [provider/model]` | 无参浮窗选择，带参直接切换；热切 + 持久化默认 |
 | 模型 | `/effort off\|high\|max\|auto` | 推理等级 |
 | 模型 | `/difficulty [easy\|medium\|hard\|auto\|off]` | **按难度自动选模型**（见 §5.8）：规则定档 + 可选 LLM 分类器，临时切换档位模型，回合结束切回；状态栏档位徽标；`subagentPolicy` 同步官方子代理模型闸门 |
+| 模型 | `/models` | 模型/供应商目录（活路由 + 可配置 provider + 当前选择；含 `settingsNs` 解析） |
 | 模型 | `/preset [id]` | agent 预设（标准/PTC/极简/创造，需 agent-presets 行；官方空白规则：仅未开始回合的会话可切换） |
 | 审批 | `/yolo on\|off` | 审批策略全放行/逐项询问 |
 | 审批 | `/permission [name]` | 权限预设（permissionPresets 服务：沙箱模式 + 审批策略组合） |
@@ -213,6 +220,13 @@ dsh --profile nvim-tui
 | 显示 | `/theme default\|dim\|vivid\|contrast\|mono` | 内置高亮预设（不覆盖则跟随 colorscheme） |
 | 显示 | `/layout default\|panel` | 布局预设 |
 | 信息 | `/cost` `/export` `/config` `/status` `/doctor` | 用量成本 / 导出转录 md / 配置摘要 / 会话快照 / 终端诊断 |
+| 信息 | `/context` | 上下文组成分解（≈used/capacity · system/tools/messages，读 sessionProjections） |
+| 信息 | `/dir [路径]` | 目录浏览浮窗（Enter 目录进入 / 文件在新标签页打开） |
+| 信息 | `/lines [路径]` | 文件行视图（只读浮窗，`i` 打开编辑） |
+| 信息 | `/plugins` | 宿主插件清单（loader 条目只读投影） |
+| 信息 | `/market [关键词 \| refresh \| update-all]` | **插件市场**（awesome-dsh-plugin 目录，★ 倒序）：安装/更新/卸载 + 热启停（cordis.patch.yml + HMR）+ 缓存离线可用 |
+| 显示 | `/whale` | 蓝鲸背景开关（空态居中壁纸 + 有内容时底部水印） |
+| 系统 | `/deps [install]` | 依赖体检（缺什么 / 一键装配；按运行 profile 写入并等待热重载） |
 | 信息 | `/mcp` | MCP server 工具统计（按 server 分组） |
 | 信息 | `/deliverables` | 本回合交付物（nvim 新标签页打开产物文件） |
 | 信息 | `/trajectory` | 回合步骤轨迹 |

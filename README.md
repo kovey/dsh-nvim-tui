@@ -59,7 +59,7 @@ dsh --profile nvim-tui
 - **i18n**：runner 侧界面字典化，`/locale zh|en` 即时切换
 - **自然语言命令**：斜杠命令、精确短语即时路由；模糊语句交给**大模型**
   判断（注册 `tui_command` 工具，agent 决定执行命令还是正常聊天）
-- **斜杠命令**：61 个内置命令，`/` 自动弹出补全菜单（命令名 + 说明实时过滤）
+- **斜杠命令**：62 个内置命令，`/` 自动弹出补全菜单（命令名 + 说明实时过滤）
 
 ## 安装 / 运行
 
@@ -92,11 +92,12 @@ dsh plugin --profile tui update --latest kovey/dsh-nvim-tui      # 官方 tui pr
 dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui # 自定义 profile
 
 # 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
-dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.3.5"
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.0"
 ```
 
 > **宿主 dsh 升级与 rc.1 适配**见 [UPGRADE.md](./UPGRADE.md)。
-> v0.3.5 起 peer 依赖锚定 `^0.1.5-rc.1`，必须与 0.1.5-rc.1 宿主配套使用。
+> v0.4.0 起 peer 依赖锚定 `^0.1.5-rc.1`，必须与 0.1.5-rc.1 宿主配套使用
+> （v0.3.4 及更早仍可跑 0.1.2-rc.1，但不建议混用）。
 
 ## 运行依赖
 
@@ -110,7 +111,7 @@ dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.3.5"
 > 0.12.5 双版本通过）。
 
 > 升级宿主：`npm i -g @deepseek-ai/dsh@next`（当前 next dist-tag 即
-> 0.1.5-rc.1；v0.3.5 起 peer 依赖锚定 `^0.1.5-rc.1`，与旧宿主
+> 0.1.5-rc.1；v0.4.0 起 peer 依赖锚定 `^0.1.5-rc.1`，与旧宿主
 > 0.1.2-rc.1 及更早版本不混用；会话日志随宿主迁移到 V3 格式）。
 
 ## 开发安装（本地仓库直链）
@@ -127,7 +128,7 @@ dsh --profile nvim-tui
 > 本仓库根目录就是 bundle 本身：`cordis.patch.yml` 挂载 `nvim-tui-runner` 行，
 > package.json 的 `dsh.bundle.patch` 声明了它。
 
-启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.3.5 (build YYYY-MM-DD HH:mm) · channel N`。
+启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.0 (build YYYY-MM-DD HH:mm) · channel N`。
 输入 `/help` 随时查看全部命令。
 
 ## 配置
@@ -416,9 +417,17 @@ UI、使用 nvim 窗口、读写输入、订阅会话事件：
 npm install                      # neovim 客户端（+ dsh peer 依赖用于本地解析）
 npm run build                    # TypeScript (src/) → lib/（strict，tsc，含 .d.ts）
 npm run dev                      # tsc --watch（改动即重编，dsh hmr 随即热载）
-npm run check                    # src + scripts 双 tsconfig 全量类型检查
+npm run check                    # src + scripts 双 tsconfig 全量类型检查 + 架构/域操作门禁
 npm run smoke                    # 无头冒烟：RPC 往返 + Lua 插件 + 事件渲染
+npm run i18n:report              # i18n 漂移报告（死键 / 未翻译 / 未包装字面量）
                                  # （scripts/*.ts 经 Node ≥23.6 原生 type-stripping 直跑）
+
+# TypeScript 严格性（v0.4.0 起拉满）：strict + noUnusedLocals/Parameters +
+# noUncheckedIndexedAccess + noPropertyAccessFromIndexSignature +
+# exactOptionalPropertyTypes + verbatimModuleSyntax + noImplicitOverride +
+# noFallthroughCasesInSwitch + noImplicitReturns + allowUnreachableCode:false。
+# 宿主边界（如 ModelSelection.reasoningEffort）用条件展开表达"缺省 ≠ 显式 undefined"。
+# 有意保留的索引签名（宿主载荷向前兼容、RunnerConfig 用户 YAML）在类型处有注释说明。
 ```
 
 **端到端无头验证**（不需要真实终端，走完整 host→agent→渲染链路）：
@@ -457,7 +466,6 @@ README / UPGRADE）；peer 依赖
 src/                          TypeScript 源码（strict，唯一手写源；根目录只留 index.ts）
   index.ts    组合根：build App → install 各模块 → boot（对应 init.lua 门面）
   kernel/     内核：公共接口与功能（业务模块唯一外联面之一）
-    index.ts      内核 barrel（历史导出层；业务模块直连 kernel/*.js）
     app.ts       kernel 原语 + 六域 slices（runtime/sessions/ui/ext/trans/agent；对应 state.lua 的角色）
     types.ts     共享类型层：SessionEvent 判别联合 + 宿主服务结构接口
     ext-types.ts 扩展 API 公共类型契约（ext-api 实现 + 反出口）
@@ -466,17 +474,25 @@ src/                          TypeScript 源码（strict，唯一手写源；根
     lifecycle.ts 退出四件套（exitDiag/closeNvimWindow/teardown/quit）
     headless.ts  headless e2e（dump 看门狗 / kick）
     bridge.ts    nvim spawn / socket 连接（自建 socket + error 处理）
-    i18n.ts      界面字典（zh 字面量 → en 查表，未知键回退中文）
+    i18n.ts      界面字典（zh 字面量 → en 查表 + tf() 占位符模板 + 反向索引；未知键回退中文）
+    difficulty.ts 难度路由（规则/可选 LLM 定档、档位切换与恢复、子代理模型闸门）
+    vision.ts    识图模型选型（deepseek-flash 优先 + 目录扫描兜底 + effort 兼容判定）
+    todo-guard.ts 待办清单纪律守卫（system-prompt 段落 + pre-step 逐步提醒）
+    theme-presets.ts /theme 预设表（命令与 boot 恢复共用；空 spec = 重置）
+    profile.ts   运行 profile 解析（loader include 条目 → argv 回退）
+    apikey.ts    凭据探测（credentials 服务，2s 上限）
     subagent-clean.ts 子代理链清理（TTL 过期 + 会话日志编码）
   feed/       渲染公共层（只依赖 kernel；feed/table/diff/stats/images/whale）
   boot/       运行期组合层：boot.ts（spawn/连接 + 三条薄循环 + boot 序列，无行为分支）
     session-events.ts session/event 管线（扩展镜像 → 子代理路由 → MAIN_EVENT_HOOKS 按类型表）
   commands/   消息发送 + 输入路由 + 斜杠命令
-    index.ts    installCommands：agent 域 ops/默认值 + 核心服务槽位 + 40 命令 install 清单
+    index.ts    installCommands：agent 域 ops/默认值 + 核心服务槽位 + 62 命令 install 清单
     core.ts     核心链路：followup/send/onInput/onCommand/@ 补全/模型切换 + 13 个 dsh-* 通知 + 审批/提问宿主事件 + tui_command 工具
     nlcmd.ts    自然语言命令路由（精确短语 → 命令）
-    commands/   ★ 40 个命令，一命令一文件（自注册 installXxxCommand(app)）
-  sessions/   会话域：index.ts + services.ts（生命周期 + fork 共享实现）+ commands/ 10 命令文件
+    commands/   ★ 41 个命令文件，一命令一文件（自注册 installXxxCommand(app)）；
+                sessions/ transcript/ statusline/ subagents/ market/ deps 各域另有 21 个
+  sessions/   会话域：index.ts + services.ts（生命周期 + fork 共享实现）+ prefs.ts（UI 偏好持久化，
+              经域操作暴露）+ commands/ 10 命令文件
   subagents/  子代理域：index.ts + commands/subagents.ts
   transcript/ 转录域：index.ts（修复/事件访问 + workflow 宿主事件）+ commands/ 4 命令文件
   statusline/ 状态栏域：index.ts（渲染/折叠统计 + agent/status 宿主事件）+ commands/ 4 命令文件
@@ -509,6 +525,9 @@ scripts/smoke.ts              无头冒烟测试（Node ≥23.6 直跑）
 scripts/check-arch.mjs        架构边界守卫（并入 npm run check：App kernel-only / slice 域名白名单 / 跨域状态写零容忍）
 scripts/app-ops-check.mjs      域操作注入运行时守卫（并入 npm run check：从 AppSlices d.ts 动态派生，全部域 op 注入断言）
 scripts/e2e.ts                真模型端到端回归
+scripts/i18n-check.mjs        i18n 漂移报告（npm run i18n:report）
+docs/REVIEW-2026-09.md        全代码库审计报告（9 批修复清单 + 待办）
+docs/audit-2026-09/           14 个审计单元的完整报告（含复现探针）
 tsconfig.json / tsconfig.scripts.json   主构建 / scripts 检查配置
 cordis.patch.yml              bundle patch：insert nvim-tui-runner 行
 ```
