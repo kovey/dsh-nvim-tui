@@ -18,6 +18,20 @@ export declare const dshHome: () => string;
 export declare function findProfilePatchPath(app: App): string | null;
 /** Structural row ids already present in the patch file (comments ignored). */
 export declare function readPatchRowIds(path: string): Set<string>;
+/** Directories whose `<dir>/node_modules` can hold the dsh packages, most
+ *  authoritative first.
+ *
+ *  `dshDir` itself is first-class: the dsh package keeps its plugins under its
+ *  OWN `node_modules` (`<dshDir>/node_modules/@deepseek-ai/<pkg>`) and that path
+ *  is the real one for an npm-global install. Taking `dirname(dirname(dshDir))`
+ *  instead lands on `…/lib/node_modules`, i.e. it yields the nonsense
+ *  `…/lib/node_modules/node_modules/…` and never matches — which is why the
+ *  probe only started working once the profile store happened to be present.
+ *
+ *  Then `<…/lib/node_modules>` (a flat/hoisted layout), the shared profile store
+ *  `$DSH_HOME/profiles` (reachable from DSH_HOME alone, so it does not depend on
+ *  the launch spelling), and finally the package root as a last resort. */
+export declare const installRootCandidates: (dshDir: string | undefined) => string[];
 export declare function packageExists(pkg: string, file: string): boolean;
 /** True when at least one install root could be determined at all. When this
  *  is false the probe has NOT established that a package is absent — it only

@@ -197,19 +197,26 @@ const findInstallRoot = (): string | undefined => {
   return undefined
 }
 
-/** Root candidates that can hold the host plugins, most authoritative first.
- *  Beyond the dsh package itself, the shared profile store
- *  (`$DSH_HOME/profiles/node_modules`) holds EVERY host plugin the host ships
- *  — the dsh boot links its own `node_modules/@deepseek-ai/*` into it — and it
- *  is reachable from `DSH_HOME` alone, so it does not depend on how the host
- *  process was launched or how the plugin was symlinked in. */
-const installRootCandidates = (dshDir: string | undefined): string[] => [
+/** Directories whose `<dir>/node_modules` can hold the dsh packages, most
+ *  authoritative first.
+ *
+ *  `dshDir` itself is first-class: the dsh package keeps its plugins under its
+ *  OWN `node_modules` (`<dshDir>/node_modules/@deepseek-ai/<pkg>`) and that path
+ *  is the real one for an npm-global install. Taking `dirname(dirname(dshDir))`
+ *  instead lands on `…/lib/node_modules`, i.e. it yields the nonsense
+ *  `…/lib/node_modules/node_modules/…` and never matches — which is why the
+ *  probe only started working once the profile store happened to be present.
+ *
+ *  Then `<…/lib/node_modules>` (a flat/hoisted layout), the shared profile store
+ *  `$DSH_HOME/profiles` (reachable from DSH_HOME alone, so it does not depend on
+ *  the launch spelling), and finally the package root as a last resort. */
+export const installRootCandidates = (dshDir: string | undefined): string[] => [
   process.env['DSH_NVIM_TUI_INSTALL_ROOT'],
-  dshDir,
+  dshDir, // dsh's own store: <dshDir>/node_modules/…
   dshDir === undefined ? undefined : dirname(dirname(dshDir)), // …/lib/node_modules
   join(dshHome(), 'profiles'), // shared store: $DSH_HOME/profiles/node_modules
   findInstallRoot(), // the profile/pkg root (last resort)
-].filter((r): r is string => typeof r === 'string' && r !== '')
+].filter((r, i, a): r is string => typeof r === 'string' && r !== '' && a.indexOf(r) === i)
 
 export function packageExists(pkg: string, file: string): boolean {
   try {

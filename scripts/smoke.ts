@@ -24,6 +24,7 @@ import { runningBadge } from '../lib/statusline/index.js'
 import stringWidth from 'string-width'
 import { matchSessionEventFilter } from '../lib/ext-api/index.js'
 import { readPatchRowIds, packageExists } from '../lib/deps/index.js'
+import { installRootCandidates } from '../lib/deps/services.js'
 import { parsePluginArgs } from '../lib/market/commands/plugin.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
@@ -1803,6 +1804,23 @@ description:
     log(`packageExists probes (no env injection): ${inStore.length}/${hostPlugins.length} store packages detected`)
   } else {
     log('skip packageExists probes (no profile store found)')
+  }
+
+  // 9f3b. 安装根候选集：dsh 自带 store 必须在内。曾经的 `dirname(dirname(dshDir))`
+  // 落到 `…/lib/node_modules`，join 后成为 `…/node_modules/node_modules/…`，
+  // 永远不命中；当时只因 `$DSH_HOME/profiles` store 恰好在场才蒙对。
+  {
+    const fakeDsh = path.join(path.sep, 'opt', 'lib', 'node_modules', '@deepseek-ai', 'dsh')
+    const roots = installRootCandidates(fakeDsh)
+    assert.ok(roots.includes(fakeDsh), 'dsh package dir is an install-root candidate')
+    assert.ok(roots.includes(path.join(path.sep, 'opt', 'lib', 'node_modules')), '…/lib/node_modules candidate kept')
+    assert.ok(roots.includes(path.join(os.homedir(), '.dsh', 'profiles')) || roots.some((r) => r.endsWith('profiles')), 'shared store candidate present')
+    // 双 node_modules 是那个 off-by-one 的签名：任何候选根 join 后都不得出现。
+    for (const r of roots) {
+      assert.ok(!r.includes(`node_modules${path.sep}node_modules`), `no double node_modules root: ${r}`)
+    }
+    assert.equal(new Set(roots).size, roots.length, 'candidate roots are de-duplicated')
+    log(`install root candidates: ${roots.length} distinct, dsh own store included`)
   }
 
   // 9f4. /plugin 参数解析（市场目录之外的直装入口）。纯函数：装/卸/列表/错误分支。
