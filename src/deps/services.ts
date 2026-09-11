@@ -1,6 +1,6 @@
 /** dsh_tui deps module SERVICES: the health-check machinery (shared by
  *  the /deps command and the install path). */
-import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -154,9 +154,21 @@ function loaderEntryConfig<T = Record<string, unknown>>(app: App, id: string): T
  *  only holds profile-level packages, so resolving against the profile made
  *  `packageExists` false for every host plugin and `/deps install` a no-op. */
 const findDshPackageDir = (): string | undefined => {
-  const starts = [process.argv[1], fileURLToPath(import.meta.url)]
+  // Both starts can be reached through a symlink: argv[1] is often a
+  // `node_modules/.bin/dsh` shim, and the plugin itself is normally linked
+  // into the profile. Walking up from the UNRESOLVED path never reaches the
+  // real package, so probe both the as-given and the realpath form.
+  const seeds = [process.argv[1], fileURLToPath(import.meta.url)]
+  const starts: string[] = []
+  for (const seed of seeds) {
+    if (typeof seed !== 'string' || seed === '') continue
+    starts.push(seed)
+    try {
+      const real = realpathSync(seed)
+      if (real !== seed) starts.push(real)
+    } catch {}
+  }
   for (const start of starts) {
-    if (typeof start !== 'string' || start === '') continue
     let dir = dirname(start)
     for (let i = 0; i < 12; i++) {
       const pj = join(dir, 'package.json')
@@ -185,18 +197,25 @@ const findInstallRoot = (): string | undefined => {
   return undefined
 }
 
+/** Root candidates that can hold the host plugins, most authoritative first.
+ *  Beyond the dsh package itself, the shared profile store
+ *  (`$DSH_HOME/profiles/node_modules`) holds EVERY host plugin the host ships
+ *  — the dsh boot links its own `node_modules/@deepseek-ai/*` into it — and it
+ *  is reachable from `DSH_HOME` alone, so it does not depend on how the host
+ *  process was launched or how the plugin was symlinked in. */
+const installRootCandidates = (dshDir: string | undefined): string[] => [
+  process.env['DSH_NVIM_TUI_INSTALL_ROOT'],
+  dshDir,
+  dshDir === undefined ? undefined : dirname(dirname(dshDir)), // …/lib/node_modules
+  join(dshHome(), 'profiles'), // shared store: $DSH_HOME/profiles/node_modules
+  findInstallRoot(), // the profile/pkg root (last resort)
+].filter((r): r is string => typeof r === 'string' && r !== '')
+
 export function packageExists(pkg: string, file: string): boolean {
   try {
     const pkgName = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : pkg.split('/')[0]
     const rel = pkgName + '/' + file
-    const dshDir = findDshPackageDir()
-    const roots = [
-      process.env['DSH_NVIM_TUI_INSTALL_ROOT'],
-      dshDir,
-      dshDir === undefined ? undefined : dirname(dirname(dshDir)), // …/lib/node_modules
-      findInstallRoot(), // the profile root
-    ].filter((r): r is string => typeof r === 'string' && r !== '')
-    for (const root of roots) {
+    for (const root of installRootCandidates(findDshPackageDir())) {
       for (const candidate of [
         join(root, 'node_modules', rel),
         join(root, 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', rel),
@@ -205,6 +224,18 @@ export function packageExists(pkg: string, file: string): boolean {
       }
     }
     return false
+  } catch {
+    return false
+  }
+}
+
+/** True when at least one install root could be determined at all. When this
+ *  is false the probe has NOT established that a package is absent — it only
+ *  failed to find a place to look, which is a different (and actionable)
+ *  condition. Callers must not report it as "package not installed". */
+export function installRootResolved(): boolean {
+  try {
+    return installRootCandidates(findDshPackageDir()).length > 0
   } catch {
     return false
   }
@@ -374,7 +405,14 @@ export const installCommand = async (app: App, s: AppSlices['agent']): Promise<v
     const rowId = fixId === 'search-override' ? 'session-query-sqlite' : fixId
     if (ids.has(rowId)) { skipped.push(r.label); continue }
     if (!packageExists(tpl.pkg, tpl.file)) {
-      app.notice(tf('跳过 {0}: 包 {1} 不在当前 dsh 安装中（升级 dsh 后重试）', [r.label, tpl.pkg]))
+      // "Could not locate the install" is NOT "the package is missing": the
+      // old wording told users to upgrade dsh even when the package was
+      // present and only the root probe failed, which hid the whole feature.
+      app.notice(
+        installRootResolved()
+          ? tf('跳过 {0}: 包 {1} 不在当前 dsh 安装中（升级 dsh 后重试）', [r.label, tpl.pkg])
+          : tf('跳过 {0}: 无法定位 dsh 安装根，未能确认包 {1} 是否存在（重启 dsh 后重试）', [r.label, tpl.pkg]),
+      )
       continue
     }
     appended.push(r.label)

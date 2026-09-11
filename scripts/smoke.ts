@@ -1767,15 +1767,40 @@ description:
   assert.ok(!patchIds.has('feishu'), 'comment mentions are not rows')
   assert.ok(!patchIds.has('commented-out'), 'commented rows are not rows')
   fs.unlinkSync(depsPatch)
-  const installProbe = process.env['DSH_NVIM_TUI_INSTALL_ROOT'] ??
-    [path.join(os.homedir(), '.nvm', 'versions', `node/${process.versions.node}`, 'lib', 'node_modules', '@deepseek-ai')]
-      .find((p) => fs.existsSync(p))
-  if (installProbe !== undefined) {
-    process.env['DSH_NVIM_TUI_INSTALL_ROOT'] = path.dirname(path.dirname(installProbe))
-    assert.equal(packageExists('@deepseek-ai/dsh-workspace', 'package.json'), true, 'installed package detected')
+  // Regression (audit F1): the old probe injected DSH_NVIM_TUI_INSTALL_ROOT,
+  // i.e. it replaced the very logic under test — which is why the real
+  // "every host plugin looks absent" failure shipped. Probe WITHOUT any env
+  // injection, through the shared profile store (`$DSH_HOME/profiles`), the
+  // root that actually holds the host plugins.
+  const storeRoot = path.join(process.env['DSH_HOME'] ?? path.join(os.homedir(), '.dsh'), 'profiles')
+  const hostPlugins = [
+    'dsh-agent-presets',
+    'dsh-workspace',
+    'dsh-host-plugin-inventory',
+    'dsh-message-feedback',
+    'dsh-session-reference',
+    'dsh-session-stats',
+    'dsh-code-runtime-worker-thread',
+    'dsh-tool-subagent',
+    'dsh-session-query-sqlite',
+  ]
+  const inStore = hostPlugins.filter((p) =>
+    fs.existsSync(path.join(storeRoot, 'node_modules', '@deepseek-ai', p, 'package.json')))
+  if (inStore.length > 0) {
+    const savedRoot = process.env['DSH_NVIM_TUI_INSTALL_ROOT']
+    delete process.env['DSH_NVIM_TUI_INSTALL_ROOT']
+    for (const p of inStore) {
+      assert.equal(
+        packageExists(`@deepseek-ai/${p}`, 'package.json'),
+        true,
+        `store package detected without env injection: ${p}`,
+      )
+    }
     assert.equal(packageExists('@deepseek-ai/dsh-not-a-real-package', 'package.json'), false, 'absent package rejected')
+    if (savedRoot !== undefined) process.env['DSH_NVIM_TUI_INSTALL_ROOT'] = savedRoot
+    log(`packageExists probes (no env injection): ${inStore.length}/${hostPlugins.length} store packages detected`)
   } else {
-    log('skip packageExists probes (no dsh install found)')
+    log('skip packageExists probes (no profile store found)')
   }
 
   // 9g3. /difficulty 难度路由（M2 规则定档：纯函数）。

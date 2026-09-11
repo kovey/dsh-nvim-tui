@@ -579,6 +579,7 @@ const EN_DICT: Record<string, string> = {
   '读取图片失败: {0}': 'failed to read image: {0}',
   '读取子代理会话失败: {0}': 'failed to read subagent session: {0}',
   '跳过 {0}: 包 {1} 不在当前 dsh 安装中（升级 dsh 后重试）': 'skipped {0}: package {1} is not in the current dsh installation (retry after upgrading dsh)',
+  '跳过 {0}: 无法定位 dsh 安装根，未能确认包 {1} 是否存在（重启 dsh 后重试）': 'skipped {0}: could not locate the dsh install root, so whether package {1} exists is unconfirmed (retry after restarting dsh)',
   '跳过已存在的行: {0}': 'skipped existing lines: {0}',
   '输入 {0} · 缓存读 {1} · 输出 {2}': 'input {0} · cache read {1} · output {2}',
   '重命名失败: {0}': 'rename failed: {0}',

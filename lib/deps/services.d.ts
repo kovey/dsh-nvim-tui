@@ -19,6 +19,11 @@ export declare function findProfilePatchPath(app: App): string | null;
 /** Structural row ids already present in the patch file (comments ignored). */
 export declare function readPatchRowIds(path: string): Set<string>;
 export declare function packageExists(pkg: string, file: string): boolean;
+/** True when at least one install root could be determined at all. When this
+ *  is false the probe has NOT established that a package is absent — it only
+ *  failed to find a place to look, which is a different (and actionable)
+ *  condition. Callers must not report it as "package not installed". */
+export declare function installRootResolved(): boolean;
 export declare function checkAll(app: App, s: AppSlices['agent'], patchPath: string | null): Promise<DepReport[]>;
 export declare const installCommand: (app: App, s: AppSlices['agent']) => Promise<void>;
 export {};
