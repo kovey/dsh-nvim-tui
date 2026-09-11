@@ -92,11 +92,11 @@ dsh plugin --profile tui update --latest kovey/dsh-nvim-tui      # 官方 tui pr
 dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui # 自定义 profile
 
 # 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
-dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.0"
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.1"
 ```
 
 > **宿主 dsh 升级与 0.1.5 适配**见 [UPGRADE.md](./UPGRADE.md)。
-> v0.4.0 起 peer 依赖锚定 `^0.1.5-rc.1`，**rc.2 起锚定 `^0.1.5-rc.2`**。
+> v0.4.0 起 peer 依赖锚定 `^0.1.5-rc.1`，**v0.4.1 起锚定 `^0.1.5-rc.2`**。
 > dsh `0.1.5-rc.1` 与 `0.1.5-rc.2` 的**运行时代码与类型面逐字节相同**
 > （仅版本号与 peer 区间不同），两者可互换使用
 > （v0.3.4 及更早仍可跑 0.1.2-rc.1，但不建议混用）。
@@ -113,8 +113,9 @@ dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.0"
 > 0.12.5 双版本通过；rc.2 类型面门禁 + smoke 全绿）。
 
 > 升级宿主：`npm i -g @deepseek-ai/dsh@next`（当前 next dist-tag 即
-> 0.1.5-rc.2；rc.2 起 peer 依赖锚定 `^0.1.5-rc.2`，与旧宿主
-> 0.1.2-rc.1 及更早版本不混用；会话日志随宿主迁移到 V3 格式）。
+> 0.1.5-rc.2；v0.4.1 起 peer 依赖锚定 `^0.1.5-rc.2` —— 该区间**仍接受
+> 0.1.5-rc.1**，两版可互换；与旧宿主 0.1.2-rc.1 及更早版本不混用；
+> 会话日志随宿主迁移到 V3 格式）。
 
 > ⚠️ **`0.1.5-rc.2` 是预发布版（release candidate），不是稳定版**：官方
 > `next` dist-tag 指向它，npm 的 `latest` 仍停在 `0.1.0-rc.6`。安装时务必
@@ -135,7 +136,7 @@ dsh --profile nvim-tui
 > 本仓库根目录就是 bundle 本身：`cordis.patch.yml` 挂载 `nvim-tui-runner` 行，
 > package.json 的 `dsh.bundle.patch` 声明了它。
 
-启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.0 (build YYYY-MM-DD HH:mm) · channel N`。
+启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.1 (build YYYY-MM-DD HH:mm) · channel N`。
 输入 `/help` 随时查看全部命令。
 
 ## 配置

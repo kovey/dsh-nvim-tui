@@ -3,6 +3,119 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.1（2026-09-11）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.1)
+
+覆盖提交：
+[`017f3f2`](https://github.com/kovey/dsh-nvim-tui/commit/017f3f2) ·
+[`a46e8f0`](https://github.com/kovey/dsh-nvim-tui/commit/a46e8f0) ·
+[`7b2afdd`](https://github.com/kovey/dsh-nvim-tui/commit/7b2afdd) ·
+[`30daefd`](https://github.com/kovey/dsh-nvim-tui/commit/30daefd) ·
+[`84cd00f`](https://github.com/kovey/dsh-nvim-tui/commit/84cd00f) ·
+[`a7cd3ba`](https://github.com/kovey/dsh-nvim-tui/commit/a7cd3ba)
+
+> **版本说明**：本版相对 v0.4.0 共 6 个提交，一个宿主版本对齐、一个新命令、
+> 两处修复（含各自的自查返工）。**零破坏**：不需要动宿主、不需要改
+> `cordis.patch.yml`。升级前请先读 [UPGRADE.md](UPGRADE.md)。
+
+### 1. dsh v0.1.5-rc.2 对齐（peer 锚点 `^0.1.5-rc.2`）
+
+逐包核对 15 个 `@deepseek-ai` 发布包（212 个文件逐文件 sha256）：
+
+- **结论：运行时代码与类型面零差异** —— 197 个文件逐字节相同，15 个仅
+  `package.json` 版本号变动（忽略键序后内容等价，无依赖增删）。
+- 官方侧印证：release notes 只列两项 **web UI** 优化（消息反馈弹窗确认、
+  交付文件卡片排版与图标）；commit 区间仅 4 个提交，非 `package.json` 的
+  改动全在 `apps/web/tests` 与 `packages/client/*`（Web 客户端 React 组件，
+  不随 npm 包发布）。**因此本版无源码改动，只对齐锚点与文档。**
+- **锚点区间仍接受 rc.1**：`^0.1.5-rc.2` 的下界是 rc.2、上界是 `<0.2.0`，
+  故 rc.1 与 rc.2 宿主可互换使用。
+- **纠正一处常见误解**：`0.1.5-rc.2` 是**预发布版（release candidate），
+  不是稳定版** —— npm 的 `latest` dist-tag 仍停在 `0.1.0-rc.6`，rc.2 只挂在
+  `next` 上。安装必须显式 `@next`（或写死版本号），否则会装到旧的 `latest`。
+  README/UPGRADE 已补此警告。
+
+### 2. 新特性：`/plugin` —— 市场目录之外的插件直装入口
+
+`/market` 是目录驱动的，只能安装 awesome-dsh-plugin 目录里列出的插件；
+小众/私有/自建插件搜不到就无从下手。`/plugin` 直接对接官方 `dsh plugin` CLI：
+
+- `/plugin install <spec>`：`spec` 可为 npm 包名 / `owner/repo` / git URL /
+  含空格的本地路径，CLI 认得的写法原样透传。
+- `/plugin remove <spec>`、`/plugin list`（列出该 profile 已装插件）。
+- 目标 profile 取**本进程实际启动的那个**（`runningProfileName` → 配置回退），
+  绝不猜 `nvim-tui` —— 装到别的 profile 对当前进程等于没装。
+- 失败只做**一次有界补救**（按 `classifyPnpmError` 分型：cache 类换全新 npm
+  cache 重试，network/lockfile 类重试一次）；`remove` 不补救。
+- **安全**：该命令**不在** `TUI_COMMAND_WHITELIST` 内，agent 侧 `tui_command`
+  工具无法调用它（装任意包＝任意代码执行，与 `/market`、`/deps install`
+  一致地留在用户手里）。`spec` 以 `-` 开头一律拒绝（会被 CLI 当成 flag）。
+
+### 3. 修复：`/deps install` 全量跳过 / 提示误导
+
+用户实机反馈：`/deps install` 逐条「跳过 X: 包 … 不在当前 dsh 安装中」→
+「没有可写入的行」，一行都没写入，而包其实都在。定位到三层问题：
+
+- **安装根探测缺项**：候选根只有「dsh 包目录的祖父 / 插件自身根」，
+  而宿主插件真正位于 dsh 自带的 store（`<dshDir>/node_modules/@deepseek-ai/*`）
+  与共享 store（`$DSH_HOME/profiles/node_modules`）—— 两者都不在候选里。
+  补上后 11 个模板包全部命中。
+- **候选根层级错误**：`dirname(dirname(dshDir))` 展开成
+  `…/node_modules/node_modules/…`，结构性错误路径、永不命中。首轮修复
+  只因新增的 store 候选恰好在场才「看起来修好」，**换成别的 `DSH_HOME`
+  或 store 尚未建立的首次启动会再次全量跳过** —— 该层是自查阶段才发现的。
+- **提示把定位失败说成包缺失**：新增 `installRootResolved()` 区分
+  「无法定位 dsh 安装根（重启 dsh 后重试）」与「包确实不在安装中」，
+  不再用一句「升级 dsh 后重试」把功能藏起来。
+
+### 4. 修复：e2e 无凭证时假报 PASS（并修掉其反向缺陷）
+
+`scripts/e2e.ts` 在完全没有模型回合发生时会报 `E2E PASS`，两个独立缺陷叠加：
+
+- 「有 assistant 内容」的判定只看 turn 标记之后是否非空，而宿主注入的
+  runtime-context 块与用户自己的 prompt 回显都在标记之后 → 检查恒真。
+- 判错正则只有英文 `no API key`，中文宿主的「未检测到 API key」不匹配。
+
+修复后**反例确实失败**（无 key → `FAIL: no assistant content`，exit 1），
+有 key 时仍 PASS 且 dump 内确认模型真答。
+
+> **自查返工**：首版修复为排除注入上下文而**一刀切丢弃所有以 `·` 开头的行**，
+> 但模型输出是整块 push、不带 gutter，于是「以 `· ` 项目符号作答」的正常回合
+> 会被整段误判为「无助手内容」而 FAIL —— 修假阳性时引入了假阴性。已改为
+> 按块排除注入块。两个细节由真机 dump 逼出：注入块内部空行渲染成**裸 `·`**
+> （尾随空格被 trim），只认 `· ` 会让块提前结束；定界符 `── turn ──` 是收尾
+> `── turn end ──` 的**子串**，未锚整行的 `lastIndexOf` 会取到错误起点。
+
+### 5. 工程：把高风险判定抽为纯函数 + 变异验证
+
+上述两处缺陷能溜进来，根因是判定规则**内联在脚本里、零覆盖**，只能靠真机
+跑歪才发现。本版做了结构性补救：
+
+- 抽出 `scripts/e2e-judge.ts`（`judgeDump`/`turnBody`/`assistantText` 纯函数，
+  自带 `node scripts/e2e-judge.ts` 自测），`e2e.ts` 改为调用它。
+- `parsePluginArgs` 抽为纯函数，覆盖动词/别名/含空格 spec 透传/缺 spec/
+  未知动词/leading-dash 拒绝。
+- smoke 增三组断言：e2e 判定（真实渲染形态必须 PASS，回显/注入块/错误标记
+  必须 FAIL）、`/plugin` 参数解析、安装根候选集（必须含 dsh 自带 store，
+  且任何候选根展开后不得出现双 `node_modules`）。
+- **变异验证**（确认断言不是空转）：把块排除改回「过滤所有 `·` 行」→
+  smoke 报 `accepts: regression: pure bullet answer` 失败；改回只认 `· ` →
+  报 `rejects: no-key with blank injected lines` 失败；移除 `dshDir` 候选 →
+  报 `dsh package dir is an install-root candidate` 失败。
+- `tsconfig.scripts` 开 `allowImportingTsExtensions`（`scripts/` 不产出，
+  Node 直接以 `.ts` 运行，脚本间导入需写 `.ts`）。
+- `.gitignore` 补验证用临时 harness 目录（`.probe-home/` 等）。
+
+> **测试方法学**：`packageExists` 的 smoke 断言原先**自行注入**
+> `DSH_NVIM_TUI_INSTALL_ROOT` —— 用被测逻辑的替身做验证，正是该缺陷长期
+> 漏网的原因。现改为不做任何 env 注入、直连真实 store 断言。
+
+### 验证
+
+`npm run check`（tsc 双 tsconfig + 架构 + 78 域操作）· `npm run smoke`
+（含上述三组新断言，SMOKE PASS）· `npm run i18n:report`（死键 0 / 未翻译 0）
+全绿；真机 e2e 正反例双跑（无 key FAIL / 有 key PASS）；11 个模板包经 store
+根全部命中，反向对照包仍 false。
+
 ## [v0.4.0（2026-09-10）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.0)
 
 覆盖提交：

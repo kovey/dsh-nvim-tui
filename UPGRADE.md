@@ -4,10 +4,58 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.4.0（宿主 0.1.5-rc.1 或 rc.2） | [v0.4.0 → v0.4.1（插件升级，零破坏）](#v040--v041插件升级零破坏) |
 | nvim-tui 已适配 0.1.5（宿主 0.1.5-rc.1） | [宿主 0.1.5-rc.1 → 0.1.5-rc.2（零破坏）](#宿主-015-rc1--015-rc2零破坏) |
 | nvim-tui ≤ v0.3.4（宿主 0.1.2-rc.1） | [v0.3.4 → v0.4.0（含宿主 0.1.2-rc.1 → 0.1.5-rc.1）](#v034--v040含宿主-012-rc1--015-rc1) |
 | nvim-tui v0.4.0 已升（宿主仍 0.1.2-rc.1） | 同上（宿主段落必读：peer 锚点已改为 `^0.1.5-rc.1`） |
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
+
+---
+
+## v0.4.0 → v0.4.1（插件升级，零破坏）
+
+> **结论先行**：只升插件即可，**不需要动宿主、不需要改 `cordis.patch.yml`**。
+> peer 锚点从 `^0.1.5-rc.1` 改为 `^0.1.5-rc.2`，而该区间**仍接受
+> 0.1.5-rc.1**（下界 rc.2、上界 `<0.2.0`），所以 rc.1 与 rc.2 宿主都可用。
+
+### 升级步骤
+
+```bash
+# 更新到 v0.4.1（git 依赖必须带 --latest）
+dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui
+#   或固定版本：dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.1"
+
+dsh --profile nvim-tui     # 重启生效
+```
+
+### 本版新增
+
+- **`/plugin` 命令（新）**：市场目录之外的插件直装入口：
+  `/plugin install <spec>`（npm 包名 / `owner/repo` / git URL）、
+  `/plugin remove <spec>`、`/plugin list`。`/market` 只覆盖精选目录里的
+  2140+ 插件，小众/私有插件搜不到时用这条。
+  命令**不在** `TUI_COMMAND_WHITELIST` 内，agent 侧无法调用它。
+
+### 本版修复
+
+- **`/deps install` 不再全量跳过**：安装根探测补上 dsh 自带的 store
+  （`<dshDir>/node_modules/@deepseek-ai/*`）与共享 store
+  （`$DSH_HOME/profiles/node_modules`），并修掉一处候选根层级错误
+  （旧写法展开成 `…/node_modules/node_modules/…`，永不命中）。
+  另把「定位不到安装根」与「包确实不存在」区分开，提示不再误导。
+- **e2e 无凭证时不再假报 PASS**：判定排除用户回显与注入上下文，并补中文
+  `未检测到 API key` 标记（此前只认英文，中文宿主漏判）。
+  同时修掉一处反向缺陷：以 `· ` 项目符号作答的正常回合曾被整段误判为
+  「无助手内容」而 FAIL。
+
+### 从源码开发时
+
+```bash
+npm run check          # tsc 双 tsconfig + 架构/域操作门禁
+npm run smoke          # 无头冒烟（含 e2e 判定与安装根候选的回归断言）
+npm run e2e -- "你好"  # 真机 e2e（需凭证：本机 API key 在 ~/.zshrc，需先 source）
+npm run i18n:report    # i18n 漂移报告
+```
 
 ---
 
