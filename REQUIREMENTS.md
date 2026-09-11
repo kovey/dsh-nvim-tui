@@ -192,7 +192,7 @@ dsh --profile nvim-tui
 | 会话 | `/compact` | 手动压缩上下文（compaction 引擎；返回压缩条数与 token 数） |
 | 会话 | `/goal [new <目标>\|pause\|resume\|complete\|clear]` | 查看/管理目标（状态栏同步显示 🎯 进度） |
 | 会话 | `/plan [on\|off\|status]` | 计划模式开关（状态栏显示 📋） |
-| 会话 | `/rewind [第N条]` | 回退：选择一条用户消息边界**截断**其后内容并重建界面。**宿主能力依赖**：`session.truncate` 在 dsh 0.1.5-rc.1 已移除 → 该宿主上命令只提示降级（不再提供截断），请在旧宿主使用或改用 `/fork` + 新会话 |
+| 会话 | `/rewind [第N条]` | 回退：选择一条用户消息边界**截断**其后内容并重建界面。**宿主能力依赖**：`session.truncate` 在 dsh 0.1.5-rc.1 起已移除（rc.2 同样没有）→ 该宿主上命令只提示降级（不再提供截断），请在旧宿主使用或改用 `/fork` + 新会话 |
 | 会话 | `/rename <新标题>` | 钉住会话标题 |
 | 会话 | `/search <关键词>` | 跨会话全文搜索（`session-query-sqlite`）。**默认未启用**：该行默认 `openAt: never`，用 `/deps install`（或用 `/settings set session-query-sqlite openAt startup`）启用索引后才能命中 |
 | 会话 | `/tasks [kill <job-id>]` | 任务（jobs）列表/取消单个 |
@@ -254,7 +254,7 @@ dsh --profile nvim-tui
   `data:image/...;base64,...` 到输入框回车自动作为图片附件。
 - **R-IMG-6 旧会话遗留**：装桥之前失败发送留下的带图消息会永久留在会话历史里，
   导致该会话后续每轮都被适配器拒绝——**旧宿主**可用 `/rewind` 回退到带图消息之前修复；
-  0.1.5-rc.1 无 `session.truncate`，改用新会话或 `/fork` 规避
+  0.1.5-rc.1/rc.2 无 `session.truncate`，改用新会话或 `/fork` 规避
   （新会话不会再产生这类残留）。
 
 ### 5.4 会话管理（M2）

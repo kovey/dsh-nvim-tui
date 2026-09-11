@@ -95,24 +95,31 @@ dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui # 自定义 pro
 dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.0"
 ```
 
-> **宿主 dsh 升级与 rc.1 适配**见 [UPGRADE.md](./UPGRADE.md)。
-> v0.4.0 起 peer 依赖锚定 `^0.1.5-rc.1`，必须与 0.1.5-rc.1 宿主配套使用
+> **宿主 dsh 升级与 0.1.5 适配**见 [UPGRADE.md](./UPGRADE.md)。
+> v0.4.0 起 peer 依赖锚定 `^0.1.5-rc.1`，**rc.2 起锚定 `^0.1.5-rc.2`**。
+> dsh `0.1.5-rc.1` 与 `0.1.5-rc.2` 的**运行时代码与类型面逐字节相同**
+> （仅版本号与 peer 区间不同），两者可互换使用
 > （v0.3.4 及更早仍可跑 0.1.2-rc.1，但不建议混用）。
 
 ## 运行依赖
 
 | 依赖 | 最低版本 | 说明 |
 |---|---|---|
-| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | **0.1.5-rc.1**（`next` dist-tag） | peer 依赖 `@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` `^0.1.5-rc.1`，由 profile 的 dsh 安装锚点提供 |
+| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | **0.1.5-rc.2**（`next` dist-tag） | peer 依赖 `@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` `^0.1.5-rc.2`，由 profile 的 dsh 安装锚点提供 |
 | [Neovim](https://neovim.io) | **0.9**（推荐 **0.10+**） | 0.10+ 完整体验（输入框四边边框、弹窗提示嵌入边框）；0.9 可运行但降级（`❯` 提示列与左边框以虚拟文本呈现、弹窗提示为分离提示条） |
 | Node.js | 23.6+ | 由 dsh 提供（`engines` 声明），一般无需单独安装 |
 
-> 开发与 CI 实测：dsh 0.1.5-rc.1 / nvim 0.12.5（smoke 全量在 0.12.4 与
-> 0.12.5 双版本通过）。
+> 开发与 CI 实测：dsh 0.1.5-rc.2 / nvim 0.12.5（smoke 全量在 0.12.4 与
+> 0.12.5 双版本通过；rc.2 类型面门禁 + smoke 全绿）。
 
 > 升级宿主：`npm i -g @deepseek-ai/dsh@next`（当前 next dist-tag 即
-> 0.1.5-rc.1；v0.4.0 起 peer 依赖锚定 `^0.1.5-rc.1`，与旧宿主
+> 0.1.5-rc.2；rc.2 起 peer 依赖锚定 `^0.1.5-rc.2`，与旧宿主
 > 0.1.2-rc.1 及更早版本不混用；会话日志随宿主迁移到 V3 格式）。
+
+> ⚠️ **`0.1.5-rc.2` 是预发布版（release candidate），不是稳定版**：官方
+> `next` dist-tag 指向它，npm 的 `latest` 仍停在 `0.1.0-rc.6`。安装时务必
+> 显式带 `@next`（或写死 `@deepseek-ai/dsh@0.1.5-rc.2`），
+> 直接 `npm i -g @deepseek-ai/dsh` 会装到旧的 `latest`。
 
 ## 开发安装（本地仓库直链）
 
@@ -221,7 +228,7 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 会话 | `/compact` | 手动压缩上下文（compaction 引擎；返回压缩条数与 token 数） |
 | 会话 | `/goal [new <目标>\|pause\|resume\|complete\|clear]` | 查看/管理目标（状态栏同步显示 🎯 进度） |
 | 会话 | `/plan [on\|off\|status]` | 计划模式开关（状态栏显示 📋） |
-| 会话 | `/rewind [第N条]` | 回退到某条用户消息（`session.truncate`；dsh 0.1.5-rc.1 已移除该能力 → 该宿主上仅提示降级） |
+| 会话 | `/rewind [第N条]` | 回退到某条用户消息（`session.truncate`；dsh 0.1.5-rc.1 起已移除该能力，rc.2 同样没有 → 该宿主上仅提示降级） |
 | 会话 | `/rename <新标题>` | 钉住会话标题 |
 | 会话 | `/search <关键词>` | 跨会话全文搜索（`session-query-sqlite`，**默认 `openAt: never` 未启用**——先 `/deps install` 建索引），命中可一键恢复 |
 | 会话 | `/tasks [kill <job-id>]` | 任务列表**弹窗**（打开期间**实时刷新**，选中即取消）+ 聊天区**钉底任务板**（⚙ 块实时更新，全部结束才提交进聊天流） |
