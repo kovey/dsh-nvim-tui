@@ -261,7 +261,7 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 显示 | `/density` | 紧凑模式（工具卡片仅标题行） |
 | 显示 | `/glance <cache\|context\|tokens\|cost\|elapsed\|total>` | 状态栏段显隐 |
 | 显示 | `/theme default\|dim\|vivid\|contrast\|mono` | 内置高亮预设（不覆盖则跟随 colorscheme） |
-| 显示 | `/whale on\|off` | 蓝鲸背景壁纸/水印开关 |
+| 显示 | `/whale on\|off` | 蓝鲸背景壁纸/水印开关。鲸鱼由**官方 logo 矢量路径**离线光栅化而来（`scripts/whale-gen.ts` → `src/feed/whale-art.ts`），按窗口宽度分 24/32/48 列三档自动选最宽的一档，空态时做呼吸浮动 + 喷气动效 |
 | 显示 | `/layout default\|panel` | 布局预设（无参循环切换） |
 | 信息 | `/cost` `/export` `/config` `/status` `/doctor` | 用量成本 / 导出转录 md / 配置摘要 / 会话快照 / 终端诊断 |
 | 信息 | `/mcp` | MCP server 工具统计（按 server 分组） |

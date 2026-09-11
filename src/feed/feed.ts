@@ -1398,7 +1398,8 @@ export class FeedRenderer {
         const hero = this.welcome?.() ?? {}
         const above = hero.above ?? []
         const below = hero.below ?? []
-        const art = whaleRowsIndented(w, whaleFrames()[this.whaleFrame])
+        // Animate at the width tier the hero will actually render.
+        const art = whaleRowsIndented(w, whaleFrames(w)[this.whaleFrame] ?? [])
         const whaleRows = art ?? []
         const block: Array<{ text: string; spans: Span[]; group?: string | undefined }> = []
         for (const l of above) block.push({ text: l.text, spans: [], group: l.group })

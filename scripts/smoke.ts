@@ -2120,14 +2120,40 @@ description:
 
   // 9k4. blue whale art (A+B): centered wallpaper while empty, bottom
   // watermark once content exists; /whale toggle removes it.
-  assert.equal(WHALE_RENDER_ROWS.length, 8, 'whale pixel art has 8 text rows')
+  // The art is now DERIVED from the official mark (scripts/whale-gen.ts) rather
+  // than hand-drawn, so the assertions check the derivation's invariants: the
+  // silhouette keeps the official aspect ratio at every tier, and the frames
+  // move the whale instead of shearing it.
+  assert.ok(WHALE_RENDER_ROWS.length >= 6, 'whale art has text rows')
   assert.ok(WHALE_RENDER_ROWS.some((r) => r.text.includes('▀') && r.spans.length > 0), 'whale art renders half-block glyphs with color spans')
+  // Every span must name one of the three silhouette groups — the official mark
+  // is a single-colour silhouette, so an invented group would mean a stale grid.
+  const whaleSpanGroups = new Set(['DshTuiWhaleBB', 'DshTuiWhaleB-', 'DshTuiWhale-B'])
+  assert.ok(
+    WHALE_RENDER_ROWS.every((r) => r.spans.every((sp) => whaleSpanGroups.has(sp.group))),
+    'whale spans use only the silhouette palette groups',
+  )
+  // Spans must be gap-free and in order, or the extmark pass colours nothing.
+  for (const r of WHALE_RENDER_ROWS) {
+    for (let i = 1; i < r.spans.length; i++) {
+      assert.ok(r.spans[i]!.s >= r.spans[i - 1]!.e, 'whale spans are ordered and non-overlapping')
+    }
+  }
 
   const frames = whaleFrames()
   assert.equal(frames.length, 4, 'whale animation has a 4-frame cycle')
-  assert.ok(frames.every((f) => f.length === 8), 'every animation frame renders 8 rows')
-  assert.notDeepEqual(frames[0], frames[1], 'frame 1 differs (both eyes open + bubbles up)')
-  assert.notDeepEqual(frames[2], frames[1], 'frame 2 differs (right wink + bob)')
+  assert.ok(frames.every((f) => f.length === WHALE_RENDER_ROWS.length), 'every animation frame renders the same row count')
+  assert.notDeepEqual(frames[0], frames[1], 'frame 1 differs (bubble rises)')
+  assert.notDeepEqual(frames[1], frames[2], 'frame 2 differs (whale bobs)')
+  // Rigid bob: the bobbed frames must keep the silhouette's lit-pixel count
+  // within a small delta. The old animation duplicated rows via g[y]=g[y-1],
+  // which changed the shape; a rigid shift cannot.
+  const litCount = (f: typeof frames[number]): number =>
+    f.reduce((a, r) => a + r.spans.reduce((b, sp) => b + (sp.e - sp.s) / 3, 0), 0)
+  const baseLit = litCount(frames[0]!)
+  for (const f of frames) {
+    assert.ok(Math.abs(litCount(f) - baseLit) <= baseLit * 0.12, 'bob keeps the silhouette mass (no shear)')
+  }
   assert.equal(WHALE_EMOJI_FRAMES.length, 2, 'emoji watermark cycles the spouting whale + bubble')
   assert.ok(WHALE_EMOJI_FRAMES.every((f) => f.endsWith('🐳')), 'every frame carries the spouting whale emoji')
   assert.ok(WHALE_EMOJI_FRAMES.some((f) => f.includes('🫧')), 'bubble frame leads the cycle')
