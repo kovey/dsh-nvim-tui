@@ -16,9 +16,10 @@ export interface DiffOptions {
 }
 /** One file-change entry from a tool result's official presentationMeta. */
 export interface FileDiffMeta {
-    path?: string;
-    oldText?: string;
-    newText?: string;
+    path?: string | undefined;
+    /** Explicit undefined is meaningful: "that side did not exist". */
+    oldText?: string | undefined;
+    newText?: string | undefined;
 }
 /**
  * Extract the official render-intent diffs from a tool/result event's meta

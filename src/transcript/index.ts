@@ -110,11 +110,12 @@ const sessionEvents = (session: HarnessSession): SessionEvent[] => {
 const repairOrphanToolCalls = (rec: SessionRec): number => {
   const session = rec.handle.agent.session
   const events = sessionEvents(session)
-  const nodes = (session.surface as { nodes?: number[] } | undefined)?.nodes
+  const nodes = (session['surface'] as { nodes?: number[] } | undefined)?.nodes
   if (!Array.isArray(nodes)) return 0
   let repaired = 0
   for (let i = 0; i < nodes.length; i++) {
     const seqA = nodes[i]
+    if (seqA === undefined) continue
     const ev = events[seqA]
     if (ev?.type !== 'assistant/message') continue
     const original = ev.data?.message as ChatMessage | undefined
@@ -154,7 +155,9 @@ const repairOrphanToolCalls = (rec: SessionRec): number => {
     // message in between, a missing/foreign result, …) poisons the rest.
     let kept = 0
     for (let k = 0; k < toolIds.length && i + 1 + k < nodes.length; k++) {
-      const next = events[nodes[i + 1 + k]]
+      const nodeSeq = nodes[i + 1 + k]
+      if (nodeSeq === undefined) break
+      const next = events[nodeSeq]
       const cid = next?.type === 'tool/result' ? next.data?.message?.source?.callId : undefined
       if (cid === toolIds[k]) kept = k + 1
       else break
@@ -187,7 +190,9 @@ const repairOrphanToolCalls = (rec: SessionRec): number => {
     // synthetic results an older append-only repair left misplaced) —
     // an unpaired role=tool wire message would 400 on its own.
     for (let j = i + 1; j < nodes.length; j++) {
-      const node = events[nodes[j]]
+      const nodeSeq = nodes[j]
+      if (nodeSeq === undefined) continue
+      const node = events[nodeSeq]
       if (node?.type !== 'tool/result') continue
       const cid = node.data?.message?.source?.callId
       if (typeof cid !== 'string' || !dropped.includes(cid)) continue
@@ -196,7 +201,7 @@ const repairOrphanToolCalls = (rec: SessionRec): number => {
           source: { kind: 'user' },
           content: [{ type: 'text', text: t('（此前的工具结果随崩溃的工具调用一并移除）') }],
         })
-        surfaceReplace(session, 'user/message', nodes[j], note)
+        surfaceReplace(session, 'user/message', nodeSeq, note)
       } catch {}
     }
   }

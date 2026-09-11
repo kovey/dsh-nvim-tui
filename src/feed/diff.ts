@@ -38,9 +38,10 @@ const LCS_CELL_CAP = 1_000_000
 
 /** One file-change entry from a tool result's official presentationMeta. */
 export interface FileDiffMeta {
-  path?: string
-  oldText?: string
-  newText?: string
+  path?: string | undefined
+  /** Explicit undefined is meaningful: "that side did not exist". */
+  oldText?: string | undefined
+  newText?: string | undefined
 }
 
 /**
@@ -142,17 +143,17 @@ export function diffTexts(before: string | null, after: string | null, opts: Dif
   const at = (i: number, j: number): number => i * (n + 1) + j
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      dp[at(i, j)] = A[i - 1] === B[j - 1]
-        ? dp[at(i - 1, j - 1)] + 1
-        : Math.max(dp[at(i - 1, j)], dp[at(i, j - 1)])
+      dp[at(i, j)] = (A[i - 1] ?? '') === (B[j - 1] ?? '')
+        ? (dp[at(i - 1, j - 1)] ?? 0) + 1
+        : Math.max(dp[at(i - 1, j)] ?? 0, dp[at(i, j - 1)] ?? 0)
     }
   }
   const ops: Array<0 | 1 | 2> = []
   let i = m
   let j = n
   while (i > 0 && j > 0) {
-    if (A[i - 1] === B[j - 1]) { ops.push(0); i--; j-- }
-    else if (dp[at(i - 1, j)] > dp[at(i, j - 1)]) { ops.push(1); i-- }
+    if ((A[i - 1] ?? '') === (B[j - 1] ?? '')) { ops.push(0); i--; j-- }
+    else if ((dp[at(i - 1, j)] ?? 0) > (dp[at(i, j - 1)] ?? 0)) { ops.push(1); i-- }
     else { ops.push(2); j-- }
   }
   while (i > 0) { ops.push(1); i-- }
@@ -204,12 +205,12 @@ export function diffTexts(before: string | null, after: string | null, opts: Dif
     for (let k = lo; k <= hi; k++) {
       const op = ops[k]
       if (op === 0) {
-        chunk.push('  ' + A[aIdx[k]])
+        chunk.push('  ' + (A[aIdx[k] ?? 0] ?? ''))
       } else if (op === 1) {
-        chunk.push('- ' + A[aIdx[k]])
+        chunk.push('- ' + (A[aIdx[k] ?? 0] ?? ''))
         cRemoved++
       } else {
-        chunk.push('+ ' + B[bIdx[k]])
+        chunk.push('+ ' + (B[bIdx[k] ?? 0] ?? ''))
         cAdded++
       }
     }

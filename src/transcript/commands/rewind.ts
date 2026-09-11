@@ -10,7 +10,7 @@ export const rewindCommand = async (app: App, a: string | undefined) => {
     return
   }
   const session = app.liveSessions.get(rec.id)
-  if (session === undefined || typeof session.truncate !== 'function') {
+  if (session === undefined || typeof session['truncate'] !== 'function') {
     app.notice(t('会话截断不可用：宿主 dsh-session 不支持 truncate（可用 /fork 派生替代）'))
     return
   }
@@ -58,7 +58,7 @@ export const rewindCommand = async (app: App, a: string | undefined) => {
     if (ok !== 'yes') return
   }
   try {
-    session.truncate(target.seq)
+    session['truncate'](target.seq)
     // Rebuild the chat from the truncated events (the harness truncates
     // in place and emits no events).
     rec.feed.clear()

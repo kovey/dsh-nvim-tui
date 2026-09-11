@@ -52,6 +52,17 @@ release notes / session V3 迁移文档 / 22 个依赖包的类型面差异）�
 - `/locale zh|en` 现为**双向**：`t()` 维护反向索引、命令目录在推送时翻译，
   zh→en→zh 往返一致（此前在 en 启动后无法还原中文）。
 
+**TypeScript 严格性（按标准拉满，消除隐患）**：
+
+- 移除 `SessionRec` 的尾随索引签名（字段拼错不再静默通过）；有意保留的宿主载荷
+  索引签名与 `RunnerConfig` 补上明确注释。
+- `ApprovalRequest.signal` 改用标准 `AbortSignal`；审批/问答的 abort 监听器在
+  **结算时摘除**（此前每个正常应答的请求都留下一个监听器闭包）。
+- 启用 `noUncheckedIndexedAccess`、`noPropertyAccessFromIndexSignature`、
+  `exactOptionalPropertyTypes`、`verbatimModuleSyntax`、`noImplicitOverride`、
+  `noFallthroughCasesInSwitch`、`noImplicitReturns`、`allowUnreachableCode:false`
+  并修完全部暴露点（索引访问 71 / 动态属性 63 / 可选属性 36）。
+
 **界面一致性 / 低危清理**：
 
 - `tf()` 包装收尾：RPC 诊断标签、picker 动作标签、分类消息等 73 行 + 补译 65 条 ——

@@ -75,14 +75,14 @@ export interface DepReport {
   status: DepStatus
   detail: string
   /** RowTemplate key: the item can be assembled with /deps install. */
-  fixId?: string
+  fixId?: string | undefined
 }
 
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 
-export const dshHome = () => process.env.DSH_HOME ?? join(homedir(), '.dsh')
+export const dshHome = () => process.env['DSH_HOME'] ?? join(homedir(), '.dsh')
 
 /** The profile patch path: the RUNNING profile's cordis.patch.yml.
  *  The running profile always bundles dsh-nvim-tui (the TUI is mounted
@@ -123,7 +123,7 @@ export function readPatchRowIds(path: string): Set<string> {
       const t = line.trim()
       if (t.startsWith('#')) continue
       const m = t.match(/^-\s+id:\s*['"]?([\w-]+)/)
-      if (m) ids.add(m[1])
+      if (m?.[1] !== undefined) ids.add(m[1])
     }
   } catch {}
   return ids
@@ -191,7 +191,7 @@ export function packageExists(pkg: string, file: string): boolean {
     const rel = pkgName + '/' + file
     const dshDir = findDshPackageDir()
     const roots = [
-      process.env.DSH_NVIM_TUI_INSTALL_ROOT,
+      process.env['DSH_NVIM_TUI_INSTALL_ROOT'],
       dshDir,
       dshDir === undefined ? undefined : dirname(dirname(dshDir)), // …/lib/node_modules
       findInstallRoot(), // the profile root

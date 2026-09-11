@@ -11,7 +11,7 @@ export interface MarketEntry {
     descZh: string;
     descEn: string;
     /** Author-supplied prebuilt release tarball, when declared. */
-    tarball?: string;
+    tarball?: string | undefined;
 }
 export interface MarketCatalog {
     fetchedAt: number;
@@ -30,8 +30,8 @@ export declare function buildCatalog(stars: Map<string, number>, plugins: Array<
  * (one request); everything after is disk-local.
  */
 export declare function fetchCatalog(opts?: {
-    base?: string;
-    timeoutMs?: number;
+    base?: string | undefined;
+    timeoutMs?: number | undefined;
 }): Promise<MarketCatalog>;
 /** Read the cached catalog (may be stale or missing). */
 export declare function readCatalog(path?: string): MarketCatalog | null;
@@ -86,9 +86,9 @@ export declare function latestVersion(name: string, timeoutMs?: number): Promise
 export declare function depMatchesEntry(depKey: string, entry: MarketEntry): boolean;
 /** Read the repo's package.json (default branch from the catalog url). */
 export interface RepoPackageInfo {
-    name?: string;
-    version?: string;
-    hasPrepare?: boolean;
+    name?: string | undefined;
+    version?: string | undefined;
+    hasPrepare?: boolean | undefined;
 }
 export declare function readRepoPackage(url: string, timeoutMs?: number): Promise<RepoPackageInfo | null>;
 /**

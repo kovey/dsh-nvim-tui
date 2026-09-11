@@ -8,7 +8,7 @@ export interface DepReport {
     status: DepStatus;
     detail: string;
     /** RowTemplate key: the item can be assembled with /deps install. */
-    fixId?: string;
+    fixId?: string | undefined;
 }
 export declare const dshHome: () => string;
 /** The profile patch path: the RUNNING profile's cordis.patch.yml.

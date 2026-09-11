@@ -701,17 +701,22 @@ export function registerHostEventHandlers(): void {
       let settled = false
       // Queue-aware entry: concurrent requests (parent + subagents) wait in
       // order — the runner shows ONE float at a time and advances on settle.
+      const signal = request.signal
+      const onAbort = (): void => app.slices.agent.abortApproval(entry)
       const entry = {
         req: request,
         settle: (outcome: string) => {
           if (settled) return
           settled = true
+          // Detach: `{ once: true }` only removes the listener when the abort
+          // FIRES, so every normally-answered request used to leave one
+          // closure (holding the entry and the app) attached to the turn's
+          // signal for its whole lifetime.
+          try { signal?.removeEventListener('abort', onAbort) } catch {}
           resolve(outcome)
         },
       }
-      request.signal?.addEventListener('abort', () => {
-        app.slices.agent.abortApproval(entry)
-      }, { once: true })
+      signal?.addEventListener('abort', onAbort, { once: true })
       app.slices.agent.enqueueApproval(entry)
       const sid = request.agent?.session?.id
       const rec = sid === undefined ? undefined : app.slices.sessions.live.get(sid)
@@ -724,15 +729,20 @@ export function registerHostEventHandlers(): void {
   // as the interactive answerer (dsh 0.1.2-alpha.2: registerProvider was
   // removed in favor of the scoped cordis waterfall).
   registerHostHandler('user-questions/request', (app, request, next) => {
-    const req = request as { questions?: unknown[]; signal?: { addEventListener: (ev: string, cb: () => void, opts?: unknown) => void } }
+    const req = request as { questions?: unknown[]; signal?: AbortSignal }
     const proceed = next as () => unknown
     if (app.slices.runtime.disposed) return proceed()
     return new Promise((resolve, reject) => {
       // Queue-aware entry (same head/tail semantics as approvals).
-      const entry = { questions: req.questions ?? [], resolve, reject }
-      req.signal?.addEventListener('abort', () => {
-        app.slices.agent.abortQuestions(entry)
-      }, { once: true })
+      const signal = req.signal
+      const detach = (): void => { try { signal?.removeEventListener('abort', onAbort) } catch {} }
+      const onAbort = (): void => app.slices.agent.abortQuestions(entry)
+      const entry = {
+        questions: req.questions ?? [],
+        resolve: (value: unknown) => { detach(); resolve(value) },
+        reject: (err: unknown) => { detach(); reject(err) },
+      }
+      signal?.addEventListener('abort', onAbort, { once: true })
       app.slices.agent.enqueueQuestions(entry)
     })
   })

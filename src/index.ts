@@ -73,7 +73,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
   // service-registration semantics and deadlocks inside inject.
   ctx.inject(['agents', 'agentDefaultModel'], (rt) => {
     const runtimeCtx = rt as unknown as RuntimeCtx
-    const localeInit = String(config.locale ?? process.env.DSH_NVIM_TUI_LOCALE ?? 'zh')
+    const localeInit = String(config['locale'] ?? process.env['DSH_NVIM_TUI_LOCALE'] ?? 'zh')
     setLocale(localeInit === 'en' ? 'en' : 'zh')
 
     const app = createApp(ctx, runtimeCtx, config)

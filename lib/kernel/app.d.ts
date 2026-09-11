@@ -82,7 +82,8 @@ export interface SessionRec {
     policy: string | undefined;
     provider: string | undefined;
     cacheReported: boolean;
-    lastUsage?: Usage;
+    /** Reset to undefined on /rewind replay (explicit undefined allowed). */
+    lastUsage?: Usage | undefined;
     lastAssistantMessageId: string | null;
     goal: GoalState | null;
     planActive: boolean;
@@ -117,9 +118,9 @@ export interface SessionRec {
      *  terminal states survive the live-list drop so the FINAL board can
      *  commit with ✓/✗/⚠ marks). */
     jobsCache: Map<string, {
-        label?: string;
+        label?: string | undefined;
         status: string;
-        startedAt?: number;
+        startedAt?: number | undefined;
     }>;
     /** Committed batch identity (id:status 排序拼接)：终态板提交一次后，30s
      *  心跳重新拉到的同一批终态任务不得再次提交。 */
@@ -136,12 +137,11 @@ export interface SessionRec {
         turn: unknown;
         step: unknown;
     }>;
-    [key: string]: unknown;
 }
 export interface WorkflowRun {
     id: string;
     /** Session that drove the run (runs are per-session, not global state). */
-    sessionId?: string;
+    sessionId?: string | undefined;
     name: string;
     startedAt: number;
     /** Bounded: a long run must not grow without limit. */
@@ -152,7 +152,7 @@ export interface WorkflowRun {
     agents: Array<{
         seq: number;
         label: string;
-        outcome?: string;
+        outcome?: string | undefined;
     }>;
     logs: string[];
     running: boolean;
@@ -218,19 +218,19 @@ export interface AppSlices {
         readonly activeId: string | null;
         readonly historyHeaders: Array<{
             id: string;
-            cwd?: string;
-            createdAt?: number;
-            title?: string;
-            origin?: string;
-            inheritedEventCount?: number;
+            cwd?: string | undefined;
+            createdAt?: number | undefined;
+            title?: string | undefined;
+            origin?: string | undefined;
+            inheritedEventCount?: number | undefined;
         }>;
         readonly historyById: Map<string, {
             id: string;
-            cwd?: string;
-            createdAt?: number;
-            title?: string;
-            origin?: string;
-            inheritedEventCount?: number;
+            cwd?: string | undefined;
+            createdAt?: number | undefined;
+            title?: string | undefined;
+            origin?: string | undefined;
+            inheritedEventCount?: number | undefined;
         }>;
         readonly sessionEntries: Array<{
             id: string;
@@ -267,7 +267,7 @@ export interface AppSlices {
             label: string;
             running: boolean;
             mode: string | undefined;
-            createdAt?: number;
+            createdAt?: number | undefined;
         }>>;
         seedRunningSubagents: (parentId: string) => Promise<void>;
         cleanSubagentChain: (parentId: string, childId: string) => Promise<boolean>;
@@ -303,7 +303,7 @@ export interface AppSlices {
         readonly pendingFileSnaps: Map<string, {
             display: string;
             before: string | null;
-            owner?: string;
+            owner?: string | undefined;
         }>;
         readonly renderedDiffCalls: WeakMap<FeedRenderer, Set<string>>;
         readonly pendingEchoes: Map<string, string[]>;

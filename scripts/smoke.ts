@@ -498,8 +498,8 @@ description:
   }))
   assert.equal(stars.get('https://github.com/A/b-plugin'), 42, 'stars parsed')
   const cat = buildCatalog(stars, [pA, pB, { name: 'B/c-plugin', url: 'https://github.com/B/c-plugin' }])
-  assert.equal(cat[0].name, 'A/b-plugin', 'sorted by stars desc first')
-  assert.equal(cat[0].stars, 42, 'top entry carries stars')
+  assert.equal(cat[0]?.name, 'A/b-plugin', 'sorted by stars desc first')
+  assert.equal(cat[0]?.stars, 42, 'top entry carries stars')
   assert.ok(cat.some((e) => e.name === 'C/d-plugin' && e.stars === 0), 'yaml-only entry joins at 0 stars')
   assert.deepEqual(searchCatalog(cat, 'rotates').map((e) => e.name), ['A/b-plugin'], 'en description search')
   assert.deepEqual(searchCatalog(cat, '记忆').map((e) => e.name), ['C/d-plugin'], 'zh description search')
@@ -524,7 +524,7 @@ description:
   assert.equal(repoRoot(treeEntry.url), 'https://github.com/volcengine/OpenViking', 'tree subpath stripped to repo root')
   assert.equal(depMatchesEntry('https://github.com/volcengine/OpenViking', treeEntry), true, 'repo-root dep matches tree-path entry')
   assert.equal(installSpec(treeEntry), treeEntry.tarball, 'tarball wins as the install spec')
-  assert.equal(installSpec({ ...treeEntry, tarball: undefined }), 'https://github.com/volcengine/OpenViking', 'repo root used when no tarball')
+  assert.equal(installSpec({ ...treeEntry, tarball: undefined as string | undefined }), 'https://github.com/volcengine/OpenViking', 'repo root used when no tarball')
   // phase-3: failure classification drives the automatic remedy chains
   assert.equal(classifyPnpmError('ERR_PNPM_FETCH_404 GET https://registry.npmjs.org/x: 404 Not Found').kind, 'notfound', '404 classified as notfound')
   assert.equal(classifyPnpmError('ERR_PNPM_NO_MATCHING_VERSION No matching version found for x@9.9.9').kind, 'notfound', 'no-matching-version classified as notfound')
@@ -1135,7 +1135,7 @@ description:
   }
   const drainNotes = (method: string) => {
     for (let i = notes.length - 1; i >= 0; i--) {
-      if (notes[i].method === method) notes.splice(i, 1)
+      if (notes[i]?.method === method) notes.splice(i, 1)
     }
   }
 
@@ -1767,11 +1767,11 @@ description:
   assert.ok(!patchIds.has('feishu'), 'comment mentions are not rows')
   assert.ok(!patchIds.has('commented-out'), 'commented rows are not rows')
   fs.unlinkSync(depsPatch)
-  const installProbe = process.env.DSH_NVIM_TUI_INSTALL_ROOT ??
+  const installProbe = process.env['DSH_NVIM_TUI_INSTALL_ROOT'] ??
     [path.join(os.homedir(), '.nvm', 'versions', `node/${process.versions.node}`, 'lib', 'node_modules', '@deepseek-ai')]
       .find((p) => fs.existsSync(p))
   if (installProbe !== undefined) {
-    process.env.DSH_NVIM_TUI_INSTALL_ROOT = path.dirname(path.dirname(installProbe))
+    process.env['DSH_NVIM_TUI_INSTALL_ROOT'] = path.dirname(path.dirname(installProbe))
     assert.equal(packageExists('@deepseek-ai/dsh-workspace', 'package.json'), true, 'installed package detected')
     assert.equal(packageExists('@deepseek-ai/dsh-not-a-real-package', 'package.json'), false, 'absent package rejected')
   } else {
@@ -2022,7 +2022,7 @@ description:
   assert.ok(WHALE_EMOJI_FRAMES.some((f) => f.includes('🫧')), 'bubble frame leads the cycle')
   const laid = layoutWhaleRows(30, 100)
   assert.ok(laid !== null && laid.length === WHALE_ROWS + Math.floor((30 - WHALE_ROWS) / 2), 'whale layout pads the top for vertical centering')
-  assert.equal(laid[0].text, '', 'vertical centering pads the top')
+  assert.equal(laid?.[0]?.text, '', 'vertical centering pads the top')
   assert.equal(layoutWhaleRows(3, 20), null, 'tiny window skips the art')
   const whaleBuf = await nvim.request('nvim_create_buf', [false, true])
   const whaleFeed = new FeedRenderer(nvim, whaleBuf, ids.chatWin!, {
@@ -2769,8 +2769,8 @@ description:
   const kindMarkId = kindMarks[1][0] as number
   assert.ok(Number.isInteger(kindMarkId), 'kind card mark resolvable')
   const kindList = feedA.activateCard(kindMarkId, null) as Array<{ kind?: string; value: string }>
-  assert.equal(kindList[1].kind, 'confirm', 'confirm kind carried in the picker list')
-  assert.equal(kindList[2].kind, 'input', 'input kind carried in the picker list')
+  assert.equal(kindList[1]?.kind, 'confirm', 'confirm kind carried in the picker list')
+  assert.equal(kindList[2]?.kind, 'input', 'input kind carried in the picker list')
   const resolvedConfirm = feedA.activateCard(kindMarkId, 2) as { cardId: string; action: { kind?: string; confirmText?: string } }
   assert.equal(resolvedConfirm.action.kind, 'confirm', 'confirm action resolves with its kind')
   assert.equal(resolvedConfirm.action.confirmText, '确认执行？', 'confirmText carried')

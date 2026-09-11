@@ -23,7 +23,7 @@ export const subagentsCommand = async (app: App) => {
     let children = await app.slices.sessions.listSubagentChildren(app.slices.sessions.activeId)
     // TTL cleanup: settled chains past the retention window are truncated
     // (only the first event survives) and hidden from the list.
-    const ttlHours = Number(app.config.subagentTtlHours ?? 72)
+    const ttlHours = Number(app.config['subagentTtlHours'] ?? 72)
     const expired = children.filter((c) => !c.running && isExpired(c.createdAt, ttlHours))
     if (expired.length > 0) {
       let cleaned = 0

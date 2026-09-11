@@ -38,7 +38,8 @@ export interface ParsedLine {
     spans: Span[];
     code: boolean;
     fenceToggled: boolean;
-    group?: string;
+    /** Undefined is meaningful (no group) — the producer passes it explicitly. */
+    group?: string | null | undefined;
 }
 export interface FeedOptions {
     flushDelayMs?: number;
@@ -69,22 +70,26 @@ export interface WelcomeLine {
 export interface ExtCardAction {
     label: string;
     value: string;
-    kind?: 'plain' | 'confirm' | 'input';
-    confirmText?: string;
-    inputPrompt?: string;
-    inputDefault?: string;
+    /** Optional fields accept an EXPLICIT undefined (extension callers forward
+     *  their own optionals verbatim — exactOptionalPropertyTypes). */
+    kind?: 'plain' | 'confirm' | 'input' | undefined;
+    confirmText?: string | undefined;
+    inputPrompt?: string | undefined;
+    inputDefault?: string | undefined;
 }
-/** Ext-card render options (the P1 extension API's ui.card). */
+/** Ext-card render options (the P1 extension API's ui.card). Optionals accept
+ *  an explicit undefined: extension callers forward their own optionals
+ *  verbatim (exactOptionalPropertyTypes). */
 export interface ExtCardOpts {
     /** Extension name shown in the card header. */
     plugin: string;
     title: string;
     body: string;
-    actions?: ExtCardAction[];
+    actions?: ExtCardAction[] | undefined;
     /** Interactive activation (P4-③): invoked with the action's value when
      *  the user activates the card in the chat (1-9 / Enter). plain/confirm
      *  actions pass action.value; input actions pass the TYPED text. */
-    onAction?: (value: string) => void;
+    onAction?: ((value: string) => void) | undefined;
 }
 /** Handle returned by pushExtCard: update/dismiss the block in place. */
 export interface ExtCardHandle {
@@ -152,7 +157,7 @@ export declare class FeedRenderer {
     /** Interactive cards (P4-③): cardId → action surface. */
     cardHandlers: Map<string, {
         actions: ExtCardAction[];
-        onAction?: (value: string) => void;
+        onAction?: ((value: string) => void) | undefined;
     }>;
     /** cardId → rendered extmark range (markId + buffer rows). */
     cardRanges: Map<string, {

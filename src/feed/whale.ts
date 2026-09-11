@@ -88,7 +88,8 @@ function cloneGrid(): string[][] {
 }
 
 function setCell(g: string[][], row: number, col: number, ch: string): void {
-  if (row >= 0 && row < g.length && col >= 0 && col < g[row].length) g[row][col] = ch
+  const line = g[row]
+  if (row >= 0 && line !== undefined && col >= 0 && col < line.length) line[col] = ch
 }
 
 /** Both eyes open (undo the base grid's left wink). */
@@ -106,7 +107,7 @@ function rightWink(g: string[][]): void {
 
 /** Shift every non-empty row down by one pixel (gentle bob). */
 function bobDown(g: string[][]): void {
-  for (let y = g.length - 1; y >= 1; y--) g[y] = g[y - 1]
+  for (let y = g.length - 1; y >= 1; y--) g[y] = g[y - 1] ?? []
   g[0] = new Array(g[1]?.length ?? 24).fill('.')
 }
 

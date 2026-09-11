@@ -15,7 +15,7 @@ export interface NlMatch {
   /** slash-command name WITHOUT the leading '/'. */
   name: string
   /** optional argument string to append. */
-  arg?: string
+  arg?: string | undefined
   /** true when the match came from the LOOSE noun pass (substring contains)
    *  — ambiguous, the runner hands it to the agent (tui_command tool)
    *  instead of executing the command blindly. */
@@ -60,9 +60,9 @@ const INTENTS: IntentSpec[] = [
   { name: 'restart', exact: [['重启'], ['重启dsh'], ['restart']] },
   { name: 'clear', exact: [['清屏'], ['清空屏幕'], ['清空'], ['清屏一下'], ['clear'], ['clear screen'], ['cls']] },
   { name: 'stop', exact: [['停止'], ['停下'], ['停'], ['stop'], ['halt']] },
-  { name: 'layout', exact: [['布局'], ['layout']], patterns: [{ re: /^布局[:： ]*(default|panel)$/i, arg: (m) => m[1] }] },
+  { name: 'layout', exact: [['布局'], ['layout']], patterns: [{ re: /^布局[:： ]*(default|panel)$/i, arg: (m) => m[1] ?? '' }] },
   { name: 'panel', exact: [['活动面板'], ['面板'], ['收起面板'], ['展开面板'], ['panel']], contains: ['面板', 'panel'] },
-  { name: 'bell', exact: [['铃声'], ['响铃'], ['bell']], patterns: [{ re: /^(?:铃声|响铃|bell)[:： ]*(on|off|开|关)$/i, arg: (m) => MAP_ONOFF(m[1]) }] },
+  { name: 'bell', exact: [['铃声'], ['响铃'], ['bell']], patterns: [{ re: /^(?:铃声|响铃|bell)[:： ]*(on|off|开|关)$/i, arg: (m) => MAP_ONOFF(m[1] ?? '') }] },
   { name: 'doctor', exact: [['诊断'], ['终端诊断'], ['体检'], ['doctor']], contains: ['诊断', 'doctor'] },
 
   // -- sessions --------------------------------------------------------------
@@ -114,14 +114,14 @@ const INTENTS: IntentSpec[] = [
       { re: /^(?:切换|换成|换|用|使用)(?:到)?(?:的)?模型[:： ]*(.+)$/i },
       { re: /^模型[:： ]*(.+)$/i },
       { re: /^(.+?)[:： ]*模型$/, arg: (m) => {
-        const v = m[1].replace(LEAD_RE, '').trim()
+        const v = (m[1] ?? '').replace(LEAD_RE, '').trim()
         return /^[a-z0-9._-]+(?:\/[a-z0-9._-]+)*$/i.test(v) ? v : undefined
       } },
     ],
   },
   {
     name: 'effort',
-    patterns: [{ re: /^(?:推理等级|effort)[:： ]*(off|high|max|auto|低|高|最高|自动|关|关闭)$/i, arg: (m) => MAP_EFFORT(m[1]) }],
+    patterns: [{ re: /^(?:推理等级|effort)[:： ]*(off|high|max|auto|低|高|最高|自动|关|关闭)$/i, arg: (m) => MAP_EFFORT(m[1] ?? '') }],
   },
   { name: 'preset', exact: [['预设'], ['agent预设'], ['preset']], patterns: [{ re: /^预设[:： ]*(.+)$/i }] },
   {
@@ -136,7 +136,7 @@ const INTENTS: IntentSpec[] = [
     // the OPPOSITE way 50% of the time); 'yolo on/off' already match the
     // pattern below and are dropped from the exact list.
     exact: [['yolo'], ['开启yolo', 'on'], ['关闭yolo', 'off']],
-    patterns: [{ re: /^yolo[:： ]*(on|off)$/i, arg: (m) => m[1] }],
+    patterns: [{ re: /^yolo[:： ]*(on|off)$/i, arg: (m) => m[1] ?? '' }],
   },
   { name: 'density', exact: [['紧凑模式'], ['紧凑卡片'], ['density']] },
   { name: 'whale', exact: [['鲸鱼'], ['鲸鱼背景'], ['蓝鲸'], ['背景鲸鱼'], ['whale']] },
@@ -175,7 +175,7 @@ const INTENTS: IntentSpec[] = [
     name: 'locale',
     exact: [['切换英文', 'en'], ['切换到英文', 'en'], ['english', 'en'], ['切换中文', 'zh'], ['切换到中文', 'zh'], ['中文', 'zh'], ['英文', 'en']],
     contains: ['语言', 'language', 'locale'],
-    patterns: [{ re: /^(?:语言|locale)[:： ]*(zh|en|中文|英文)$/i, arg: (m) => MAP_LANG(m[1]) }],
+    patterns: [{ re: /^(?:语言|locale)[:： ]*(zh|en|中文|英文)$/i, arg: (m) => MAP_LANG(m[1] ?? '') }],
   },
 
   // -- market ----------------------------------------------------------------
@@ -207,7 +207,7 @@ const INTENTS: IntentSpec[] = [
     name: 'plan',
     exact: [['计划'], ['plan'], ['开启计划'], ['关闭计划']],
     contains: ['计划', 'plan'],
-    patterns: [{ re: /^计划[:： ]*(on|off|status)$/i, arg: (m) => m[1] }, { re: /^(?:开启|打开)计划$/i, arg: () => 'on' }, { re: /^关闭计划$/i, arg: () => 'off' }],
+    patterns: [{ re: /^计划[:： ]*(on|off|status)$/i, arg: (m) => m[1] ?? '' }, { re: /^(?:开启|打开)计划$/i, arg: () => 'on' }, { re: /^关闭计划$/i, arg: () => 'off' }],
   },
   {
     name: 'compact',
@@ -253,7 +253,7 @@ const INTENTS: IntentSpec[] = [
   },
   {
     name: 'fb',
-    patterns: [{ re: /^(?:反馈|fb)[:： ]*(up|down|赞|踩)(?:[:： ]*(.+))?$/i, arg: (m) => `${MAP_FB(m[1])}${m[2] ? ` ${m[2].trim()}` : ''}` }],
+    patterns: [{ re: /^(?:反馈|fb)[:： ]*(up|down|赞|踩)(?:[:： ]*(.+))?$/i, arg: (m) => `${MAP_FB(m[1] ?? '')}${m[2] ? ` ${m[2].trim()}` : ''}` }],
   },
 ]
 

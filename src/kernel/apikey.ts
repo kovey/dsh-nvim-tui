@@ -13,7 +13,7 @@ import type { App } from './app.js'
 
 /** Credentials store location (the file the official Models page writes). */
 export function credentialsPath(): string {
-  return join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), '.credentials.yaml')
+  return join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), '.credentials.yaml')
 }
 
 /** Credential ref (env-var name) the active provider's key resolves

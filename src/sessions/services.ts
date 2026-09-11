@@ -15,7 +15,7 @@ const WSS = (d: AppSlices['sessions']) => d as WritableSlice<AppSlices['sessions
 
 /** /todo 清单纪律守卫开关（默认开；config.todoGuard=false 或 DSH_NVIM_TUI_TODO_GUARD=0 关闭）。 */
 const todoGuardEnabled = (app: App): { enabled: boolean; onError: (stage: string, err: unknown) => void } => ({
-  enabled: app.config.todoGuard !== false && process.env.DSH_NVIM_TUI_TODO_GUARD !== '0',
+  enabled: app.config.todoGuard !== false && process.env['DSH_NVIM_TUI_TODO_GUARD'] !== '0',
   // A silently-failing guard registration would remove the whole feature.
   onError: (stage, err) => app.exitDiag(`todo-guard-${stage}`, err instanceof Error ? err.message : String(err)),
 })
@@ -39,7 +39,7 @@ export const attachSession = async (app: App, handle: AgentHandle, modelRef: Mod
     activeChecker: () => id === app.slices.sessions.activeId,
     reasoningBuf: rids?.reasoningBuf ?? null,
     reasoningView: () => ({ open: app.slices.runtime.reasoningOpen, win: app.slices.runtime.reasoningWinId }),
-    whale: app.config.whaleArt !== 'off',
+    whale: app.config['whaleArt'] !== 'off',
     welcome: welcomeLines,
   })
   app.slices.sessions.live.set(id, {
@@ -417,8 +417,12 @@ export const welcomeLines = (): { above: Array<{ text: string; group?: string }>
   const word = 'DSH NVIM TUI'
   const banner: string[] = ['', '', '', '', '', '']
   for (const ch of word) {
-    const glyph = font[ch] ?? font[' ']
-    for (let i = 0; i < 6; i++) banner[i] += (banner[i] === '' ? '' : ' ') + glyph[i]
+    const glyph = font[ch] ?? font[' '] ?? []
+    for (let i = 0; i < 6; i++) {
+      const g = glyph[i] ?? ''
+      const cur = banner[i]
+      if (cur !== undefined) banner[i] = cur + (cur === '' ? '' : ' ') + g
+    }
   }
   const BLUE = 'DshTuiWhaleB-'
   const TITLE = 'DshTuiUser'

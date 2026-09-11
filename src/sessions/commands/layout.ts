@@ -9,7 +9,7 @@ export const layoutCommand = (app: App, a: string | undefined) => {
   let name = (a ?? '').trim()
   if (name === '') {
     layoutIdx = (layoutIdx + 1) % order.length
-    name = order[layoutIdx]
+    name = order[layoutIdx] ?? 'default'
   } else if (!order.includes(name)) {
     app.notice(tf('未知布局 {0}（可用: {1})', [name, order.join(' ')]))
     return

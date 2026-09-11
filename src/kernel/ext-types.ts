@@ -63,13 +63,13 @@ export interface ExtCardOpts {
   actions?: Array<{
     label: string
     value: string
-    kind?: 'plain' | 'confirm' | 'input'
-    confirmText?: string
-    inputPrompt?: string
-    inputDefault?: string
-  }>
+    kind?: 'plain' | 'confirm' | 'input' | undefined
+    confirmText?: string | undefined
+    inputPrompt?: string | undefined
+    inputDefault?: string | undefined
+  }> | undefined
   /** Interactive activation callback (value = the fired action's value). */
-  onAction?: (value: string) => void
+  onAction?: ((value: string) => void) | undefined
   /** Auto-dismiss after this many milliseconds. */
   ttlMs?: number
 }

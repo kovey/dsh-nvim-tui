@@ -13,7 +13,7 @@ import type { App } from '../kernel/app.js'
 
 /** Path of the resume-pointer JSON (also holds UI preferences). */
 export const statePathOf = (): string =>
-  join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'dsh-nvim-tui-state.json')
+  join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), 'dsh-nvim-tui-state.json')
 
 /** Read the whole state object (null when absent/unreadable). */
 export const readStateRaw = (): Record<string, unknown> | null => {
@@ -30,7 +30,7 @@ export const saveUiPref = (app: App, key: string, value: unknown): void => {
     const current = readStateRaw() ?? {}
     writeFileSync(statePathOf(), JSON.stringify({
       ...current,
-      ui: { ...(current.ui as Record<string, unknown> | undefined), [key]: value },
+      ui: { ...(current['ui'] as Record<string, unknown> | undefined), [key]: value },
     }))
   } catch (err) {
     app.exitDiag('save-ui-pref-failed', (err as Error).message)

@@ -62,7 +62,7 @@ export function installHeadless(app: App): {
     if (watchdog !== null) clearTimeout(watchdog)
   })
   const kick = (): void => {
-    const headlessPrompt = app.config.prompt ?? process.env.DSH_NVIM_TUI_PROMPT
+    const headlessPrompt = app.config.prompt ?? process.env['DSH_NVIM_TUI_PROMPT']
     if (app.headless && headlessPrompt) app.slices.agent.send(headlessPrompt)
   }
   return { dumpAndQuit, startWatchdog, kick }

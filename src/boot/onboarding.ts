@@ -17,8 +17,8 @@ import type { App } from '../kernel/app.js'
 
 /** One-shot marker: DSH_HOME/nvim-tui-onboarded.json (env override for tests). */
 const onboardFile = (): string =>
-  process.env.DSH_NVIM_TUI_ONBOARD_FILE ??
-  join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'nvim-tui-onboarded.json')
+  process.env['DSH_NVIM_TUI_ONBOARD_FILE'] ??
+  join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), 'nvim-tui-onboarded.json')
 
 const onboarded = (): boolean => {
   try {

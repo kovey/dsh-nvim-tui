@@ -49,12 +49,12 @@ function routingConfig(app: App): DifficultyRoutingConfig {
 function tierRoute(
   cfg: DifficultyRoutingConfig,
   tier: DifficultyTier,
-  current: { provider: string; model: string; reasoningEffort?: string },
-): { provider: string; model: string; reasoningEffort?: string } | null {
+  current: { provider: string; model: string; reasoningEffort?: string | undefined },
+): { provider: string; model: string; reasoningEffort?: string | undefined } | null {
   const t = cfg.tiers?.[tier]
   if (t === undefined || typeof t.model !== 'string' || t.model === '') return null
   const provider = typeof t.provider === 'string' && t.provider !== '' ? t.provider : current.provider
-  const route: { provider: string; model: string; reasoningEffort?: string } = { provider, model: t.model }
+  const route: { provider: string; model: string; reasoningEffort?: string | undefined } = { provider, model: t.model }
   if (t.effort !== undefined && t.effort !== 'auto') route.reasoningEffort = t.effort
   else if (t.effort === undefined) route.reasoningEffort = current.reasoningEffort
   return route

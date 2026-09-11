@@ -49,12 +49,12 @@ export function isExpired(createdAt: number | undefined, ttlHours: number, now: 
 
 /** Cleaned-id ledger path under DSH_HOME. */
 function cleanStatePath(): string {
-  return join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'dsh-nvim-tui-subagent-clean.json')
+  return join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), 'dsh-nvim-tui-subagent-clean.json')
 }
 
 /** /subagents list ordering: running children first (the live work is what
  *  matters), then newest-first within each group. */
-export function orderSubagentChildren<T extends { running?: boolean; createdAt?: number }>(children: T[]): T[] {
+export function orderSubagentChildren<T extends { running?: boolean | undefined; createdAt?: number | undefined }>(children: T[]): T[] {
   return [...children].sort((a, b) => {
     if ((a.running ?? false) !== (b.running ?? false)) return a.running ? -1 : 1
     return (b.createdAt ?? 0) - (a.createdAt ?? 0)

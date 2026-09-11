@@ -24,8 +24,8 @@ export declare function isExpired(createdAt: number | undefined, ttlHours: numbe
 /** /subagents list ordering: running children first (the live work is what
  *  matters), then newest-first within each group. */
 export declare function orderSubagentChildren<T extends {
-    running?: boolean;
-    createdAt?: number;
+    running?: boolean | undefined;
+    createdAt?: number | undefined;
 }>(children: T[]): T[];
 /** Read the cleaned-id ledger: parentSessionId -> childIds. */
 export declare function readCleanedIds(): Record<string, string[]>;

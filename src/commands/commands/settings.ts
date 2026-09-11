@@ -25,9 +25,17 @@ export const settingsCommand = async (app: App, a: string | undefined) => {
         app.notice(t('用法: /settings set <ns> <key.path> <value>（ns 见概览，如 agent-default-model）'))
         return
       }
-      const ns = m[1]
-      const path = m[2].split('.')
-      const raw = m[3].trim()
+      const [, ns, keyPath, rawValue] = m
+      if (ns === undefined || keyPath === undefined || rawValue === undefined) {
+        app.notice(t('用法: /settings set <ns> <key.path> <value>（ns 见概览，如 agent-default-model）'))
+        return
+      }
+      const path = keyPath.split('.').filter((seg) => seg !== '')
+      if (path.length === 0) {
+        app.notice(t('用法: /settings set <ns> <key.path> <value>（ns 见概览，如 agent-default-model）'))
+        return
+      }
+      const raw = rawValue.trim()
       let value: unknown = raw
       if (raw === 'true') value = true
       else if (raw === 'false') value = false
@@ -37,19 +45,20 @@ export const settingsCommand = async (app: App, a: string | undefined) => {
       const patch: Record<string, unknown> = {}
       let node = patch
       for (let i = 0; i < path.length - 1; i++) {
-        node = node[path[i]] = (node[path[i]] as Record<string, unknown> | undefined) ?? {}
+        const seg = path[i] as string
+        node = node[seg] = (node[seg] as Record<string, unknown> | undefined) ?? {}
       }
-      node[path[path.length - 1]] = value
+      node[path[path.length - 1] as string] = value
       try {
         if (typeof settings.update !== 'function') throw new Error(t('update 不可用'))
         await settings.update(ns, patch)
         // Never echo secret-looking values: the transcript is persisted and
         // visible in the chat buffer (api keys, tokens, credentials paths).
         const SECRET_RE = /(api[-_]?key|secret|token|password|credential|authorization|bearer)/i
-        const shown = SECRET_RE.test(`${ns}.${m[2]}`) || SECRET_RE.test(raw)
+        const shown = SECRET_RE.test(`${ns}.${keyPath}`) || SECRET_RE.test(raw)
           ? '••••（已隐藏）'
           : JSON.stringify(value)
-        app.notice(tf('已更新设置 {0}.{1} = {2}', [ns, m[2], shown]))
+        app.notice(tf('已更新设置 {0}.{1} = {2}', [ns, keyPath, shown]))
       } catch (err) {
         app.notice(tf('设置更新失败: {0}', [(err as Error).message]))
       }

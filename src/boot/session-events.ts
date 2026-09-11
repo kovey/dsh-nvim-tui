@@ -20,8 +20,8 @@ const producedPathFromCall = (name: string, argsText: string | undefined): strin
   if (!['fs', 'write', 'edit', 'replace', 'append', 'str_replace_editor', 'patch'].includes(name)) return null
   let args: Record<string, unknown> | undefined
   try { args = JSON.parse(argsText ?? '{}') as Record<string, unknown> } catch { return null }
-  if (name === 'str_replace_editor' && args?.command !== 'insert') return null
-  const p = args?.file_path ?? args?.path
+  if (name === 'str_replace_editor' && args?.['command'] !== 'insert') return null
+  const p = args?.['file_path'] ?? args?.['path']
   return typeof p === 'string' && p !== '' ? p : null
 }
 

@@ -90,7 +90,10 @@ export function renderTable(block: string[], closed: boolean, maxWidth = Infinit
   // Numeric columns default to right alignment.
   for (let c = 0; c < cols; c++) {
     if (aligns[c] === 'auto' && body.length > 0 &&
-      body.every((r) => r[c] !== undefined && /^-?[\d.,]+$/.test(r[c].trim()))) {
+      body.every((r) => {
+        const cell = r[c]
+        return cell !== undefined && /^-?[\d.,]+$/.test(cell.trim())
+      })) {
       aligns[c] = 'right'
     }
   }

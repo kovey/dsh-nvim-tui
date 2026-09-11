@@ -57,7 +57,8 @@ export interface ParsedLine {
   spans: Span[]
   code: boolean
   fenceToggled: boolean
-  group?: string
+  /** Undefined is meaningful (no group) — the producer passes it explicitly. */
+  group?: string | null | undefined
 }
 
 const ROLE_BY_PREFIX: Array<[RegExp, string]> = [
@@ -100,23 +101,27 @@ export interface WelcomeLine {
 export interface ExtCardAction {
   label: string
   value: string
-  kind?: 'plain' | 'confirm' | 'input'
-  confirmText?: string
-  inputPrompt?: string
-  inputDefault?: string
+  /** Optional fields accept an EXPLICIT undefined (extension callers forward
+   *  their own optionals verbatim — exactOptionalPropertyTypes). */
+  kind?: 'plain' | 'confirm' | 'input' | undefined
+  confirmText?: string | undefined
+  inputPrompt?: string | undefined
+  inputDefault?: string | undefined
 }
 
-/** Ext-card render options (the P1 extension API's ui.card). */
+/** Ext-card render options (the P1 extension API's ui.card). Optionals accept
+ *  an explicit undefined: extension callers forward their own optionals
+ *  verbatim (exactOptionalPropertyTypes). */
 export interface ExtCardOpts {
   /** Extension name shown in the card header. */
   plugin: string
   title: string
   body: string
-  actions?: ExtCardAction[]
+  actions?: ExtCardAction[] | undefined
   /** Interactive activation (P4-③): invoked with the action's value when
    *  the user activates the card in the chat (1-9 / Enter). plain/confirm
    *  actions pass action.value; input actions pass the TYPED text. */
-  onAction?: (value: string) => void
+  onAction?: ((value: string) => void) | undefined
 }
 
 /** Handle returned by pushExtCard: update/dismiss the block in place. */
@@ -180,7 +185,7 @@ export class FeedRenderer {
   extCards: Map<string, { start: number; length: number; merged: ExtCardOpts }>
   extCardSeq: number
   /** Interactive cards (P4-③): cardId → action surface. */
-  cardHandlers: Map<string, { actions: ExtCardAction[]; onAction?: (value: string) => void }>
+  cardHandlers: Map<string, { actions: ExtCardAction[]; onAction?: ((value: string) => void) | undefined }>
   /** cardId → rendered extmark range (markId + buffer rows). */
   cardRanges: Map<string, { markId: number; startRow: number; endRow: number }>
   cardNs: number | null
@@ -708,8 +713,8 @@ export class FeedRenderer {
               const rest = lines.length > 0 && lines[0] === source.summary ? lines.slice(1) : lines
               for (const line of rest) this.base.push(`· ${line}`)
             } else {
-              const sender = typeof source.senderSessionId === 'string'
-                ? source.senderSessionId.slice(0, 8)
+              const sender = typeof source['senderSessionId'] === 'string'
+                ? source['senderSessionId'].slice(0, 8)
                 : '?'
               this.base.push('', `◇ 子代理 ${sender} → 本会话`)
               for (const line of text.split('\n')) this.base.push(`· ${line}`)
@@ -1224,7 +1229,7 @@ export class FeedRenderer {
     // Parse the full view (cheap string ops) so every flush's buffer content
     // is the stripped text with consistent spans. Markdown tables become
     // bordered, aligned blocks (Claude-TUI style).
-    const parsed: Array<{ text: string; spans: Span[]; group?: string | null }> = []
+    const parsed: Array<{ text: string; spans: Span[]; group?: string | null | undefined }> = []
     // Syntax-highlight sources: fenced code (```lang) and diff blocks (lang
     // inferred from the ✎ header path). Rows = final buffer rows (0-based).
     // Diff rows keep their tokens: the row group carries ONLY the background
@@ -1395,7 +1400,7 @@ export class FeedRenderer {
         const below = hero.below ?? []
         const art = whaleRowsIndented(w, whaleFrames()[this.whaleFrame])
         const whaleRows = art ?? []
-        const block: Array<{ text: string; spans: Span[]; group?: string }> = []
+        const block: Array<{ text: string; spans: Span[]; group?: string | undefined }> = []
         for (const l of above) block.push({ text: l.text, spans: [], group: l.group })
         if (above.length > 0 && whaleRows.length > 0) block.push({ text: '', spans: [], group: undefined })
         for (const r of whaleRows) block.push({ text: r.text, spans: r.spans, group: undefined })
@@ -1433,7 +1438,7 @@ export class FeedRenderer {
       if (rec.length <= 0) continue
       const first = rowStartOfRaw[rec.start] ?? 0
       const afterEnd = rec.start + rec.length
-      const endRow = (afterEnd < raw.length ? rowStartOfRaw[afterEnd] : parsed.length) - 1
+      const endRow = (afterEnd < raw.length ? (rowStartOfRaw[afterEnd] ?? parsed.length) : parsed.length) - 1
       if (endRow >= first) newCardRows.set(cardId, { startRow: first, endRow })
     }
 
@@ -1495,7 +1500,7 @@ export class FeedRenderer {
                 { end_row = row, end_col = sp.e, hl_group = sp.group, priority = 4096 })
             end
           end
-        `, [this.bufId, this.ns, inPlaceRow, p.group ?? '', p.spans])
+        `, [this.bufId, this.ns, inPlaceRow, p?.group ?? '', p?.spans ?? []])
         // (No token pass here: a code block's tokens are registered when its
         //  CLOSING fence arrives, so the single-row rewrite can never own a
         //  block — the old `filter(b => b.row === inPlaceRow)` was dead. The

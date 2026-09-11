@@ -47,7 +47,7 @@ const childRunning = (app: App, id: string): boolean => {
 
 /** Children of one parent session (live + history, TTL-cleaned chains
  *  hidden) — the /subagents directory source. */
-const listSubagentChildren = async (app: App, parentId: string): Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number }>> => {
+const listSubagentChildren = async (app: App, parentId: string): Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number | undefined }>> => {
   const persistence = app.svc('sessionPersistence')
   let histMap = new Map<string, { createdAt?: number; origin?: string; parentSession?: string }>()
   if (typeof persistence?.list === 'function') {
@@ -79,7 +79,7 @@ const listSubagentChildren = async (app: App, parentId: string): Promise<Array<{
     } catch {}
   }
   const seen = new Set<string>()
-  const children: Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number }> = []
+  const children: Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number | undefined }> = []
   const add = (id: string, label: string | undefined, running: boolean, mode: string | undefined) => {
     if (seen.has(id) || (!running && hidden.has(id))) return
     seen.add(id)
@@ -203,7 +203,7 @@ export function installSessions(app: App): void {
 
   // -- core services this module owns (moved out of createApp, I1) --
   // -- last-active-session state (claude --continue behaviour) -------------------
-  const statePath = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'dsh-nvim-tui-state.json')
+  const statePath = join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), 'dsh-nvim-tui-state.json')
   app.slices.sessions.readState = () => {
     try {
       return JSON.parse(readFileSync(statePath, 'utf8'))
@@ -249,7 +249,7 @@ export function installSessions(app: App): void {
         if (typeof projections?.cachedSnapshot !== 'function') return undefined
         try {
           const snap = projections.cachedSnapshot(h, h.inheritedEventCount ?? 0, ['title'])
-          const title = snap?.values?.title
+          const title = snap?.values?.['title']
           return typeof title === 'string' && title !== '' ? title : undefined
         } catch {
           return undefined
@@ -257,18 +257,18 @@ export function installSessions(app: App): void {
       }
       const toRow = (h: { id: string; [key: string]: unknown }) => ({
         id: h.id,
-        cwd: typeof h.cwd === 'string' ? h.cwd : undefined,
-        createdAt: typeof h.createdAt === 'number' ? h.createdAt : undefined,
-        title: cachedTitle(h) ?? (typeof h.title === 'string' ? h.title : undefined),
-        origin: typeof h.origin === 'string' ? h.origin : undefined,
-        inheritedEventCount: typeof h.inheritedEventCount === 'number' ? h.inheritedEventCount : undefined,
+        cwd: typeof h['cwd'] === 'string' ? h['cwd'] : undefined,
+        createdAt: typeof h['createdAt'] === 'number' ? h['createdAt'] : undefined,
+        title: cachedTitle(h) ?? (typeof h['title'] === 'string' ? h['title'] : undefined),
+        origin: typeof h['origin'] === 'string' ? h['origin'] : undefined,
+        inheritedEventCount: typeof h['inheritedEventCount'] === 'number' ? h['inheritedEventCount'] : undefined,
       })
       WSS(app.slices.sessions).historyHeaders = all
-        .filter((h) => h.cwd === cwd && /^session-/.test(h.id) && h.origin !== 'subagent')
+        .filter((h) => h['cwd'] === cwd && /^session-/.test(h.id) && h['origin'] !== 'subagent')
         .map(toRow)
       app.slices.sessions.historyById.clear()
       for (const h of all) {
-        if (/^session-/.test(h.id) && h.origin !== 'subagent') {
+        if (/^session-/.test(h.id) && h['origin'] !== 'subagent') {
           app.slices.sessions.historyById.set(h.id, toRow(h))
         }
       }
@@ -339,8 +339,8 @@ export async function resumeOrCreate(app: App): Promise<void> {
   // Subagent children are bare-UUID ids (no `session-` prefix) — excluded,
   // as are sessions created in other working directories.
   await app.slices.sessions.refreshHistory()
-  const resumeId = app.config.resumeSessionId ?? process.env.DSH_NVIM_TUI_RESUME
-  const autoResume = app.config.resumeLatest !== false && process.env.DSH_NVIM_TUI_RESUME_LATEST !== '0'
+  const resumeId = app.config.resumeSessionId ?? process.env['DSH_NVIM_TUI_RESUME']
+  const autoResume = app.config.resumeLatest !== false && process.env['DSH_NVIM_TUI_RESUME_LATEST'] !== '0'
   const resumeOrFresh = async (targetId: string): Promise<boolean> => {
     try {
       await app.slices.sessions.resumeSession(targetId)

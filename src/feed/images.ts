@@ -106,7 +106,7 @@ export function parseImageDataUrl(dataUrl: string): SaveImageAttachment | null {
   if (m === null) return null
   // Buffer.from(base64) does not throw for malformed input (it truncates), so
   // the old try/catch was unreachable — the length check below is the guard.
-  const decoded = Buffer.from(m[2].replace(/\s/g, ''), 'base64')
+  const decoded = Buffer.from((m[2] ?? '').replace(/\s/g, ''), 'base64')
   if (decoded.length === 0) return null
   const mediaType = sniffMediaType(decoded)
   if (mediaType === null || mediaType !== m[1]) return null

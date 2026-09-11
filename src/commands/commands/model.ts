@@ -18,8 +18,9 @@ export const pickModel = async (app: App, arg: string | undefined): Promise<void
       app.notice(t('用法: /model [provider/model]'))
       return
     }
-    const provider = parts.length === 2 ? parts[0] : sel.provider
-    const model = parts.length === 2 ? parts[1] : parts[0]
+    const [part0 = '', part1] = parts
+    const provider = parts.length === 2 ? part0 : sel.provider
+    const model = parts.length === 2 ? (part1 ?? part0) : part0
     // provider must be a LIVE provider id — a bogus id used to be persisted
     // straight into the default-model selection (writing corrupt config).
     const llm = app.runtimeCtx.get('llm') as LlmService | undefined
@@ -36,8 +37,16 @@ export const pickModel = async (app: App, arg: string | undefined): Promise<void
         return
       }
     }
+    if (provider === '' || model === '') {
+      app.notice(t('用法: /model [provider/model]'))
+      return
+    }
     try {
-      await applyModelSelection(app, { provider, model, reasoningEffort: sel.reasoningEffort })
+      await applyModelSelection(app, {
+        provider,
+        model,
+        ...(sel.reasoningEffort !== undefined ? { reasoningEffort: sel.reasoningEffort } : {}),
+      })
     } catch (err) {
       app.notice(tf('模型切换失败: {0}', [(err as Error).message]))
     }

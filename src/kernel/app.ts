@@ -121,7 +121,8 @@ export interface SessionRec {
   policy: string | undefined
   provider: string | undefined
   cacheReported: boolean
-  lastUsage?: Usage
+  /** Reset to undefined on /rewind replay (explicit undefined allowed). */
+  lastUsage?: Usage | undefined
   lastAssistantMessageId: string | null
   goal: GoalState | null
   planActive: boolean
@@ -142,7 +143,7 @@ export interface SessionRec {
   /** Jobs board cache: id → last known state (fed by jobs.list + onJobDone;
    *  terminal states survive the live-list drop so the FINAL board can
    *  commit with ✓/✗/⚠ marks). */
-  jobsCache: Map<string, { label?: string; status: string; startedAt?: number }>
+  jobsCache: Map<string, { label?: string | undefined; status: string; startedAt?: number | undefined }>
   /** Committed batch identity (id:status 排序拼接)：终态板提交一次后，30s
    *  心跳重新拉到的同一批终态任务不得再次提交。 */
   committedJobsKey: string
@@ -154,18 +155,17 @@ export interface SessionRec {
   /** tool/call events whose tool/result has not arrived yet (live-turn
    *  orphan detection for the duplicate-dsh-tools scheduler crash). */
   pendingToolCalls: Map<string, { seq: number; turn: unknown; step: unknown }>
-  [key: string]: unknown
 }
 
 export interface WorkflowRun {
   id: string
   /** Session that drove the run (runs are per-session, not global state). */
-  sessionId?: string
+  sessionId?: string | undefined
   name: string
   startedAt: number
   /** Bounded: a long run must not grow without limit. */
   phases: Array<{ title: string; startedAt: number }>
-  agents: Array<{ seq: number; label: string; outcome?: string }>
+  agents: Array<{ seq: number; label: string; outcome?: string | undefined }>
   logs: string[]
   running: boolean
   stopReason: string | undefined
@@ -226,8 +226,8 @@ export interface AppSlices {
   sessions: {
     readonly live: Map<string, SessionRec>
     readonly activeId: string | null
-    readonly historyHeaders: Array<{ id: string; cwd?: string; createdAt?: number; title?: string; origin?: string; inheritedEventCount?: number }>
-    readonly historyById: Map<string, { id: string; cwd?: string; createdAt?: number; title?: string; origin?: string; inheritedEventCount?: number }>
+    readonly historyHeaders: Array<{ id: string; cwd?: string | undefined; createdAt?: number | undefined; title?: string | undefined; origin?: string | undefined; inheritedEventCount?: number | undefined }>
+    readonly historyById: Map<string, { id: string; cwd?: string | undefined; createdAt?: number | undefined; title?: string | undefined; origin?: string | undefined; inheritedEventCount?: number | undefined }>
     readonly sessionEntries: Array<{ id: string; title: string; active: boolean; kind: string }>
     readonly runningSubagents: Map<string, { parentId: string; label: string; startedAt: number }>
     readonly childParent: Map<string, { parentId: string; label: string }>
@@ -246,7 +246,7 @@ export interface AppSlices {
     switchTo: (id: string) => Promise<void>
     selectSession: (id: string) => Promise<void>
     forkSession: (directive: string | undefined) => Promise<string | undefined>
-    listSubagentChildren: (parentId: string) => Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number }>>
+    listSubagentChildren: (parentId: string) => Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number | undefined }>>
     seedRunningSubagents: (parentId: string) => Promise<void>
     cleanSubagentChain: (parentId: string, childId: string) => Promise<boolean>
     runningSubagentsOf: (parentId: string | null) => Array<{ parentId: string; label: string; startedAt: number }>
@@ -265,7 +265,7 @@ export interface AppSlices {
     /** Pre-edit snapshots by callId. `owner` scopes the turn/end cleanup to
      *  the session that produced the call — an unconditional clear wiped
      *  ANOTHER session's in-flight snapshots and silently dropped its ✎ diffs. */
-    readonly pendingFileSnaps: Map<string, { display: string; before: string | null; owner?: string }>
+    readonly pendingFileSnaps: Map<string, { display: string; before: string | null; owner?: string | undefined }>
     readonly renderedDiffCalls: WeakMap<FeedRenderer, Set<string>>
     readonly pendingEchoes: Map<string, string[]>
     /** Notices emitted before the first session attached (flushed on attach). */
@@ -452,12 +452,12 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
       app.slices.runtime.nvim.lua(code, args as never[])
   }
 
-  const headless = config.headless === true || process.env.DSH_NVIM_TUI_HEADLESS === '1'
-  const watchdogMsRaw = Number(config.watchdogMs ?? process.env.DSH_NVIM_TUI_WATCHDOG_MS ?? 120000)
+  const headless = config.headless === true || process.env['DSH_NVIM_TUI_HEADLESS'] === '1'
+  const watchdogMsRaw = Number(config.watchdogMs ?? process.env['DSH_NVIM_TUI_WATCHDOG_MS'] ?? 120000)
   const watchdogMs = Number.isFinite(watchdogMsRaw) && watchdogMsRaw > 0 ? watchdogMsRaw : 120000
-  const dumpPath = config.dumpPath ?? process.env.DSH_NVIM_TUI_DUMP ??
+  const dumpPath = config.dumpPath ?? process.env['DSH_NVIM_TUI_DUMP'] ??
     `/tmp/dsh-nvim-tui-e2e-${process.pid}.txt`
-  const errorLogPath = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'nvim-tui-errors.log')
+  const errorLogPath = join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), 'nvim-tui-errors.log')
 
   // Domain shells: owners inject their defaults + implementations at
   // install time (I2) — createApp only guarantees the SHAPE, never the

@@ -35,14 +35,15 @@ export function runningProfileName(app: App): string | undefined {
       const p = raw.startsWith('file:') ? fileURLToPath(raw) : raw
       if (basename(p) === 'cordis.yml' || basename(p) === 'cordis.yaml') {
         const name = basename(dirname(p))
-        if (name !== '' && name !== 'profiles' && name !== '.dsh') return name
+        if (name !== undefined && name !== '' && name !== 'profiles' && name !== '.dsh') return name
       }
     }
   } catch {}
   // ② argv fallback (loader not reachable — tests/headless contexts).
   const argv = process.argv
   const idx = argv.indexOf('--profile')
-  if (idx >= 0 && argv[idx + 1] !== undefined && !argv[idx + 1].startsWith('-')) return argv[idx + 1]
+  const argNext = idx >= 0 ? argv[idx + 1] : undefined
+  if (argNext !== undefined && !argNext.startsWith('-')) return argNext
   const eq = argv.find((a) => a.startsWith('--profile='))
   if (eq !== undefined) return eq.slice('--profile='.length)
   return undefined

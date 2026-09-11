@@ -36,7 +36,11 @@ export interface ImageAttachmentRef {
   bytes?: number
   width?: number
   height?: number
-  [key: string]: unknown
+  /** Host attachment metadata is forward-compatible: the harness may add
+   *  fields this bundle does not know yet, so unlisted keys are allowed and
+   *  read explicitly (`rec[...]`). NOT a licence to add our own untyped
+   *  fields — everything this bundle WRITES is declared above. */
+  [hostField: string]: unknown
 }
 
 /** One message content block. */
@@ -58,7 +62,8 @@ export interface MessageSourceLike {
   form?: string
   summary?: string
   plugin?: string
-  [key: string]: unknown
+  /** Forward-compatible host payload (see the note on the attachment ref). */
+  [hostField: string]: unknown
 }
 
 /** A chat message (assistant messages carry id/usage; results carry source). */
@@ -127,7 +132,8 @@ export interface ApprovalRequest {
   toolName?: string
   reason?: string
   agent?: { session?: { id?: string } }
-  signal?: { addEventListener: (ev: string, cb: () => void, opts?: unknown) => void; removeEventListener?: (ev: string, cb: () => void) => void }
+  /** Live request signal (the host's own type — Node's global AbortSignal). */
+  signal?: AbortSignal
 }
 
 /** One user question (userQuestions service). */
@@ -184,7 +190,7 @@ export interface SessionHeaderLike {
   cwd?: string
   origin?: string
   parentSession?: string
-  createdAt?: number
+  createdAt?: number | undefined
   title?: string
   /** Log offset of seeded history (projection-cache reads need it). */
   inheritedEventCount?: number
@@ -406,7 +412,7 @@ export interface HarnessSession {
   header?: {
     parentSession?: string
     origin?: string
-    createdAt?: number
+    createdAt?: number | undefined
     cwd?: string
     [key: string]: unknown
   }
@@ -475,7 +481,7 @@ export interface AgentsService {
 
 /** dsh-agent-default-model selection. */
 export interface ModelSelection {
-  currentSelection: () => { provider: string; model: string; reasoningEffort?: string; [key: string]: unknown }
+  currentSelection: () => { provider: string; model: string; reasoningEffort?: string | undefined; [key: string]: unknown }
   saveSelection: (next: unknown) => Promise<unknown>
 }
 
@@ -508,6 +514,9 @@ export interface RuntimeCtx {
 /** Runner configuration (cordis.patch.yml `config:` block / RunnerConfig row).
  *  Also accepts arbitrary extra keys (forwarded to module configs). */
 export interface RunnerConfig {
+  /** User-authored YAML (cordis.patch.yml `config:`) — unknown keys are
+   *  allowed by design so a newer config never fails to load. Known keys are
+   *  declared below and read via property access. */
   headless?: boolean
   watchdogMs?: number
   dumpPath?: string

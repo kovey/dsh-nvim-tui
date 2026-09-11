@@ -87,8 +87,10 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
   if (live) {
     const liveEvents = app.slices.trans.sessionEvents(live)
     for (let i = events.length; i < liveEvents.length; i++) {
-      feed.applyEvent(liveEvents[i], { history: true })
-      app.slices.ui.maybePushFileDiff(feed, liveEvents[i])
+      const ev = liveEvents[i]
+      if (ev === undefined) continue
+      feed.applyEvent(ev, { history: true })
+      app.slices.ui.maybePushFileDiff(feed, ev)
     }
   }
   await feed.flush()
@@ -178,8 +180,10 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
   if (live) {
     const liveEvents = app.slices.trans.sessionEvents(live)
     for (let i = events.length; i < liveEvents.length; i++) {
-      feed.applyEvent(liveEvents[i], { history: true })
-      app.slices.ui.maybePushFileDiff(feed, liveEvents[i])
+      const ev = liveEvents[i]
+      if (ev === undefined) continue
+      feed.applyEvent(ev, { history: true })
+      app.slices.ui.maybePushFileDiff(feed, ev)
     }
   }
   await feed.flush()

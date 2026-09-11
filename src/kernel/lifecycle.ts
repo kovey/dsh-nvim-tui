@@ -8,7 +8,7 @@
  * @module dsh-nvim-tui/lifecycle
  */
 import { appendFileSync } from 'node:fs'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { flushTtyInput, resetTerminalModes } from './term.js'
 import type { App, AppSlices, WritableSlice } from './app.js'
 
@@ -242,18 +242,19 @@ export function installLifecycle(app: App): void {
               return spawnSync('python3', ['-c', 'pass'], { stdio: 'ignore', timeout: 3000 }).status === 0
             } catch { return false }
           })()
-          const shCmd = hasPython3
+          const shCmd: string = hasPython3
             ? 'sleep 2; exec python3 -c "import os,sys; os.setsid(); os.execv(sys.argv[1], sys.argv[1:])" "$@"'
             : 'sleep 2; exec "$@"'
           if (!hasPython3) app.exitDiag('restart-no-python3', 'falling back to a direct exec (no setsid)')
-          const next = spawn('/bin/sh',
-            ['-c', shCmd, 'sh', process.argv[0], ...process.argv.slice(1)],
+          const argv0 = process.argv[0] ?? process.execPath
+          const next: ChildProcess = spawn('/bin/sh',
+            ['-c', shCmd, 'sh', argv0, ...process.argv.slice(1)],
             { stdio: 'inherit' })
           app.exitDiag('restart-spawned')
           await new Promise<void>((resolve) => {
             let done = false
             const fin = (): void => { if (!done) { done = true; resolve() } }
-            next.once('exit', (code2, signal2) => {
+            next.once('exit', (code2: number | null, signal2: NodeJS.Signals | null) => {
               if (code2 !== 0 || signal2 !== null) {
                 // The successor tree failed BEFORE taking over (127 = missing
                 // interpreter, a config crash, a signal). Say so on the real

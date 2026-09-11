@@ -33,7 +33,7 @@ export interface MarketEntry {
   descZh: string
   descEn: string
   /** Author-supplied prebuilt release tarball, when declared. */
-  tarball?: string
+  tarball?: string | undefined
 }
 
 export interface MarketCatalog {
@@ -60,7 +60,7 @@ const DEFAULT_TTL_MS = 6 * 3600 * 1000
 
 /** Cache path under the runner's DSH_HOME. */
 export function marketCachePath(): string {
-  return join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'nvim-tui', 'market-catalog.json')
+  return join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), 'nvim-tui', 'market-catalog.json')
 }
 
 /** Strip a YAML key line's value (no dependency on a YAML parser — the
@@ -152,7 +152,7 @@ export function buildCatalog(
  * Download the registry tarball and build the catalog. Network happens here
  * (one request); everything after is disk-local.
  */
-export async function fetchCatalog(opts: { base?: string; timeoutMs?: number } = {}): Promise<MarketCatalog> {
+export async function fetchCatalog(opts: { base?: string | undefined; timeoutMs?: number | undefined } = {}): Promise<MarketCatalog> {
   const base = registryBase(opts.base)
   const url = codeloadUrl(base)
   const timeoutMs = opts.timeoutMs ?? 60000
@@ -235,7 +235,7 @@ export interface InstalledPlugins {
 }
 
 export function readInstalledPlugins(profileName: string): InstalledPlugins {
-  const dir = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'profiles', profileName)
+  const dir = join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), 'profiles', profileName)
   const deps = new Map<string, string>()
   const versions = new Map<string, string>()
   try {
@@ -268,7 +268,7 @@ export function installSpec(entry: MarketEntry): string {
 
 /** Profile patch (user layer) path. */
 export function patchPath(profileName: string): string {
-  return join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'profiles', profileName, 'cordis.patch.yml')
+  return join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), 'profiles', profileName, 'cordis.patch.yml')
 }
 
 /** Read the user patch file. ABSENT is '' (a fresh profile legitimately has
@@ -291,11 +291,16 @@ export function readDisabledIds(text: string): Set<string> {
   const out = new Set<string>()
   const lines = text.split('\n')
   for (let i = 0; i < lines.length; i++) {
-    const m = /^- id:\s*(\S+)\s*$/.exec(lines[i])
-    if (m === null) continue
+    const line = lines[i]
+    if (line === undefined) break
+    const m = /^- id:\s*(\S+)\s*$/.exec(line)
+    const id = m?.[1]
+    if (id === undefined) continue
     let j = i + 1
-    while (j < lines.length && /^\s/.test(lines[j])) {
-      if (/^\s*disabled:\s*true\s*$/.test(lines[j])) { out.add(m[1]); break }
+    for (;;) {
+      const next = lines[j]
+      if (next === undefined || !/^\s/.test(next)) break
+      if (/^\s*disabled:\s*true\s*$/.test(next)) { out.add(id); break }
       j++
     }
   }
@@ -318,25 +323,36 @@ export function setDisabledRows(text: string, toggles: Array<{ id: string; disab
     // A top-level `- id: X` row: KEEP its body (config keys survive the
     // toggle — a disable must not destroy feishu credentials / openAt
     // overrides) and re-inject the disabled marker inside it.
-    const m = /^- id:\s*(\S+)\s*$/.exec(lines[i])
-    if (m !== null && managed.has(m[1])) {
-      const id = m[1]
+    const line = lines[i]
+    const m = line === undefined ? null : /^- id:\s*(\S+)\s*$/.exec(line)
+    const rowId = m?.[1]
+    if (rowId !== undefined && managed.has(rowId)) {
+      const id = rowId
       seen.add(id)
       const body: string[] = []
       i++
-      while (i < lines.length && /^\s/.test(lines[i])) { body.push(lines[i]); i++ }
+      for (;;) {
+        const next = lines[i]
+        if (next === undefined || !/^\s/.test(next)) break
+        body.push(next)
+        i++
+      }
       const kept = body.filter((l) => !/^\s*disabled:\s*/.test(l))
       out.push(`- id: ${id}`)
       out.push(...kept, `  disabled: ${byId.get(id) ? 'true' : 'false'}`)
       continue
     }
-    out.push(lines[i])
+    if (line !== undefined) out.push(line)
     i++
   }
   for (const t of toggles) {
     if (!seen.has(t.id)) out.push(`- id: ${t.id}`, `  disabled: ${t.disabled ? 'true' : 'false'}`)
   }
-  while (out.length > 0 && out[out.length - 1].trim() === '') out.pop()
+  for (;;) {
+    const last = out[out.length - 1]
+    if (last === undefined || last.trim() !== '') break
+    out.pop()
+  }
   return out.join('\n') + '\n'
 }
 
@@ -347,7 +363,7 @@ export function writePatch(path: string, text: string): void {
 
 // -- update checks (npm registry latest vs installed version) ---------------
 
-const latestCache = new Map<string, { at: number; version?: string }>()
+const latestCache = new Map<string, { at: number; version?: string | undefined }>()
 const LATEST_CACHE_MS = 5 * 60 * 1000
 
 /** Whether a dependency key is a plain npm package name (skips link:/file:/
@@ -387,16 +403,16 @@ export function depMatchesEntry(depKey: string, entry: MarketEntry): boolean {
 
 /** Read the repo's package.json (default branch from the catalog url). */
 export interface RepoPackageInfo {
-  name?: string
-  version?: string
-  hasPrepare?: boolean
+  name?: string | undefined
+  version?: string | undefined
+  hasPrepare?: boolean | undefined
 }
 
 export async function readRepoPackage(url: string, timeoutMs = 10000): Promise<RepoPackageInfo | null> {
   const repo = repoRoot(url).replace(/^https:\/\/github\.com\//, '')
   let branch = 'main'
   const tm = /\/tree\/([^/]+)\//.exec(url)
-  if (tm !== null) branch = tm[1]
+  if (tm?.[1] !== undefined) branch = tm[1]
   for (const b of [branch, 'main', 'master']) {
     try {
       const res = await fetch(`https://raw.githubusercontent.com/${repo}/${b}/package.json`, {
@@ -458,16 +474,16 @@ const packageNameCandidates = (depKey: string): string[] => {
   push(depKey)
   // scoped name with optional version
   const scoped = depKey.match(/^(@[^/]+\/[^@/]+)/)
-  if (scoped !== null) push(scoped[1])
+  if (scoped?.[1] !== undefined) push(scoped[1])
   // strip protocol/query, keep the last path segment
-  const noQuery = depKey.split(/[?#]/)[0]
+  const noQuery = depKey.split(/[?#]/)[0] ?? ''
   const seg = noQuery.split('/').filter((x) => x !== '').pop() ?? ''
   push(seg.replace(/\.git$/, ''))
   // tarball / archive: `name-1.2.3.tgz` → `name`
   push(seg.replace(/\.(tgz|tar\.gz|zip)$/, '').replace(/-\d+\.\d+[\w.+-]*$/, ''))
   // plain `name@version`
   const at = noQuery.match(/^([^@/]+)@/)
-  if (at !== null) push(at[1])
+  if (at?.[1] !== undefined) push(at[1])
   return out
 }
 
@@ -498,7 +514,7 @@ export function installedMainMissing(profileName: string, depKey: string): strin
     // `pnpm remove <URL>` that cannot work).
     return null
   }
-  const dir = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'profiles', profileName)
+  const dir = join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), 'profiles', profileName)
   const pkgDir = join(dir, 'node_modules', pkgName)
   try {
     const manifest = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
@@ -530,7 +546,7 @@ export function openUrl(url: string): void {
 
 /** The profile directory on disk. */
 export function profileDir(profileName: string): string {
-  return join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'profiles', profileName)
+  return join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), 'profiles', profileName)
 }
 
 export type PnpmFailureKind = 'network' | 'notfound' | 'lockfile' | 'cache' | 'git' | 'other'

@@ -14,7 +14,7 @@ export interface NlMatch {
     /** slash-command name WITHOUT the leading '/'. */
     name: string;
     /** optional argument string to append. */
-    arg?: string;
+    arg?: string | undefined;
     /** true when the match came from the LOOSE noun pass (substring contains)
      *  — ambiguous, the runner hands it to the agent (tui_command tool)
      *  instead of executing the command blindly. */

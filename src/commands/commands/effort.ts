@@ -15,7 +15,12 @@ export const effortCommand = async (app: App, a: string | undefined) => {
     app.notice(t('用法: /effort [off|high|max|auto]'))
     return
   }
-  const next = { ...app.slices.agent.currentSelection(), reasoningEffort: a === 'auto' ? undefined : a }
+  const effort = a === 'auto' ? undefined : a
+  const next = {
+    ...app.slices.agent.currentSelection(),
+    // Absent (not undefined) means "model default" to the host.
+    ...(effort !== undefined ? { reasoningEffort: effort } : {}),
+  }
   try {
     await applyModelSelection(app, next)
   } catch (err) {
