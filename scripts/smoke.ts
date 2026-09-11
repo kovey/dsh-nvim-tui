@@ -25,6 +25,7 @@ import stringWidth from 'string-width'
 import { matchSessionEventFilter } from '../lib/ext-api/index.js'
 import { readPatchRowIds, packageExists } from '../lib/deps/index.js'
 import { parsePluginArgs } from '../lib/market/commands/plugin.js'
+import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN } from '../lib/kernel/todo-guard.js'
 import { encodeSessionLog, encodeHeaderOnlyLog } from '../lib/kernel/subagent-clean.js'
@@ -1839,6 +1840,35 @@ description:
     assert.deepEqual(parsePluginArgs('remove'), { kind: 'missing-spec', sub: 'remove' }, 'missing spec reported (remove)')
     assert.deepEqual(parsePluginArgs('install --frozen'), { kind: 'bad-spec', spec: '--frozen' }, 'leading dash rejected')
     log('plugin arg parser: verbs/aliases/spec-passthrough/error branches ok')
+  }
+
+  // 9f5. e2e dump 判定（scripts/e2e-judge.ts）。此前该规则内联在 e2e.ts 里、
+  // 无任何测试，两个启发式 bug（读裸 '·'、过滤面过宽）都是真机跑歪才发现。
+  {
+    const pass = (label: string, lines: string[]): void =>
+      assert.equal(judgeDump(frameTurn(lines)), null, `e2e judge accepts: ${label}`)
+    const fail = (label: string, lines: string[]): void =>
+      assert.notEqual(judgeDump(frameTurn(lines)), null, `e2e judge rejects: ${label}`)
+    // 真实渲染形态不得误杀（假阴性会打断正常 e2e 工作流）。
+    pass('plain answer', ['收到'])
+    pass('multi-line answer', ['第一行', '第二行'])
+    pass('markdown table', ['┌──┬──┐', '│ a │ b │', '└──┴──┘'])
+    pass('tool cards', ['🔧 bash({})', '✓ bash · 234ms'])
+    pass('subagent rows', ['◇ subagent x · completed · 0ms'])
+    pass('workflow rows', ['◈ workflow 审计'])
+    pass('todo list', ['📋 待办 3 项', '  ✓ 任务一'])
+    pass('injected context + answer', ['> 你好', '· 注入上下文', '· Current x', '·', '· Approval y', '收到'])
+    // 回归：纯 '· ' 项目符号回答曾被整段误判为「无助手内容」。
+    pass('regression: pure bullet answer', ['· 第一点', '· 第二点'])
+    // 反例：无凭证时必须 FAIL —— 注入块（含渲染为裸 '·' 的空续行）与用户回显
+    // 都不算助手内容。
+    fail('regression: no-key with blank injected lines', ['> probe', '· 注入上下文', '· Current x', '·', '· Approval y'])
+    fail('no-key, injected only', ['> probe', '· 注入上下文', '· Current x'])
+    fail('prompt echo only', ['> probe'])
+    fail('error marker in turn', ['⚠ 回合被中断'])
+    // 收尾定界符是 '── turn ──' 的子串，未锚定整行会取错分界点。
+    assert.notEqual(judgeDump('no markers at all'), null, 'dump without a turn is rejected')
+    log('e2e dump judge: real render shapes accepted, echo/injection/error rejected')
   }
 
   // 9g3. /difficulty 难度路由（M2 规则定档：纯函数）。

@@ -3,7 +3,11 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": ".",
-    "outDir": null
+    "outDir": null,
+    // scripts/ is never emitted (Node runs these .ts files directly via type
+    // stripping), so a script importing a sibling script must spell the .ts
+    // extension — that is what Node resolves at runtime.
+    "allowImportingTsExtensions": true
   },
   "include": ["scripts"]
 }

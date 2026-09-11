@@ -6,6 +6,14 @@ node_modules/
 # dsh test profile: local harness state, not project source
 .dsh-test/
 
+# throwaway harness homes/profiles used by upgrade + e2e verification
+# (DSH_HOME replicas): local scratch state, never project source
+.probe-home/
+.crash-home/
+.scratch-home/
+.scratch-host/
+.rt-home/
+
 # project-local dsh memory (per-machine notes, not project source)
 .dsh/
 

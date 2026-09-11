@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { judgeDump } from './e2e-judge.ts'
 
 const prompt = process.argv[2] ?? '你好，请只回复两个字：收到'
 const dumpPath = path.join(os.tmpdir(), `dsh-nvim-tui-e2e-${process.pid}.txt`)
@@ -76,53 +77,15 @@ if (finished === 'dump') {
     process.exit(1)
   }
   const dump = fs.readFileSync(dumpPath, 'utf8')
-  // Judge only the LAST turn (the prompt's turn): anything before the final
-  // '── turn ──' is preamble/history.
-  const lastTurn = dump.lastIndexOf('── turn ──')
-  const tail = lastTurn >= 0 ? dump.slice(lastTurn) : dump
-  // Error markers. The no-credential path is matched bilingually on purpose:
-  // the harness renders '未检测到 API key' in zh mode and `no API key` in en
-  // mode, and a zh-only host used to slip past an English-only pattern —
-  // letting an unauthenticated run report E2E PASS (the injected-context block
-  // below counted as "assistant content").
-  const bad = /⚠ |no API key|未检测到\s*API\s*key|未配置\s*API\s*key|API\s*key\s*未(检测到|配置|设置)|UNSUPPORTED_CONTENT|render flush failed|fatal:/i
-  if (!/── turn ──/.test(tail)) {
-    console.error('E2E FAIL: no turn rendered in dump')
-    console.error(tail.slice(0, 2000))
-    process.exit(1)
-  }
-  // The prompt's echo alone must not pass: require some assistant content
-  // AFTER the turn marker (a pure user echo means the model never answered).
-  //
-  // Only real assistant output counts — the runtime-context block the harness
-  // injects ('· 注入上下文' + 'Current runtime context…') and the transcript's
-  // own frame lines must be excluded, otherwise a turn where the model never
-  // answered still looks non-empty and the check passes vacuously.
-  const afterMarker = tail.slice(tail.indexOf('── turn ──') + '── turn ──'.length)
-  const assistantText = afterMarker
-    .split('\n')
-    // Strip the transcript frame ('| ').
-    .map((l) => l.replace(/^\s*\|\s?/, '').trim())
-    .filter((l) => l !== '')
-    .filter((l) => !/^── turn end ──/.test(l))
-    // Every host-rendered (non-model) line in a turn carries a '·' gutter:
-    // the runtime-context block ('· 注入上下文' plus '· Current …' continuation
-    // lines), injected notices, and the thinking placeholder. Model output is
-    // rendered without it. Excluding the whole class keeps this check from
-    // depending on the exact wording of the injected block.
-    .filter((l) => !l.startsWith('·'))
-    // The user's own prompt echo ('> …') is not assistant output. Without this
-    // the echo alone satisfied the non-empty check, so a turn where the model
-    // never answered (missing credentials) reported E2E PASS.
-    .filter((l) => !l.startsWith('> '))
-  if (assistantText.join('').length === 0) {
-    console.error('E2E FAIL: turn marker with no assistant content (only prompt echo / injected context)')
-    console.error(tail.slice(0, 2000))
-    process.exit(1)
-  }
-  if (bad.test(tail)) {
-    console.error('E2E FAIL: error markers found in the final turn')
-    console.error(tail.slice(0, 4000))
+  // The judgement rule lives in ./e2e-judge.ts so it is unit-testable (the
+  // smoke suite exercises it); it used to be inline and every heuristic bug in
+  // it — a bare '·' read, an over-broad '· ' filter — only surfaced when a real
+  // run misjudged.
+  const failure = judgeDump(dump)
+  if (failure !== null) {
+    console.error(`E2E FAIL: ${failure}`)
+    const lastTurn = dump.lastIndexOf('── turn ──')
+    console.error((lastTurn >= 0 ? dump.slice(lastTurn) : dump).slice(0, 4000))
     process.exit(1)
   }
   console.log('E2E PASS — dump:', dumpPath)
