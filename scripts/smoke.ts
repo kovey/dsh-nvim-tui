@@ -28,7 +28,7 @@ import { installRootCandidates } from '../lib/deps/services.js'
 import { parsePluginArgs } from '../lib/market/commands/plugin.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
-import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN } from '../lib/kernel/todo-guard.js'
+import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN, installTodoGuard } from '../lib/kernel/todo-guard.js'
 import { encodeSessionLog, encodeHeaderOnlyLog } from '../lib/kernel/subagent-clean.js'
 import { zstdDecompressSync } from 'node:zlib'
 import os from 'node:os'
@@ -374,6 +374,23 @@ try {
   await new Promise((r) => setTimeout(r, 150))
   todoLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
   assert.ok(todoLines.some((l: string) => l.includes('📋 待办 3 项 · 3 完成 · 0 进行中 · 0 待办')), 'all-done board commits into the transcript')
+  // 落盘之后「钉住槽清空」+「徽标清零」必须同时发生：面板与徽标共用同一份
+  // 「已落盘过滤」视图，若只清其一，用户会看到清单结束了但徽标仍停在 3✓。
+  {
+    const visAfterCommit = feedA.todoVisibleItems([
+      { content: '任务一', status: 'completed' },
+      { content: '任务二', status: 'completed' },
+      { content: '任务三', status: 'completed' },
+    ])
+    assert.equal(visAfterCommit.length, 0, 'committed items leave the visible set (badge + panel both key off it)')
+    // 重新打开某一项时要能再次出现（re-plan 场景），否则徽标会永久消失。
+    // 注意只断言「该项回来了」：同批里已落盘的其他项本就该继续隐藏。
+    const reopened = feedA.todoVisibleItems([
+      { content: '任务一', status: 'in_progress' },
+      { content: '任务二', status: 'completed' },
+    ])
+    assert.deepEqual(reopened.map((t) => t.content), ['任务一'], 'a reopened item becomes visible again while committed siblings stay hidden')
+  }
   feedA.applyEvent({ type: 'turn/end', data: {} })
   assert.ok(linesA.some((l: string) => l.includes('◈ workflow 审计')), 'workflow start card')
   assert.ok(linesA.some((l: string) => l.includes('◈ ─ 阶段一')), 'workflow phase card')
@@ -1916,6 +1933,69 @@ description:
   assert.equal(todoGuardReminder({ sawTodoWrite: false, toolCalls: 3 }, gTodos(['completed']), 0), null, '全部完成 → 不提醒')
   assert.equal(todoGuardReminder({ sawTodoWrite: false, toolCalls: 1 }, gTodos(['pending']), MAX_NUDGES_PER_TURN), null, '提醒预算用尽 → 不提醒')
   assert.equal(todoGuardReminder({ sawTodoWrite: false, toolCalls: 1 }, null, 0), null, '无清单 → 不提醒')
+
+  // 9g4b. 守卫的**注册面**：纯函数断言覆盖不到「挂了哪些事件、收尾时做了什么」，
+  // 而「回合收尾无闸」这个缺口正是从这里溜进来的（实测：4 项只完成 1 项，剩余项
+  // 随回合 idle 一起留存，既不催办也不落盘）。装到 mock ctx 上按真实事件驱动。
+  {
+    const withSnapshot = (todos: Array<{ content: string; status: string }>) => {
+      const events: Array<Record<string, unknown>> = [
+        { type: 'turn/start' },
+        { type: 'todo/write', data: { todos } },
+        { type: 'tool/call', data: {} },
+      ]
+      return { snapshotEvents: () => events }
+    }
+    const handlers = new Map<string, (...a: unknown[]) => unknown>()
+    const steered: string[] = []
+    const guardErrs: string[] = []
+    const agentMock = {
+      session: withSnapshot(gTodos(['completed', 'in_progress', 'pending'])),
+      steer: (m: { content: Array<{ text?: string }> }) => {
+        steered.push(m?.content?.[0]?.text ?? '')
+      },
+    }
+    installTodoGuard({
+      systemPrompt: { section: () => () => {} },
+      on: (name: string, h: (...a: unknown[]) => unknown) => { handlers.set(name, h); return () => {} },
+    }, { onError: (stage, err) => guardErrs.push(`${stage}: ${String(err)}`) })
+    assert.deepEqual([...handlers.keys()].sort(), ['agent/pre-step', 'agent/turn-stopping'], 'guard registers BOTH the per-step nudge and the turn-end gate')
+    assert.deepEqual(guardErrs, [], 'guard registration reports no errors')
+
+    // Baseline call: the guard treats the first call as its starting point.
+    await handlers.get('agent/pre-step')!({ agent: agentMock, signal: { aborted: false } }, async () => ({ messages: [] }))
+
+    // Turn is about to close with items still open → the gate must steer.
+    await handlers.get('agent/turn-stopping')!({ agent: agentMock, turn: 1, signal: { aborted: false } })
+    assert.equal(steered.length, 1, 'turn-end gate steers once when items remain open')
+    assert.ok(steered[0]!.includes('任务2'), 'steer message lists the open items')
+
+    // Bounded: a second stop must NOT steer again (no infinite turn loop).
+    await handlers.get('agent/turn-stopping')!({ agent: agentMock, turn: 1, signal: { aborted: false } })
+    assert.equal(steered.length, 1, 'turn-end gate is bounded per turn')
+
+    // Aborted turn: never steer (the user asked to stop).
+    const steered2: string[] = []
+    const abortAgent = { session: withSnapshot(gTodos(['pending'])), steer: () => steered2.push('x') }
+    const h2 = new Map<string, (...a: unknown[]) => unknown>()
+    installTodoGuard({
+      systemPrompt: { section: () => () => {} },
+      on: (n: string, h: (...a: unknown[]) => unknown) => { h2.set(n, h); return () => {} },
+    })
+    await h2.get('agent/turn-stopping')!({ agent: abortAgent, turn: 1, signal: { aborted: true } })
+    assert.equal(steered2.length, 0, 'aborted turn is never steered')
+
+    // Clean list: nothing open → no steer.
+    const steered3: string[] = []
+    const cleanAgent = { session: withSnapshot(gTodos(['completed'])), steer: () => steered3.push('x') }
+    const h3 = new Map<string, (...a: unknown[]) => unknown>()
+    installTodoGuard({
+      systemPrompt: { section: () => () => {} },
+      on: (n: string, h: (...a: unknown[]) => unknown) => { h3.set(n, h); return () => {} },
+    })
+    await h3.get('agent/turn-stopping')!({ agent: cleanAgent, turn: 1, signal: { aborted: false } })
+    assert.equal(steered3.length, 0, 'all-completed list is never steered at turn end')
+  }
   const mdHead = FeedRenderer.parseLine('## 标题行', false, true)
   assert.equal(mdHead.text, '标题行', 'heading markers stripped')
   assert.equal(mdHead.group, 'DshTuiHeading', 'heading group')

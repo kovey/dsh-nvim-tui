@@ -54,7 +54,13 @@ const foldEvent = (app: App, rec: SessionRec, event: SessionEvent) => {
     const count = (st: string) => visible.filter((t) => t.status === st).length
     rec.todos = { completed: count('completed'), inProgress: count('in_progress'), pending: count('pending') }
     rec.todosItems = visible
-    if (rec.id === app.slices.sessions.activeId) app.slices.ui.updateStatusline()
+    // NOTE: this fold runs BEFORE the feed sees the same event
+    // (session-events.ts folds, then applies). On the write that completes the
+    // list nothing is committed yet, so `visible` still holds the finished
+    // items and the badge would read "3✓" forever — the panel closes but no
+    // further todo/write arrives to clear the count. The badge is therefore
+    // recomputed AFTER the feed has committed, via refreshTodoBadge below.
+    refreshTodoBadge(app, rec)
     // LIVE todo popup: re-render the open /todo float in place.
     const pop = app.slices.agent.livePopup
     if (pop != null && pop.kind === 'todo') {
@@ -88,6 +94,29 @@ const ensureSpinner = (app: App) => {
  * subagents → '● running ◇N'; otherwise background jobs keep the whale
  * spinning with '🔧 后台 N'; nothing running → null (statusline shows idle).
  */
+/**
+ * Recompute the statusline todo badge from the LIVE standing list.
+ *
+ * Idempotent and safe to call twice per event: `foldEvent` calls it before the
+ * feed runs, and the session-event router calls it again after
+ * `feed.applyEvent`. The second call is what matters — once the feed has
+ * committed the finished items into the transcript they leave
+ * `todoVisibleItems`, so the counts drop to zero and the badge disappears
+ * together with the pinned panel.
+ */
+export function refreshTodoBadge(app: App, rec: SessionRec): void {
+  try {
+    const feed = rec.feed
+    const visible = feed?.todoVisibleItems !== undefined
+      ? feed.todoVisibleItems(rec.todosItems ?? [])
+      : (rec.todosItems ?? [])
+    const count = (st: string): number => visible.filter((t) => t.status === st).length
+    rec.todos = { completed: count('completed'), inProgress: count('in_progress'), pending: count('pending') }
+    rec.todosItems = visible
+    if (rec.id === app.slices.sessions.activeId) app.slices.ui.updateStatusline()
+  } catch { /* badge is cosmetic: never break the event path */ }
+}
+
 export function runningBadge(mainRunning: boolean, subRunning: number, bgJobs: number): string | null {
   if (mainRunning) return '● running'
   if (subRunning > 0) return `● running ◇${subRunning}`

@@ -23,6 +23,14 @@ export interface TodoGuardStep {
 }
 /** Reminder for the NEXT request; null when the step was clean. Pure. */
 export declare function todoGuardReminder(step: TodoGuardStep, todos: TodoItem[] | null, nudgesUsed: number, maxNudges?: number): string | null;
+/**
+ * Reminder for the turn-END gate: null when there is nothing to finish.
+ *
+ * Separate from {@link todoGuardReminder} because at this point the model made
+ * NO tool calls — it simply decided to stop — so the per-step "ran tools but
+ * wrote no list" test does not apply. Pure, so the wording is testable.
+ */
+export declare function todoTurnEndReminder(todos: TodoItem[] | null): string | null;
 /** Install the guard on one agent scope. Never throws. */
 export declare function installTodoGuard(agentCtx: unknown, opts?: {
     enabled?: boolean;

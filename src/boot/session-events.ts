@@ -13,6 +13,7 @@ import { t, tf } from '../kernel/i18n.js'
 import { restoreDifficulty } from '../kernel/difficulty.js'
 import type { ChatMessage, GoalState, MessageContent, SessionEvent } from '../kernel/types.js'
 import type { App, SessionRec } from '../kernel/app.js'
+import { refreshTodoBadge } from '../statusline/index.js'
 
 /** Produced-file heuristic for /deliverables: mutation tools whose args
  *  carry a follow-along path (official render intents: diff / edit). */
@@ -313,6 +314,11 @@ export function makeSessionEventHandler(
     if (!echoed) {
       app.slices.ui.foldEvent(rec, event)
       rec.feed.applyEvent(event)
+      // The fold ran BEFORE the feed, so on the write that completes the list
+      // the badge still counted the items the feed is about to commit. Recompute
+      // now that the commit happened: the finished items leave the visible set,
+      // so the badge clears together with the pinned panel.
+      if (event.type === 'todo/write') refreshTodoBadge(app, rec)
       app.slices.ui.maybePushFileDiff(rec.feed, event)
     }
     // Headless e2e: first completed turn of the initial session ends the test.
