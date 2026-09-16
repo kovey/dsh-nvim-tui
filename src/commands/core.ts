@@ -15,7 +15,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { t, tf } from '../kernel/i18n.js'
 import { matchIntent } from './nlcmd.js'
-import { activeSessionCwd } from '../kernel/app.js'
+import { activeSessionCwd, APPROVAL_HISTORY_MAX, type ApprovalRecord } from '../kernel/app.js'
 import { routeDifficultyForTurn } from '../kernel/difficulty.js'
 import { findVisionModel, effortSupported } from '../kernel/vision.js'
 import { readClipboardImage, splitImageDataUrls, parseImageDataUrl } from '../feed/images.js'
@@ -469,6 +469,29 @@ export const applyModelSelection = async (app: App, next: ModelRef['current']): 
   app.slices.ui.updateStatusline()
 }
 
+/**
+ * Append one settled approval to the bounded decision log.
+ *
+ * Best-effort on purpose: the history is a nicety, and it runs inside the
+ * approval settle path — a throw here would strand the host waiting for a
+ * decision that was in fact already made.
+ */
+const recordApproval = (app: App, request: { toolName?: string; reason?: string; agent?: { session?: { id?: string } } }, outcome: string): void => {
+  try {
+    const hist = app.slices.agent.approvalHistory as ApprovalRecord[]
+    hist.push({
+      at: Date.now(),
+      toolName: request?.toolName ?? '?',
+      reason: request?.reason ?? '',
+      outcome,
+      sessionId: request?.agent?.session?.id,
+    })
+    // Bounded: a long session asks hundreds of times, and this array is read
+    // only by /approvals — never let it grow without limit.
+    if (hist.length > APPROVAL_HISTORY_MAX) hist.splice(0, hist.length - APPROVAL_HISTORY_MAX)
+  } catch { /* cosmetic */ }
+}
+
 export const onCommand = (app: App, line: string): void => {
   if (line.startsWith('/skills:')) {
     void skillsCommand(app, line.slice('/skills:'.length).trim())
@@ -713,6 +736,9 @@ export function registerHostEventHandlers(): void {
           // closure (holding the entry and the app) attached to the turn's
           // signal for its whole lifetime.
           try { signal?.removeEventListener('abort', onAbort) } catch {}
+          // Record BEFORE resolving: the float and its notice are transient, so
+          // this log is the only way to answer "why did I allow that?" later.
+          recordApproval(app, request, outcome)
           resolve(outcome)
         },
       }

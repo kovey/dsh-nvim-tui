@@ -25,6 +25,7 @@ import stringWidth from 'string-width'
 import { matchSessionEventFilter } from '../lib/ext-api/index.js'
 import { readPatchRowIds, packageExists } from '../lib/deps/index.js'
 import { installRootCandidates } from '../lib/deps/services.js'
+import { approvalHistoryLines } from '../lib/commands/commands/approvals.js'
 import { parsePluginArgs } from '../lib/market/commands/plugin.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
@@ -1838,6 +1839,28 @@ description:
     }
     assert.equal(new Set(roots).size, roots.length, 'candidate roots are de-duplicated')
     log(`install root candidates: ${roots.length} distinct, dsh own store included`)
+  }
+
+  // 9g5. 审批历史（缺口6）：审批浮窗与转录通知都是瞬时的，事后无从回答
+  // 「我当时为什么允许了那个操作」—— 这份有界日志是唯一的记录。
+  {
+    const rec = (over: Partial<{ at: number; toolName: string; reason: string; outcome: string }>) => ({
+      at: Date.parse('2026-09-16T10:20:30'), toolName: 'bash', reason: '', outcome: 'allow', sessionId: 's', ...over,
+    })
+    const lines = approvalHistoryLines([
+      rec({ outcome: 'allow' }),
+      rec({ outcome: 'reject', toolName: 'write', reason: '改系统文件' }),
+    ], 50)
+    const body = lines.join('\n')
+    assert.ok(body.includes('✓ 10:20:30  bash'), 'allowed decision renders with ✓, time and tool')
+    assert.ok(body.includes('✗ 10:20:30  write — 改系统文件'), 'rejected decision renders with reason')
+    // 最新在前：刚做的决定最可能是你要查的那条。
+    const iReject = body.indexOf('write')
+    const iAllow = body.indexOf('bash')
+    assert.ok(iReject >= 0 && iAllow > iReject, 'newest decision is listed first')
+    assert.ok(body.includes('共 2 条'), 'count line present')
+    // 空历史由命令层处理（notice），格式化函数本身不该崩。
+    assert.doesNotThrow(() => approvalHistoryLines([], 50), 'empty history does not throw')
   }
 
   // 9f4. /plugin 参数解析（市场目录之外的直装入口）。纯函数：装/卸/列表/错误分支。

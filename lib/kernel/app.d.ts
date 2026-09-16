@@ -179,6 +179,19 @@ export interface QuestionsEntry {
  *  here and modules read/write it through `app.slices.<domain>.<field>`.
  *  New state MUST land in a slice — scripts/check-arch.mjs enforces it.
  */
+/**
+ * One settled approval, kept only for display. `outcome` is the host's own
+ * vocabulary (allow/allow-always/reject), so the history never invents states.
+ */
+export interface ApprovalRecord {
+    at: number;
+    toolName: string;
+    reason: string;
+    outcome: string;
+    sessionId: string | undefined;
+}
+/** How many decisions are retained (a session can ask hundreds of times). */
+export declare const APPROVAL_HISTORY_MAX = 50;
 export interface AppSlices {
     /** nvim process / window lifecycle + boot entry. */
     runtime: {
@@ -392,6 +405,10 @@ export interface AppSlices {
         /** Queue for CONCURRENT approval requests (parent + subagents can both
          *  ask): the head renders the float; the rest wait in order. */
         readonly approvalQueue: ApprovalEntry[];
+        /** Bounded decision log (newest last). Approvals are the one gate where the
+         *  user answers "why did I allow that?" much later — without a record the
+         *  question is unanswerable, since the float and its notice are gone. */
+        readonly approvalHistory: ApprovalRecord[];
         readonly questionsResolve: {
             resolve: (v: {
                 answers: unknown[];

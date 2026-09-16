@@ -57,6 +57,7 @@ import { installLinesCommand } from './commands/lines.js'
 import { installHistoryCommand } from './commands/history.js'
 import { installDeliverablesCommand } from './commands/deliverables.js'
 import { installSettingsCommand } from './commands/settings.js'
+import { installApprovalsCommand } from './commands/approvals.js'
 import { installBellCommand } from './commands/bell.js'
 import { installDifficultyCommand } from './commands/difficulty.js'
 
@@ -208,6 +209,7 @@ export function installCommands(app: App): void {
 
   Object.assign(app.slices.agent, {
     approvalQueue: [],
+    approvalHistory: [],
     questionsQueue: [],
     // Seeded null, NEVER undefined: statusline reads pop.kind with a
     // null-guard — an unseeded undefined crashes foldEvent/refreshBgJobs
@@ -297,6 +299,7 @@ export function installCommands(app: App): void {
   installDeliverablesCommand(app)
   installSettingsCommand(app)
   installBellCommand(app)
+  installApprovalsCommand(app)
   installDifficultyCommand(app)
 
   registerTool(app)
