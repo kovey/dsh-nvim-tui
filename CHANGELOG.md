@@ -3,6 +3,124 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.2（2026-09-16）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.2)
+
+覆盖提交：
+[`faccda9`](https://github.com/kovey/dsh-nvim-tui/commit/faccda9) ·
+[`7d89e08`](https://github.com/kovey/dsh-nvim-tui/commit/7d89e08) ·
+[`3e2dbc4`](https://github.com/kovey/dsh-nvim-tui/commit/3e2dbc4) ·
+[`e625364`](https://github.com/kovey/dsh-nvim-tui/commit/e625364) ·
+[`32412d8`](https://github.com/kovey/dsh-nvim-tui/commit/32412d8) ·
+[`e559f61`](https://github.com/kovey/dsh-nvim-tui/commit/e559f61) ·
+[`527d056`](https://github.com/kovey/dsh-nvim-tui/commit/527d056) ·
+[`419ffa5`](https://github.com/kovey/dsh-nvim-tui/commit/419ffa5) ·
+[`060b7a4`](https://github.com/kovey/dsh-nvim-tui/commit/060b7a4) ·
+[`0411c71`](https://github.com/kovey/dsh-nvim-tui/commit/0411c71) ·
+[`82718fd`](https://github.com/kovey/dsh-nvim-tui/commit/82718fd) ·
+[`df7b539`](https://github.com/kovey/dsh-nvim-tui/commit/df7b539) ·
+[`daf145a`](https://github.com/kovey/dsh-nvim-tui/commit/daf145a)
+
+> **版本说明**：本版相对 v0.4.1 共 13 个提交，5 项新能力、2 处修复、1 项动效重做。
+> **零破坏**：不需要动宿主、不需要改 `cordis.patch.yml`。升级前请先读
+> [UPGRADE.md](UPGRADE.md)。
+
+### 1. 鲸鱼重做：官方 logo 矢量派生 + 宽度分档 + 动效
+
+原先的鲸鱼是**手绘** 16×24 像素网格（注释记明移植自另一个 TUI），是对官方 mark
+的人工近似。本版改为从**官方矢量路径派生**（`FishLogo.tsx` 的 `FISH_LOGO_PATH`，
+单条闭合三次贝塞尔剪影，viewBox 23.16×17.04）：形状随尺寸重新光栅化，任何分辨率
+都不会跑偏。自检口径为**路径包围盒必须与官方 viewBox 完全一致**。
+
+- 新增离线光栅化器 `scripts/whale-gen.ts`（贝塞尔扁平化 → 非零环绕扫描 → 子像素
+  覆盖率 → 半块编码 → 去噪），可 `--emit` 重新生成常量模块，也可直接跑出终端预览。
+- 按窗口宽度分 **24 / 32 / 48** 列三档，取最宽可容档位。
+- 动效（TUI 专属）：呼吸浮动 + 喷气气泡，4 帧无缝循环，按所选档位的真实分辨率执行。
+- 顺带修掉旧动效的真缺陷：原实现用 `g[y] = g[y-1]` 在同数组内赋值，会把每行复制成
+  上一行（形状被剪切）；改为像素位图上的刚性整体位移，并加质量守恒断言。
+- 官方 mark 是单色剪影，故只用 `DshTuiWhaleBB` / `B-` / `-B` 三个既有分组，
+  **highlight.lua 无需新增**。
+
+### 2. 待办清单闭环：实时更新 → 落盘 → 清槽
+
+用户反馈「任务全部完成、会话已 idle，但待办面板只完成一项」。核实后确认 feed 的
+生命周期本就正确，缺口在**守卫**：它只挂在 `agent/pre-step`，提醒预算每回合 3 次，
+用尽后模型收尾时没有任何机制再拦一次（宿主在 `agent/turn-stopping` 之后无新步骤即
+`break`），于是最后一次 `todo_write` 永不发生，落盘与清槽都不发生。
+
+- 新增 `agent/turn-stopping` 收尾闸：仍有未完成项时 `steer` 一次，让清单走完。
+  **每回合限一次**且有合法退出（可标完成、也可明确取消/移除），避免「某项本就不该
+  做」时锁死会话；`signal.aborted` 一律不拦。
+- 顺带修掉**徽标陈旧**：`session-events` 先 fold 再 `feed.applyEvent`，而徽标按
+  「已落盘过滤」计数 —— 最后一次写入时三项都还没落盘，徽标算出 `3✓` 后**永不重算**
+  （面板已清、无后续 `todo/write`）。新增幂等 `refreshTodoBadge`，在 feed 处理完后
+  再算一次，徽标随面板一起消失。
+- smoke 9g4b 补**注册面**断言（此前零覆盖，缺口正是从这里溜进来的）。
+
+### 3. 审批历史（按会话落盘，重启后仍在）
+
+- `/approvals`：本会话的批准/拒绝记录，✓/✗ + 时间 + 工具名 + 原因，最新在前。
+- **按会话落盘** `<DSH_HOME>/approvals/<sessionId>.jsonl`，紧凑 JSON 一行一条
+  （美化多行会破坏 JSONL 逐行语义）。作用域是**单会话**：`/approvals` 回答的是
+  「这次对话放行了什么」，混入别的会话会误导。
+- 惰性重载：读写两条路径都调 `ensureApprovalHistory`，新会话的第一次读或第一次写
+  谁先到谁负责加载，靠标记使其后为 no-op —— 会话切换无需单独 hook。
+- 落盘用**请求自带的 sessionId**（非 activeId）：后台/子代理可在别的会话处于前台时
+  发起审批，那条决定属于发起的会话。
+- 有界（内存 50 / 磁盘超 500 压实）、容错（半行跳过而非整体抛错）、落盘包 try/catch
+  （它跑在 settle 路径上，抛异常会把宿主卡在一个其实已经做出的决定上）。
+
+### 4. 会话日志健康检查与故障指引
+
+真实事故：某会话带 `invalid persisted inbox splice` 故障，其每次投影都抛，而
+`/sessions` 只报错 —— 用户无法判断「日志完好、单条信封坏了」还是「这个会话废了」。
+取证结论：日志本身**完整可解压**，坏的是信封。本版把它分开并点名：
+
+- `/doctor` 增加「会话与终端诊断」浮窗：扫描数、不可读清单、**曾故障清单**
+  （依据 host 留下的 `.corrupt-backup`，这是"曾经出过事"的唯一磁盘证据），以及
+  故障时的可执行出路（`/fork` 派生、`/export` 导出可读部分）。
+- 可读性由**实际解压**判定而非查魔数 —— 实测撕裂写入会保留有效魔数，解压则返回空，
+  故落成 `empty` 而非 `unreadable`（这正是「只查魔数会误判为正常」的原因）。
+
+### 5. 从转录行跳转到文件（`<C-w>f` / `gF`）
+
+读到改动卡（`✎ 修改 README.md`）或工具卡（`🔧 read … src/feed/feed.ts`）时可直接打开
+该文件。转录本就是真 buffer，缺的只是把它自己的行形态解析出来：
+
+- 源码解析路径 + `:LINE` / `:LINE:COL` 定位，相对路径按「会话 cwd → 原样 → 编辑器
+  cwd」依次探测首个真实存在的文件，开新标签（TUI 布局不动）。
+- 拒绝用户回显/注入上下文/turn 规则等 chrome 行、裸网址、`..` 越界路径。
+- 已知边界（有意）：`✓` 开头行按 chrome 跳过 —— 那是待办清单的行形态，代价是
+  `✓` 开头的成功工具卡不可跳。宁可少一个入口，也不要把「关于任务的行」当成
+  「关于文件的行」。
+
+### 6. 修复
+
+- **响铃与通知的发射通道**（源码层面已改对，见下方「已知问题」）：原 `R.bell()` 用
+  `vim.api.nvim_out_write`，该 API 把文本作为 **UI 消息**（`msg_puts`）派发，不写 fd，
+  **因此响铃自写下起就是无声的**。改为 `io.stdout:write` + flush。
+- **审批点缺通知**：`/bell` 有两个调用点（回合结束、审批请求），通知最初只接了前者。
+  审批恰恰最需要提醒（它阻塞整个回合直到被回答），已对齐。
+
+### 7. 验证与门禁
+
+- 新增/改写 smoke 断言：鲸鱼的派生不变量（分组仅剪影三色、span 有序不重叠、相邻帧
+  互异、位移帧质量守恒）、守卫注册面、审批历史（含**变异验证**：把修复改回 no-op
+  确认断言真会失败）、会话健康（三种真实形态：正常 / 有 `.corrupt-backup` / 撕裂写入）、
+  跳转解析 12 条边界。
+- `check`（含 arch-check / app-ops-check）、`smoke`、`i18n`（死键 0 · 未翻译 0）全绿。
+
+### 已知问题
+
+- **终端级完成通知（OSC 9 / 777）在本机实测无效**。能力探测正确
+  （iTerm.app → `osc9`），但字节到不了终端：插件所在的 nvim 由 `--embed` 启动，
+  其 fd 1 是与宿主通信的**管道**，而 `io.stdout:write` 写进该管道。代码已改为
+  `io.stdout:write`（相对 `nvim_out_write` 是正确方向），但**仍未接通** ——
+  修法需由持有 tty 的进程（宿主/渲染侧）发射。已在 `rpc.lua` 标注
+  `NOT WORKING — UNRESOLVED` 并记录已核实事实，避免重复试错。
+- 本版**不含**终端内嵌图片渲染与「重试/编辑已发消息」：前者终端差异大，后者受限于
+  宿主 `dsh-session` 无 `truncate`、且 `assistant/message` 的 provenance 校验使
+  「改写历史」在该日志模型下不可行（已与用户确认不做）。
+
 ## [v0.4.1（2026-09-11）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.1)
 
 覆盖提交：

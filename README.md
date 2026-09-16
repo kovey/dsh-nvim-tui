@@ -92,7 +92,7 @@ dsh plugin --profile tui update --latest kovey/dsh-nvim-tui      # 官方 tui pr
 dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui # 自定义 profile
 
 # 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
-dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.1"
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.2"
 ```
 
 > **宿主 dsh 升级与 0.1.5 适配**见 [UPGRADE.md](./UPGRADE.md)。
@@ -136,7 +136,7 @@ dsh --profile nvim-tui
 > 本仓库根目录就是 bundle 本身：`cordis.patch.yml` 挂载 `nvim-tui-runner` 行，
 > package.json 的 `dsh.bundle.patch` 声明了它。
 
-启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.1 (build YYYY-MM-DD HH:mm) · channel N`。
+启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.2 (build YYYY-MM-DD HH:mm) · channel N`。
 输入 `/help` 随时查看全部命令。
 
 ## 配置
@@ -263,7 +263,7 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 显示 | `/theme default\|dim\|vivid\|contrast\|mono` | 内置高亮预设（不覆盖则跟随 colorscheme） |
 | 显示 | `/whale on\|off` | 蓝鲸背景壁纸/水印开关。鲸鱼由**官方 logo 矢量路径**离线光栅化而来（`scripts/whale-gen.ts` → `src/feed/whale-art.ts`），按窗口宽度分 24/32/48 列三档自动选最宽的一档，空态时做呼吸浮动 + 喷气动效 |
 | 显示 | `/layout default\|panel` | 布局预设（无参循环切换） |
-| 信息 | `/cost` `/export` `/config` `/status` `/doctor` | 用量成本 / 导出转录 md / 配置摘要 / 会话快照 / 终端诊断 |
+| 信息 | `/cost` `/export` `/config` `/status` `/doctor` `/approvals` | 用量成本 / 导出转录 md / 配置摘要 / 会话快照 / **终端 + 会话日志诊断**（点名曾有日志故障的会话并给修复出路） / **本会话审批历史**（批准·拒绝，按会话落盘、重启后仍在） |
 | 信息 | `/mcp` | MCP server 工具统计（按 server 分组） |
 | 信息 | `/deliverables` | 本回合交付物（nvim 新标签页打开产物文件） |
 | 信息 | `/trajectory` | 回合步骤轨迹 |
