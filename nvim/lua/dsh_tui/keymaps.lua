@@ -91,6 +91,16 @@ function K.install()
   local reason_cmd = '<Cmd>lua require("dsh_tui").toggle_reasoning()<CR>'
   vim.api.nvim_buf_set_keymap(S.input_buf, 'i', '<C-o>', reason_cmd, { noremap = true })
   vim.api.nvim_buf_set_keymap(S.input_buf, 'n', '<C-o>', reason_cmd, { noremap = true })
+
+  -- Chat buffer: jump to the file referenced by the line under the cursor
+  -- (tool cards / change cards). Re-installed here so it survives the same
+  -- plugin-wipe self-heal as the input maps. S.chat_win is nil on the very
+  -- first install, hence the guard.
+  if S.chat_win ~= nil and vim.api.nvim_win_is_valid(S.chat_win) then
+    pcall(function()
+      require('dsh_tui.goto_file').install(vim.api.nvim_win_get_buf(S.chat_win))
+    end)
+  end
 end
 
 return K

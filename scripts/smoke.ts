@@ -1841,6 +1841,29 @@ description:
     log(`install root candidates: ${roots.length} distinct, dsh own store included`)
   }
 
+  // 9g6. 从转录行跳转到文件（缺口4）。解析要认识 TUI 自己的行形态，且不能把
+  // 行文里的普通词当成路径；纯函数，故可穷举边界。
+  {
+    // NOTE: no pcall inside the probe — lua() already unwraps the return value,
+    // so `pcall` would hand back the status BOOLEAN and every compare would be
+    // against `true`. A refusal is just a nil return.
+    const p = async (line: string): Promise<unknown> => await lua('return require("dsh_tui.goto_file").path_from_line(...)', [line])
+    assert.equal(await p('✎ 修改 README.md (+1 −0)'), 'README.md', 'change card → path')
+    assert.equal(await p('🔧 read({"file_path":"src/feed/feed.ts"})'), 'src/feed/feed.ts', 'tool card → nested path')
+    assert.equal(await p('  ✓ edit · src/kernel/app.ts'), null, '✓ rows are the todo list → skipped (documented limit)')
+    assert.equal(await p('这个改动影响 a/b/c.lua 的行为'), 'a/b/c.lua', 'path embedded in prose')
+    assert.equal(await p('> 为什么改了 README.md'), null, 'user echo is chrome → ignored')
+    assert.equal(await p('· 注入上下文 src/x.ts'), null, 'injected context is chrome → ignored')
+    assert.equal(await p('── turn ──'), null, 'turn rule → ignored')
+    assert.equal(await p('没有文件的普通一句话'), null, 'no extension → ignored')
+    assert.equal(await p('看到 https://example.com 但那是网址'), null, 'bare host without path → ignored')
+    assert.equal(await p('引用了 ../../etc/passwd 这种越界路径'), null, 'parent traversal → refused')
+    const l = async (line: string): Promise<unknown> => await lua('return require("dsh_tui.goto_file").line_from_line(...)', [line])
+    assert.equal(await l('src/a.ts:42'), 42, ':LINE hint parsed')
+    assert.equal(await l('src/a.ts:42:7'), 42, ':LINE:COL hint parsed')
+    assert.equal(await l('src/a.ts'), null, 'no hint → nil')
+  }
+
   // 9g5. 审批历史（缺口6）：审批浮窗与转录通知都是瞬时的，事后无从回答
   // 「我当时为什么允许了那个操作」—— 这份有界日志是唯一的记录。
   {
