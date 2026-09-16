@@ -41,19 +41,26 @@ function R.abort_turn()
   end
 end
 
---- Raw terminal escape passthrough.
+--- Raw terminal escape passthrough. nvim owns the terminal in the REAL
+--- profile: the bridge spawns it WITHOUT `--embed`/`--headless` (see the note
+--- in bridge.ts and README D-1), so stdin/stdout are the user's tty.
 ---
---- ⚠️ NO SAFE CHANNEL FROM LUA — both candidates are measured broken HERE:
----   · `vim.api.nvim_out_write` — a UI message (msg_puts), never reaches the
----     tty (measured: 0 bytes on the terminal).
----   · `io.stdout:write` — the running profile launches nvim EMBEDDED
----     (`--embed` in argv; `vim.uv.guess_handle(1)` reports "pipe"), so stdout
----     is the host PROTOCOL PIPE. Raw escapes written there cannot reach the
----     terminal and risk corrupting the msgpack stream the host reads.
---- Until emission moves to the process that OWNS the tty, this deliberately
---- emits nothing. Bell and OSC notification are known-inert; /doctor says so.
-local function raw(_bytes)
-  return false
+--- NOT `vim.api.nvim_out_write`: that routes the text as a UI message
+--- (msg_puts), which never reaches the tty here — measured 0 bytes on the
+--- terminal, so the bell had been a silent no-op for as long as it existed.
+--- `io.stdout:write` + flush puts the bytes on the terminal (verified in the
+--- same run).
+---
+--- CAUTION when measuring this: the smoke harness and any `--headless`/`--embed`
+--- instance have NO tty (their stdout is the RPC channel, and writing OSC there
+--- both fails to notify and risks corrupting the protocol). Probe with the real
+--- profile, never with a test instance.
+local function raw(bytes)
+  local ok = pcall(function()
+    io.stdout:write(bytes)
+    io.stdout:flush()
+  end)
+  return ok
 end
 
 --- Terminal bell (turn finished, approvals): BEL on the real terminal.

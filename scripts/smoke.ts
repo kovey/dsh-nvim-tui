@@ -2389,12 +2389,11 @@ description:
   assert.equal((await lua('return require("dsh_tui").ids()', [])).reasoningOpen, false, 'default layout closes reasoning panel')
 
   // 9l. bell + file tab + append_input helpers.
-  // KNOWN GAP: this assertion used to read `, true, 'bell emits'` — it pinned the
-  // *call* succeeding, never that bytes reach the terminal, so the bell was
-  // silently a no-op in the real profile for as long as it existed. nvim runs
-  // embedded here, so Lua has no tty channel; the emission is deliberately
-  // inert until it moves to the process that owns the tty.
-  assert.equal(await lua('return require("dsh_tui").bell()', []), false, 'bell is inert (no Lua→tty channel; known gap)')
+  // NOTE: smoke runs nvim with `--headless` (no tty), so this proves only that
+  // `bell()` runs without throwing. It can NOT prove the bytes reach a terminal:
+  // the real profile spawns nvim WITHOUT --headless/--embed, where io.stdout IS
+  // the tty. Do not read this as "the bell is audible".
+  assert.equal(await lua('return require("dsh_tui").bell()', []), true, 'bell() runs without throwing (audibility not covered here)')
   const tabCountBefore = await lua('return vim.fn.tabpagenr("$")', [])
   const okTab = await lua('return require("dsh_tui").open_file_tab(...)', [process.cwd() + '/package.json'])
   assert.equal(okTab, true, 'file tab opens')
@@ -3330,21 +3329,19 @@ description:
       local okBell = R.bell()
       vim.env.TERM_PROGRAM, vim.env.TMUX = saved.TERM_PROGRAM, saved.TMUX
       return { notify = okNotify, bell = okBell }`, [])
-    // KNOWN GAP (pinned, not passed): with nvim embedded (`--embed` in argv,
-    // stdout = the host protocol pipe) there is NO channel from Lua to the tty.
-    // Both candidates were measured broken, so emission is deliberately inert
-    // rather than writing escapes into the protocol pipe. When emission moves
-    // to the tty-owning process, flip these to `true`.
-    assert.equal(emitted.notify, false, 'notify is inert until emission moves to the tty owner (known gap)')
-    assert.equal(emitted.bell, false, 'bell is inert for the same reason (known gap)')
+    // Emitted through io.stdout. In THIS harness (headless nvim) stdout is the
+    // RPC pipe, so success means only "the write did not throw" — audibility is
+    // out of scope here and must be checked against the real profile.
+    assert.equal(emitted.notify, true, 'notify runs without throwing')
+    assert.equal(emitted.bell, true, 'bell runs without throwing')
     // 回归守门：源码里不得再出现 nvim_out_write —— 实测它写 OSC 是 0 字节
     // 到终端（被当 UI 消息），bell 因此静默了很久。
     const rpcSrc = fs.readFileSync(path.join(process.cwd(), 'nvim/lua/dsh_tui/rpc.lua'), 'utf8')
     // 剥掉注释再查：文档里提到这两个 API 是解释为什么不能用，不是使用。
     const rpcCode = rpcSrc.replace(/^\s*---?.*$/gm, '')
     assert.ok(!/nvim_out_write/.test(rpcCode), 'rpc.lua never calls nvim_out_write (measured: 0 bytes to the tty)')
-    // 反向守门：也不得写 io.stdout —— 嵌入模式下那是协议管道，写原始字节会污染 RPC。
-    assert.ok(!/io\.stdout:write/.test(rpcCode), 'rpc.lua never writes raw bytes into the embedded protocol pipe')
+    // 正向守门：必须走 io.stdout —— 真实 profile 下它是 tty，而 nvim_out_write 不是。
+    assert.ok(/io\.stdout:write/.test(rpcCode), 'rpc.lua emits through io.stdout (the tty in the real profile)')
   }
   assert.equal(fiDraftKept, '草稿行1\n草稿行2', 'discard keeps the input-box draft')
   await lua('vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "" }); require("dsh_tui").resize_input()', [])
