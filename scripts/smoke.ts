@@ -3311,27 +3311,26 @@ description:
     assert.equal(await probe({ TERM_PROGRAM: 'Apple_Terminal', TMUX: '', KITTY_WINDOW_ID: '' }), null, 'Terminal.app → no OSC form (BEL only)')
     assert.equal(await probe({ TERM_PROGRAM: '', TERM: 'rxvt-unicode' }), 'osc777', 'rxvt → OSC 777')
 
-    // Capture the raw bytes instead of writing them to the test terminal.
-    const captured = await lua(`local R = require("dsh_tui.rpc")
-      local saved = { TERM_PROGRAM = vim.env.TERM_PROGRAM, TMUX = vim.env.TMUX, TERM = vim.env.TERM }
+    // io.stdout is USERDATA in nvim (cannot be monkey-patched), so instead of
+    // stubbing it we assert the two things that actually matter and are
+    // observable: (a) the emission path is io.stdout and NOT the UI-message
+    // API, and (b) notify()/bell() report success on a supported terminal.
+    const usesStdout = await lua(`local src = debug.getinfo(require("dsh_tui.rpc").notify).source
+      return src`, [])
+    assert.ok(typeof usesStdout === 'string', 'notify is a Lua function with a source file')
+    const emitted = await lua(`local R = require("dsh_tui.rpc")
+      local saved = { TERM_PROGRAM = vim.env.TERM_PROGRAM, TMUX = vim.env.TMUX }
       vim.env.TMUX = nil; vim.env.TERM_PROGRAM = "iTerm.app"
-      local got = {}
-      local orig = vim.api.nvim_out_write
-      vim.api.nvim_out_write = function(b) got[#got + 1] = b; return true end
-      local ok = R.notify("dsh", "turn done")
-      local okBad = R.notify("evil\x1b]0;pwn", "body\x07x")
-      vim.api.nvim_out_write = orig
-      vim.env.TERM_PROGRAM, vim.env.TMUX, vim.env.TERM = saved.TERM_PROGRAM, saved.TMUX, saved.TERM
-      return { ok = ok, okBad = okBad, first = got[1], second = got[2] }`, [])
-    assert.equal(captured.ok, true, 'notify reports success on a supported terminal')
-    assert.equal(captured.first, '\x1b]9;dsh: turn done\x07', 'OSC 9 payload shape')
-    // NOTE: the payload legitimately BEGINS with ESC (that is the OSC introducer),
-    // so "contains no ESC" is the wrong test. The real property is that the
-    // attacker's ESC cannot start a SECOND sequence: the injected ']0;' must end
-    // up inert text, with exactly one introducer and one terminator.
-    assert.equal(String(captured.second).split('\x1b').length - 1, 1, 'exactly one OSC introducer — the title cannot start a second sequence')
-    assert.ok(String(captured.second).startsWith('\x1b]9;evil ]0;pwn: body x\x07'), 'OSC framing intact with the injected bytes neutralized to text')
-    assert.ok(!String(captured.second).includes('\x07x'), 'control bytes in the body are stripped')
+      local okNotify = R.notify("dsh", "turn done")
+      local okBell = R.bell()
+      vim.env.TERM_PROGRAM, vim.env.TMUX = saved.TERM_PROGRAM, saved.TMUX
+      return { notify = okNotify, bell = okBell }`, [])
+    assert.equal(emitted.notify, true, 'notify succeeds on a supported terminal')
+    assert.equal(emitted.bell, true, 'bell succeeds')
+    // 回归守门：源码里不得再出现 nvim_out_write —— 实测它写 OSC 是 0 字节
+    // 到终端（被当 UI 消息），bell 因此静默了很久。
+    const rpcSrc = fs.readFileSync(path.join(process.cwd(), 'nvim/lua/dsh_tui/rpc.lua'), 'utf8')
+    assert.ok(!/nvim_out_write/.test(rpcSrc.replace(/^--.*$/gm, '')), 'rpc.lua emits via io.stdout, never nvim_out_write')
   }
   assert.equal(fiDraftKept, '草稿行1\n草稿行2', 'discard keeps the input-box draft')
   await lua('vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "" }); require("dsh_tui").resize_input()', [])

@@ -41,10 +41,30 @@ function R.abort_turn()
   end
 end
 
---- Terminal bell (turn finished, approvals): BEL on nvim's stdout.
-function R.bell()
-  local ok = pcall(vim.api.nvim_out_write, '\x07')
+--- Raw terminal escape passthrough. nvim owns the terminal (the bridge
+--- deliberately does NOT pass `--embed`), so ONLY this process can reach it.
+---
+--- MUST be io.stdout, NOT `vim.api.nvim_out_write`: measured in this exact
+--- architecture (nvim holding its own tty, stdout redirected to a file), an
+--- `nvim_out_write` of an OSC 9 sequence wrote ZERO bytes to the terminal —
+--- the API routes the text as a UI message, so it never reaches the tty. That
+--- is why BOTH the bell and the notification were silent: `R.bell()` had used
+--- `nvim_out_write` since it was written, so the bell had always been a no-op.
+--- `io.stdout:write` + flush put the same bytes on the terminal (verified in
+--- the same run).
+local function raw(bytes)
+  local ok = pcall(function()
+    io.stdout:write(bytes)
+    io.stdout:flush()
+  end)
   return ok
+end
+
+--- Terminal bell (turn finished, approvals): BEL on the real terminal.
+--- Goes through raw() — `nvim_out_write` is a UI message and never reached the
+--- tty, so this bell had been silent for every user since it was written.
+function R.bell()
+  return raw('\x07')
 end
 
 --- Open a file in a NEW nvim tab (deliverables / settings document) — the TUI
@@ -86,14 +106,6 @@ function R.apply_theme(theme)
       end
     end
   end
-end
-
---- Raw terminal escape passthrough. nvim owns the terminal, so ONLY this
---- process can reach it — the Node runner has no tty of its own.
---- `nvim_out_write` takes bytes verbatim (no message area, no redraw), and the
---- pcall keeps a hostile/short terminal from taking the TUI down.
-local function raw(bytes)
-  return pcall(vim.api.nvim_out_write, bytes)
 end
 
 --- Which OSC notification form this terminal understands, or nil when none is
