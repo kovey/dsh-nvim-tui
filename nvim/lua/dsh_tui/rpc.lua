@@ -41,20 +41,30 @@ function R.abort_turn()
   end
 end
 
---- Raw terminal escape passthrough. nvim owns the terminal in the REAL
---- profile: the bridge spawns it WITHOUT `--embed`/`--headless` (see the note
---- in bridge.ts and README D-1), so stdin/stdout are the user's tty.
+--- Raw terminal escape passthrough.
 ---
---- NOT `vim.api.nvim_out_write`: that routes the text as a UI message
---- (msg_puts), which never reaches the tty here — measured 0 bytes on the
---- terminal, so the bell had been a silent no-op for as long as it existed.
---- `io.stdout:write` + flush puts the bytes on the terminal (verified in the
---- same run).
+--- ⚠️ STATUS: NOT WORKING — UNRESOLVED. Verified facts (2026-09-16), do not
+--- restate these as guesses when revisiting:
+---   · The plugin runs in an nvim launched with `--embed` whose fd 1 is a PIPE
+---     (`vim.uv.guess_handle(1) == "pipe"`), so bytes written here do NOT reach
+---     the terminal. Both OSC 9 and OSC 777 were sent from that instance and
+---     produced no notification in iTerm (TERM_PROGRAM=iTerm.app, notifications
+---     enabled).
+---   · `vim.api.nvim_out_write` is also wrong for a different reason: it routes
+---     the text as a UI message (msg_puts) and never touches the tty.
+---   · The bell has therefore been INAUDIBLE for every user since it was
+---     written — `/bell on` and approvals both stayed silent.
+---   · A sibling nvim process DOES own the tty (the bridge's own `--listen`
+---     invocation, matching bridge.ts: no `--embed`), but no RPC path reaches it
+---     from here: that path is taken by the embedded instance, so
+---     `nvim --server <sock>` always lands on the embedded one.
+--- ⇒ The fix must emit from whichever process owns the tty (host/renderer
+--- side), not from Lua. Do NOT "fix" this by switching between the two APIs
+--- above again — both were measured. See memory lesson `ps-lsof.md`.
 ---
---- CAUTION when measuring this: the smoke harness and any `--headless`/`--embed`
---- instance have NO tty (their stdout is the RPC channel, and writing OSC there
---- both fails to notify and risks corrupting the protocol). Probe with the real
---- profile, never with a test instance.
+--- CAUTION when measuring: never probe with a test/embedded instance — the
+--- smoke harness spawns `--headless` and its scratch dirs share the
+--- `dsh-nvim-tui-XXXX` naming, so they are easy to mistake for the real TUI.
 local function raw(bytes)
   local ok = pcall(function()
     io.stdout:write(bytes)
@@ -63,9 +73,11 @@ local function raw(bytes)
   return ok
 end
 
---- Terminal bell (turn finished, approvals): BEL on the real terminal.
---- Goes through raw() — `nvim_out_write` is a UI message and never reached the
---- tty, so this bell had been silent for every user since it was written.
+--- Terminal bell (turn finished, approvals). Goes through raw(), which is
+--- currently a NO-OP in practice (see the status note above): the plugin's
+--- nvim is embedded, so its stdout is a pipe. The bell has been inaudible since
+--- it was written; this function is kept so the call sites and the fix land in
+--- one place once emission moves to the tty owner.
 function R.bell()
   return raw('\x07')
 end
@@ -140,9 +152,11 @@ function R.notify_capability()
 end
 
 --- Terminal-level attention notification (turn finished / needs an answer).
---- Distinct from R.bell() on purpose: BEL is audible and works everywhere,
---- OSC raises a desktop notification that also survives a muted terminal.
---- Returns the form actually emitted, or false when unsupported.
+--- Distinct from R.bell() on purpose: BEL is audible-only, OSC raises a desktop
+--- notification that also survives a muted terminal.
+--- NOT WORKING in the current architecture — see the status note on raw()
+--- above. Returns the form it TRIED to emit, or false when unsupported; it
+--- cannot report whether the bytes actually reached the terminal.
 --- @param title string short headline (e.g. "dsh")
 --- @param body string one-line summary
 function R.notify(title, body)
