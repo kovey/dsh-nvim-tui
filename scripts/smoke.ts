@@ -25,13 +25,15 @@ import stringWidth from 'string-width'
 import { matchSessionEventFilter } from '../lib/ext-api/index.js'
 import { readPatchRowIds, packageExists } from '../lib/deps/index.js'
 import { installRootCandidates } from '../lib/deps/services.js'
+import { checkSessionLog } from '../lib/kernel/session-health.js'
+import { sessionHealthLines } from '../lib/commands/commands/doctor.js'
 import { approvalHistoryLines } from '../lib/commands/commands/approvals.js'
 import { parsePluginArgs } from '../lib/market/commands/plugin.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN, installTodoGuard } from '../lib/kernel/todo-guard.js'
 import { encodeSessionLog, encodeHeaderOnlyLog } from '../lib/kernel/subagent-clean.js'
-import { zstdDecompressSync } from 'node:zlib'
+import { zstdCompressSync, zstdDecompressSync } from 'node:zlib'
 import os from 'node:os'
 import {
   parseStars, buildCatalog, searchCatalog, parsePluginYaml,
@@ -1839,6 +1841,45 @@ description:
     }
     assert.equal(new Set(roots).size, roots.length, 'candidate roots are de-duplicated')
     log(`install root candidates: ${roots.length} distinct, dsh own store included`)
+  }
+
+  // 9g7. 会话日志健康（缺口1）。真实事故：某会话带 invalid persisted inbox
+  // splice 故障，每次投影都抛，而 /sessions 只报错 —— 用户无法判断「日志完好、
+  // 单条信封坏了」还是「这个会话废了」。这里把它分开，并点名是哪个会话。
+  {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-health-'))
+    // ok: 可解压的日志
+    const okDir = path.join(tmp, 'sess-ok')
+    fs.mkdirSync(okDir)
+    fs.writeFileSync(path.join(okDir, 'session.v3.jsonl.zstd'), zstdCompressSync(Buffer.from('{"a":1}\n')))
+    // faulted: 日志完好但旁边有 host 留下的 .corrupt-backup —— 唯一的事故痕迹
+    const faultDir = path.join(tmp, 'sess-fault')
+    fs.mkdirSync(faultDir)
+    fs.writeFileSync(path.join(faultDir, 'session.v3.jsonl.zstd'), zstdCompressSync(Buffer.from('{"b":2}\n')))
+    fs.writeFileSync(path.join(faultDir, 'session.jsonl.zstd.corrupt-backup'), Buffer.from('x'))
+    // torn: 只有魔数、解压不出来的写坏文件
+    const tornDir = path.join(tmp, 'sess-torn')
+    fs.mkdirSync(tornDir)
+    fs.writeFileSync(path.join(tornDir, 'session.v3.jsonl.zstd'), Buffer.from([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x01]))
+
+    const hOk = checkSessionLog(okDir)
+    assert.equal(hOk.status, 'ok', 'readable log → ok')
+    assert.equal(hOk.hadFault, false, 'no backup sibling → no fault flag')
+    const hFault = checkSessionLog(faultDir)
+    assert.equal(hFault.status, 'ok', "a faulted session's log still decompresses")
+    assert.equal(hFault.hadFault, true, 'the .corrupt-backup sibling is what flags the fault')
+    // 实测：截断的帧带有效魔数，解压**返回空**而不是抛错 —— 所以 torn 落成
+    // `empty`。这正是「只查魔数会误判为正常」的原因。
+    assert.equal(checkSessionLog(tornDir).status, 'empty', 'torn write keeps a valid header; decompression yields empty and is reported as such')
+    assert.equal(checkSessionLog(path.join(tmp, 'missing')).status, 'unreadable', 'missing dir → unreadable (never throws)')
+
+    const lines = sessionHealthLines([okDir, faultDir, tornDir], 10).join('\n')
+    assert.ok(lines.includes('已检查 3 / 3 个会话目录'), 'scan summary present')
+    assert.ok(lines.includes('sess-torn'), 'unreadable session is named')
+    assert.ok(lines.includes('sess-fault'), 'faulted session is named')
+    assert.ok(lines.includes('invalid persisted inbox splice'), 'repair guidance names the real error')
+    assert.doesNotThrow(() => sessionHealthLines([], 10), 'empty session list does not throw')
+    fs.rmSync(tmp, { recursive: true, force: true })
   }
 
   // 9g6. 从转录行跳转到文件（缺口4）。解析要认识 TUI 自己的行形态，且不能把
