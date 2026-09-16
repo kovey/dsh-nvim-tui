@@ -41,23 +41,19 @@ function R.abort_turn()
   end
 end
 
---- Raw terminal escape passthrough. nvim owns the terminal (the bridge
---- deliberately does NOT pass `--embed`), so ONLY this process can reach it.
+--- Raw terminal escape passthrough.
 ---
---- MUST be io.stdout, NOT `vim.api.nvim_out_write`: measured in this exact
---- architecture (nvim holding its own tty, stdout redirected to a file), an
---- `nvim_out_write` of an OSC 9 sequence wrote ZERO bytes to the terminal —
---- the API routes the text as a UI message, so it never reaches the tty. That
---- is why BOTH the bell and the notification were silent: `R.bell()` had used
---- `nvim_out_write` since it was written, so the bell had always been a no-op.
---- `io.stdout:write` + flush put the same bytes on the terminal (verified in
---- the same run).
-local function raw(bytes)
-  local ok = pcall(function()
-    io.stdout:write(bytes)
-    io.stdout:flush()
-  end)
-  return ok
+--- ⚠️ NO SAFE CHANNEL FROM LUA — both candidates are measured broken HERE:
+---   · `vim.api.nvim_out_write` — a UI message (msg_puts), never reaches the
+---     tty (measured: 0 bytes on the terminal).
+---   · `io.stdout:write` — the running profile launches nvim EMBEDDED
+---     (`--embed` in argv; `vim.uv.guess_handle(1)` reports "pipe"), so stdout
+---     is the host PROTOCOL PIPE. Raw escapes written there cannot reach the
+---     terminal and risk corrupting the msgpack stream the host reads.
+--- Until emission moves to the process that OWNS the tty, this deliberately
+--- emits nothing. Bell and OSC notification are known-inert; /doctor says so.
+local function raw(_bytes)
+  return false
 end
 
 --- Terminal bell (turn finished, approvals): BEL on the real terminal.
