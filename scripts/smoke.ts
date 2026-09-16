@@ -3207,6 +3207,45 @@ description:
   const fiClosed = await lua('return require("dsh_tui.state").fullInput.win == nil', [])
   assert.equal(fiClosed, true, 'discard closes the float')
   const fiDraftKept = await lua('return require("dsh_tui.buffer").input_text()', [])
+
+  // 缺口3: 终端级通知（OSC 9 / 777）。BEL 会被静音终端吞掉，长回合完成时
+  // 用户可能完全不知情。终端归 nvim 所有，所以探测与发射都在 Lua 侧做。
+  {
+    const probe = async (env: Record<string, string>): Promise<unknown> =>
+      await lua(`local R = require("dsh_tui.rpc")
+        local want = ...
+        local saved = {}
+        for k, v in pairs(want) do saved[k] = vim.env[k]; vim.env[k] = v end
+        local cap = R.notify_capability()
+        for k, v in pairs(saved) do vim.env[k] = v end
+        return cap`, [env])
+    const capIt = await probe({ TERM_PROGRAM: 'iTerm.app' })
+    assert.equal(capIt, 'osc9', 'iTerm.app → OSC 9')
+    assert.equal(await probe({ TERM_PROGRAM: 'Apple_Terminal', TMUX: '', KITTY_WINDOW_ID: '' }), null, 'Terminal.app → no OSC form (BEL only)')
+    assert.equal(await probe({ TERM_PROGRAM: '', TERM: 'rxvt-unicode' }), 'osc777', 'rxvt → OSC 777')
+
+    // Capture the raw bytes instead of writing them to the test terminal.
+    const captured = await lua(`local R = require("dsh_tui.rpc")
+      local saved = { TERM_PROGRAM = vim.env.TERM_PROGRAM, TMUX = vim.env.TMUX, TERM = vim.env.TERM }
+      vim.env.TMUX = nil; vim.env.TERM_PROGRAM = "iTerm.app"
+      local got = {}
+      local orig = vim.api.nvim_out_write
+      vim.api.nvim_out_write = function(b) got[#got + 1] = b; return true end
+      local ok = R.notify("dsh", "turn done")
+      local okBad = R.notify("evil\x1b]0;pwn", "body\x07x")
+      vim.api.nvim_out_write = orig
+      vim.env.TERM_PROGRAM, vim.env.TMUX, vim.env.TERM = saved.TERM_PROGRAM, saved.TMUX, saved.TERM
+      return { ok = ok, okBad = okBad, first = got[1], second = got[2] }`, [])
+    assert.equal(captured.ok, true, 'notify reports success on a supported terminal')
+    assert.equal(captured.first, '\x1b]9;dsh: turn done\x07', 'OSC 9 payload shape')
+    // NOTE: the payload legitimately BEGINS with ESC (that is the OSC introducer),
+    // so "contains no ESC" is the wrong test. The real property is that the
+    // attacker's ESC cannot start a SECOND sequence: the injected ']0;' must end
+    // up inert text, with exactly one introducer and one terminator.
+    assert.equal(String(captured.second).split('\x1b').length - 1, 1, 'exactly one OSC introducer — the title cannot start a second sequence')
+    assert.ok(String(captured.second).startsWith('\x1b]9;evil ]0;pwn: body x\x07'), 'OSC framing intact with the injected bytes neutralized to text')
+    assert.ok(!String(captured.second).includes('\x07x'), 'control bytes in the body are stripped')
+  }
   assert.equal(fiDraftKept, '草稿行1\n草稿行2', 'discard keeps the input-box draft')
   await lua('vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "" }); require("dsh_tui").resize_input()', [])
   log('fullscreen input editor: open/prefill/discard ok')

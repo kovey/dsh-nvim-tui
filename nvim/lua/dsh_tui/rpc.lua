@@ -88,4 +88,59 @@ function R.apply_theme(theme)
   end
 end
 
+--- Raw terminal escape passthrough. nvim owns the terminal, so ONLY this
+--- process can reach it — the Node runner has no tty of its own.
+--- `nvim_out_write` takes bytes verbatim (no message area, no redraw), and the
+--- pcall keeps a hostile/short terminal from taking the TUI down.
+local function raw(bytes)
+  return pcall(vim.api.nvim_out_write, bytes)
+end
+
+--- Which OSC notification form this terminal understands, or nil when none is
+--- known. Probing is best-effort by design: an unknown terminal simply gets no
+--- notification (the BEL path is unaffected), because emitting an unrecognized
+--- OSC on some terminals prints the payload as garbage text.
+function R.notify_capability()
+  local env = vim.env
+  if env.TMUX ~= nil and env.TMUX ~= '' then
+    -- tmux swallows OSC unless the passthrough wrapper is used; rather than
+    -- guess tmux's version, skip (a wrong guess writes visible junk).
+    return nil
+  end
+  local prog = env.TERM_PROGRAM
+  if prog == 'iTerm.app' or prog == 'WezTerm' or prog == 'vscode' then
+    return 'osc9'
+  end
+  if env.KITTY_WINDOW_ID ~= nil or env.GHOSTTY_RESOURCES_DIR ~= nil then
+    return 'osc9'
+  end
+  if prog == 'Apple_Terminal' then
+    -- Terminal.app has neither OSC 9 nor 777; BEL is all it offers.
+    return nil
+  end
+  -- rxvt-unicode and friends: OSC 777 notify.
+  local term = env.TERM or ''
+  if term:match('^rxvt') or term:match('^urxvt') then return 'osc777' end
+  return nil
+end
+
+--- Terminal-level attention notification (turn finished / needs an answer).
+--- Distinct from R.bell() on purpose: BEL is audible and works everywhere,
+--- OSC raises a desktop notification that also survives a muted terminal.
+--- Returns the form actually emitted, or false when unsupported.
+--- @param title string short headline (e.g. "dsh")
+--- @param body string one-line summary
+function R.notify(title, body)
+  local form = R.notify_capability()
+  if form == nil then return false end
+  -- Strip control bytes so a session title can never inject a second escape.
+  local function clean(x)
+    return (tostring(x or ''):gsub('%c', ' '))
+  end
+  if form == 'osc9' then
+    return raw('\x1b]9;' .. clean(title) .. ': ' .. clean(body) .. '\x07')
+  end
+  return raw('\x1b]777;notify;' .. clean(title) .. ';' .. clean(body) .. '\x07')
+end
+
 return R

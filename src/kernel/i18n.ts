@@ -137,6 +137,7 @@ const EN_DICT: Record<string, string> = {
   '回合步骤轨迹': 'turn step trajectory',
   '布局预设': 'layout presets',
   '回合结束响铃开关': 'turn-end bell toggle',
+  '回合完成': 'turn complete',
   '审批策略开关': 'approval policy toggle',
   '紧凑卡片模式': 'compact card mode',
   '状态栏段显隐': 'statusline segment visibility',
