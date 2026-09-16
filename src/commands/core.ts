@@ -749,6 +749,16 @@ export function registerHostEventHandlers(): void {
       rec?.feed.appendNotice(`⚠ 审批请求: ${request.toolName ?? '?'}${request.reason ? ` — ${request.reason}` : ''}`)
       // Approvals always ring — attention is required, bell toggle or not.
       void app.luaCall('require("dsh_tui").bell()', []).catch(() => {})
+      // …and raise a desktop notification too. This is the case the OSC path
+      // matters MOST for: an approval blocks the turn until answered, and the
+      // user is by definition likely to be looking elsewhere. Deliberately not
+      // gated on bellOn (same reasoning as the bell above), and deliberately
+      // WITHOUT the session title: an approval notice goes to the desktop, so
+      // it carries only the tool name, never conversation-derived text.
+      void app.luaCall('require("dsh_tui.rpc").notify(...)', [
+        t('需要审批'),
+        `${request.toolName ?? '?'}${request.reason ? ` — ${request.reason}` : ''}`,
+      ]).catch(() => {})
     })
   })
   // User questions: claim the host's `user-questions/request` waterfall
