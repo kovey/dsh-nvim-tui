@@ -15,7 +15,8 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { t, tf } from '../kernel/i18n.js'
 import { matchIntent } from './nlcmd.js'
-import { activeSessionCwd, APPROVAL_HISTORY_MAX, type ApprovalRecord } from '../kernel/app.js'
+import { activeSessionCwd, type ApprovalRecord } from '../kernel/app.js'
+import { appendApproval, APPROVAL_HISTORY_MAX } from '../kernel/approval-log.js'
 import { routeDifficultyForTurn } from '../kernel/difficulty.js'
 import { findVisionModel, effortSupported } from '../kernel/vision.js'
 import { readClipboardImage, splitImageDataUrls, parseImageDataUrl } from '../feed/images.js'
@@ -478,17 +479,22 @@ export const applyModelSelection = async (app: App, next: ModelRef['current']): 
  */
 const recordApproval = (app: App, request: { toolName?: string; reason?: string; agent?: { session?: { id?: string } } }, outcome: string): void => {
   try {
-    const hist = app.slices.agent.approvalHistory as ApprovalRecord[]
-    hist.push({
+    const rec: ApprovalRecord = {
       at: Date.now(),
       toolName: request?.toolName ?? '?',
       reason: request?.reason ?? '',
       outcome,
       sessionId: request?.agent?.session?.id,
-    })
+    }
+    const hist = app.slices.agent.approvalHistory as ApprovalRecord[]
+    hist.push(rec)
     // Bounded: a long session asks hundreds of times, and this array is read
     // only by /approvals — never let it grow without limit.
     if (hist.length > APPROVAL_HISTORY_MAX) hist.splice(0, hist.length - APPROVAL_HISTORY_MAX)
+    // …and persist it. The in-memory array dies with the process, which is
+    // precisely when "why did I allow that?" gets asked — `/approvals` used to
+    // come back empty after every restart.
+    appendApproval(activeSessionCwd(app), rec)
   } catch { /* cosmetic */ }
 }
 

@@ -190,8 +190,6 @@ export interface ApprovalRecord {
     outcome: string;
     sessionId: string | undefined;
 }
-/** How many decisions are retained (a session can ask hundreds of times). */
-export declare const APPROVAL_HISTORY_MAX = 50;
 export interface AppSlices {
     /** nvim process / window lifecycle + boot entry. */
     runtime: {

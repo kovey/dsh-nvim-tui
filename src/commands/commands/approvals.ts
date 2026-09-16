@@ -5,7 +5,7 @@
  *  log behind this command is the only record.
  */
 import { t, tf } from '../../kernel/i18n.js'
-import { APPROVAL_HISTORY_MAX } from '../../kernel/app.js'
+import { APPROVAL_HISTORY_MAX } from '../../kernel/approval-log.js'
 import type { ApprovalRecord } from '../../kernel/app.js'
 import type { App } from '../../kernel/app.js'
 
