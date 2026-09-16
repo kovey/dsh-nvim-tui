@@ -1,20 +1,25 @@
 /**
- * dsh_tui kernel module: APPROVAL DECISION LOG (durable).
+ * dsh_tui kernel module: APPROVAL DECISION LOG (durable, PER SESSION).
  *
  * The in-memory `approvalHistory` slice died with the process, so `/approvals`
  * showed nothing after a restart — exactly when the question "why did I allow
  * that?" usually gets asked. This module is the on-disk side.
  *
- * Storage: `<session cwd>/.dsh/approvals.jsonl`, one COMPACT JSON object per
+ * Scope is deliberately ONE SESSION, not one project and not global:
+ * `/approvals` answers "what did THIS conversation let through?", and mixing in
+ * decisions from other conversations would be misleading (a rejection in another
+ * session says nothing about this one).
+ *
+ * Storage: `<DSH_HOME>/approvals/<sessionId>.jsonl`, one COMPACT JSON object per
  * line (never pretty-printed — a multi-line record destroys JSONL semantics).
- * The workspace `.dsh/` is gitignored, so this stays out of the repo while
- * remaining per-project: decisions made while working in another project do not
- * show up here.
+ * Kept out of the workspace on purpose: writing into the repo (even gitignored)
+ * would surprise users, and the log is client state, not project state.
  *
  * @module dsh-nvim-tui/kernel/approval-log
  */
 import { appendFileSync, mkdirSync, readFileSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import type { ApprovalRecord } from './app.js'
 
 /** Retained in memory / shown by `/approvals`. */
@@ -22,9 +27,17 @@ export const APPROVAL_HISTORY_MAX = 50
 /** Retained on disk before the file is rewritten to the newest slice. */
 export const APPROVAL_LOG_MAX = 500
 
-/** `<cwd>/.dsh/approvals.jsonl` ('' when the cwd is unusable). */
-export const approvalLogPath = (cwd: string): string =>
-  cwd === '' ? '' : join(cwd, '.dsh', 'approvals.jsonl')
+/** `<DSH_HOME>/approvals/<sessionId>.jsonl` ('' when there is no session). */
+export const approvalLogPath = (sessionId: string | undefined): string => {
+  if (typeof sessionId !== 'string' || sessionId === '') return ''
+  // Sanitized: the id comes from the host, but this is a filesystem path.
+  const safe = sessionId.replace(/[^A-Za-z0-9._-]/g, '_')
+  return join(approvalLogDir(), `${safe}.jsonl`)
+}
+
+/** `<DSH_HOME>/approvals` (created on first write). */
+export const approvalLogDir = (): string =>
+  join(process.env['DSH_HOME'] ?? join(homedir(), '.dsh'), 'approvals')
 
 /** One record → one line. Compact JSON: no indent, no trailing spaces. */
 export const approvalLine = (r: ApprovalRecord): string => JSON.stringify(r) + '\n'
@@ -55,8 +68,8 @@ export const parseApprovalLines = (body: string): ApprovalRecord[] => {
 }
 
 /** Newest `max` records from disk, oldest-first (the caller reverses). */
-export const loadApprovalHistory = (cwd: string, max = APPROVAL_HISTORY_MAX): ApprovalRecord[] => {
-  const path = approvalLogPath(cwd)
+export const loadApprovalHistory = (sessionId: string | undefined, max = APPROVAL_HISTORY_MAX): ApprovalRecord[] => {
+  const path = approvalLogPath(sessionId)
   if (path === '') return []
   try {
     return parseApprovalLines(readFileSync(path, 'utf8')).slice(-max)
@@ -71,11 +84,11 @@ export const loadApprovalHistory = (cwd: string, max = APPROVAL_HISTORY_MAX): Ap
  * Rewrites the file once it outgrows APPROVAL_LOG_MAX so it cannot grow without
  * bound across a long-lived workspace.
  */
-export const appendApproval = (cwd: string, r: ApprovalRecord): void => {
-  const path = approvalLogPath(cwd)
+export const appendApproval = (sessionId: string | undefined, r: ApprovalRecord): void => {
+  const path = approvalLogPath(sessionId)
   if (path === '') return
   try {
-    mkdirSync(join(cwd, '.dsh'), { recursive: true })
+    mkdirSync(approvalLogDir(), { recursive: true })
     appendFileSync(path, approvalLine(r))
     const all = parseApprovalLines(readFileSync(path, 'utf8'))
     if (all.length > APPROVAL_LOG_MAX) {
@@ -86,4 +99,25 @@ export const appendApproval = (cwd: string, r: ApprovalRecord): void => {
       renameSync(path + '.tmp', path)
     }
   } catch { /* history is a nicety; never break the approval path */ }
+}
+
+/**
+ * Refresh the active session's history from disk when the session changed.
+ *
+ * Called from BOTH the read path (`/approvals`) and the write path (every
+ * settle), so session switches need no hook of their own: whichever happens
+ * first for a new session reloads, and afterwards the marker makes it a no-op.
+ * Returns the slice array (a live reference the caller may read or push to).
+ */
+export const ensureApprovalHistory = (
+  slices: { approvalHistory: ApprovalRecord[]; approvalHistoryFor: string | null },
+  sessionId: string | null | undefined,
+): ApprovalRecord[] => {
+  const sid = typeof sessionId === 'string' && sessionId !== '' ? sessionId : null
+  if (slices.approvalHistoryFor === sid) return slices.approvalHistory
+  const loaded = sid === null ? [] : loadApprovalHistory(sid)
+  slices.approvalHistory.length = 0
+  slices.approvalHistory.push(...loaded)
+  slices.approvalHistoryFor = sid
+  return slices.approvalHistory
 }

@@ -10,8 +10,6 @@ import type { AppSlices, WritableSlice, QuestionsEntry } from '../kernel/app.js'
 import type { ApprovalRequest } from '../kernel/types.js'
 const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 import type { App } from '../kernel/app.js'
-import { activeSessionCwd } from '../kernel/app.js'
-import { loadApprovalHistory } from '../kernel/approval-log.js'
 import {
   followup, send, pasteClipboardImage, stopCommand, openDirPicker, atQuery,
   applyModelSelection, onInput, onCommand, queueSubagentPrompt,
@@ -209,22 +207,13 @@ export function installCommands(app: App): void {
     A.pendingSubagentFollowup = null
   }
 
-/** Session workspace for per-project state; falls back to the process cwd
- *  (activeSessionCwd already does this) and never throws. */
-const safeCwd = (): string => {
-  try {
-    return activeSessionCwd(app)
-  } catch {
-    return process.cwd()
-  }
-}
-
   Object.assign(app.slices.agent, {
     approvalQueue: [],
-    // Seeded from the durable log so a restart keeps the decision history:
-    // the array alone dies with the process, and `/approvals` came back empty
-    // exactly when the question "why did I allow that?" gets asked.
-    approvalHistory: loadApprovalHistory(safeCwd()),
+    // Empty until a session is known: `ensureApprovalHistory` fills it from the
+    // durable log on first use / on session switch. Seeding here would have to
+    // guess the session (there may be none yet).
+    approvalHistory: [],
+    approvalHistoryFor: null,
     questionsQueue: [],
     // Seeded null, NEVER undefined: statusline reads pop.kind with a
     // null-guard — an unseeded undefined crashes foldEvent/refreshBgJobs

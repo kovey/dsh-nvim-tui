@@ -5,7 +5,7 @@
  *  log behind this command is the only record.
  */
 import { t, tf } from '../../kernel/i18n.js'
-import { APPROVAL_HISTORY_MAX } from '../../kernel/approval-log.js'
+import { APPROVAL_HISTORY_MAX, ensureApprovalHistory } from '../../kernel/approval-log.js'
 import type { ApprovalRecord } from '../../kernel/app.js'
 import type { App } from '../../kernel/app.js'
 
@@ -42,7 +42,9 @@ export const approvalHistoryLines = (all: readonly ApprovalRecord[], max: number
 }
 
 export const approvalsCommand = async (app: App): Promise<void> => {
-  const all = app.slices.agent.approvalHistory
+  // Read path of the lazy reload: if the active session changed since the last
+  // call, pull ITS decisions from disk before showing anything.
+  const all = ensureApprovalHistory(app.slices.agent, app.slices.sessions.activeId)
   if (all.length === 0) {
     app.notice(t('还没有审批记录（本会话尚未出现需要审批的操作）'))
     return
@@ -54,7 +56,7 @@ export const approvalsCommand = async (app: App): Promise<void> => {
 export function installApprovalsCommand(app: App): void {
   app.registerCommands([{
     name: '/approvals',
-    desc: t('审批历史（本会话的批准/拒绝记录）'),
+    desc: t('审批历史（当前会话的批准/拒绝记录，重启后仍在）'),
     usage: t('审批历史'),
     group: t('信息'),
     fn: () => approvalsCommand(app),

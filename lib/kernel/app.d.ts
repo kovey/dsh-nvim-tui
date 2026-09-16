@@ -403,10 +403,15 @@ export interface AppSlices {
         /** Queue for CONCURRENT approval requests (parent + subagents can both
          *  ask): the head renders the float; the rest wait in order. */
         readonly approvalQueue: ApprovalEntry[];
-        /** Bounded decision log (newest last). Approvals are the one gate where the
-         *  user answers "why did I allow that?" much later — without a record the
-         *  question is unanswerable, since the float and its notice are gone. */
+        /** Bounded decision log (newest last) for the ACTIVE session. Approvals are
+         *  the one gate where the user answers "why did I allow that?" much later —
+         *  without a record the question is unanswerable, since the float and its
+         *  notice are gone. Reloaded from disk when the active session changes. */
         readonly approvalHistory: ApprovalRecord[];
+        /** Session whose decisions `approvalHistory` currently holds (null = not
+         *  loaded yet). Guards the reload so switching sessions does not leak one
+         *  conversation's decisions into another's `/approvals`. */
+        readonly approvalHistoryFor: string | null;
         readonly questionsResolve: {
             resolve: (v: {
                 answers: unknown[];

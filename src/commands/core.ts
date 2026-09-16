@@ -16,7 +16,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { t, tf } from '../kernel/i18n.js'
 import { matchIntent } from './nlcmd.js'
 import { activeSessionCwd, type ApprovalRecord } from '../kernel/app.js'
-import { appendApproval, APPROVAL_HISTORY_MAX } from '../kernel/approval-log.js'
+import { appendApproval, APPROVAL_HISTORY_MAX, ensureApprovalHistory } from '../kernel/approval-log.js'
 import { routeDifficultyForTurn } from '../kernel/difficulty.js'
 import { findVisionModel, effortSupported } from '../kernel/vision.js'
 import { readClipboardImage, splitImageDataUrls, parseImageDataUrl } from '../feed/images.js'
@@ -486,7 +486,11 @@ const recordApproval = (app: App, request: { toolName?: string; reason?: string;
       outcome,
       sessionId: request?.agent?.session?.id,
     }
-    const hist = app.slices.agent.approvalHistory as ApprovalRecord[]
+    // Keyed by the REQUEST's session, not the active one: a background/child
+    // agent can ask for approval while another session is in the foreground, and
+    // that decision belongs to the session that asked.
+    const sid = rec.sessionId
+    const hist = ensureApprovalHistory(app.slices.agent, sid) as ApprovalRecord[]
     hist.push(rec)
     // Bounded: a long session asks hundreds of times, and this array is read
     // only by /approvals — never let it grow without limit.
@@ -494,7 +498,7 @@ const recordApproval = (app: App, request: { toolName?: string; reason?: string;
     // …and persist it. The in-memory array dies with the process, which is
     // precisely when "why did I allow that?" gets asked — `/approvals` used to
     // come back empty after every restart.
-    appendApproval(activeSessionCwd(app), rec)
+    appendApproval(sid, rec)
   } catch { /* cosmetic */ }
 }
 

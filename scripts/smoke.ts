@@ -28,7 +28,7 @@ import { installRootCandidates } from '../lib/deps/services.js'
 import { checkSessionLog } from '../lib/kernel/session-health.js'
 import { sessionHealthLines } from '../lib/commands/commands/doctor.js'
 import { approvalHistoryLines } from '../lib/commands/commands/approvals.js'
-import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLines, APPROVAL_LOG_MAX } from '../lib/kernel/approval-log.js'
+import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLines, APPROVAL_LOG_MAX, ensureApprovalHistory } from '../lib/kernel/approval-log.js'
 import { parsePluginArgs } from '../lib/market/commands/plugin.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
@@ -1885,35 +1885,56 @@ description:
 
   // 9g8. 审批历史「落盘」回归（真 bug）：approvalHistory 原先只在内存里，
   // 重启后 /approvals 空白 —— 而"我当时为什么允许了那个操作"恰恰多是事后问的。
+  // 作用域是**单会话**：/approvals 回答的是"这次对话放行了什么"，混入别的会话
+  // 的决定会误导（别处的拒绝说明不了这里）。
   {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-approvals-'))
+    const prevHome = process.env['DSH_HOME']
+    process.env['DSH_HOME'] = tmp
     const rec = (over: Record<string, unknown>) => ({ at: Date.now(), toolName: 'bash', reason: '', outcome: 'allow', sessionId: 's', ...over })
 
-    assert.equal(approvalLogPath(tmp), path.join(tmp, '.dsh', 'approvals.jsonl'), 'log lives under <cwd>/.dsh')
-    assert.deepEqual(loadApprovalHistory(tmp), [], 'no file yet → empty history (never throws)')
+    assert.equal(approvalLogPath('sess-a'), path.join(tmp, 'approvals', 'sess-a.jsonl'), 'one file per session under DSH_HOME')
+    assert.equal(approvalLogPath(undefined), '', 'no session → no path (never writes)')
+    assert.deepEqual(loadApprovalHistory('sess-a'), [], 'no file yet → empty history (never throws)')
 
-    appendApproval(tmp, rec({ outcome: 'allow', toolName: 'read' }))
-    appendApproval(tmp, rec({ outcome: 'reject', toolName: 'write', reason: '改系统文件' }))
+    appendApproval('sess-a', rec({ outcome: 'allow', toolName: 'read' }))
+    appendApproval('sess-a', rec({ outcome: 'reject', toolName: 'write', reason: '改系统文件' }))
     // 关键断言：模拟"重启" —— 新建的读取者必须看到刚才写下的记录。
-    const afterRestart = loadApprovalHistory(tmp)
+    const afterRestart = loadApprovalHistory('sess-a')
     assert.equal(afterRestart.length, 2, 'decisions survive a restart (read back from disk)')
     assert.equal(afterRestart[1]?.outcome, 'reject', 'newest decision is last')
     assert.equal(afterRestart[1]?.reason, '改系统文件', 'reason persisted')
 
+    // 会话隔离：另一个会话看不到这里的决定。
+    appendApproval('sess-b', rec({ outcome: 'allow', toolName: 'other' }))
+    assert.equal(loadApprovalHistory('sess-a').length, 2, 'session A is not polluted by session B')
+    assert.equal(loadApprovalHistory('sess-b').length, 1, 'session B sees only its own')
+
+    // 切换会话时的惰性重载（读写两条路径都走 ensure）。
+    const slices = { approvalHistory: [] as ReturnType<typeof loadApprovalHistory>, approvalHistoryFor: null as string | null }
+    assert.equal(ensureApprovalHistory(slices, 'sess-a').length, 2, 'ensure loads the active session')
+    assert.equal(ensureApprovalHistory(slices, 'sess-b').length, 1, 'ensure swaps when the session changes')
+    assert.equal(slices.approvalHistoryFor, 'sess-b', 'marker tracks which session is loaded')
+    assert.equal(ensureApprovalHistory(slices, 'sess-b').length, 1, 'same session → no reload')
+    assert.equal(ensureApprovalHistory(slices, null).length, 0, 'no active session → empty, not stale')
+
     // JSONL 必须紧凑：一行一条，多行会破坏逐行语义。
-    const body = fs.readFileSync(approvalLogPath(tmp), 'utf8')
+    const body = fs.readFileSync(approvalLogPath('sess-a'), 'utf8')
     assert.equal(body.split('\n').filter((l) => l !== '').length, 2, 'one compact JSON object per line')
     assert.ok(!body.includes('\n  '), 'never pretty-printed')
 
     // 容错：半行（进程在 append 途中死掉）不得让整份历史读不出来。
-    fs.appendFileSync(approvalLogPath(tmp), '{"at":123,"outcome":"all')
-    assert.equal(loadApprovalHistory(tmp).length, 2, 'a torn last line is skipped, the rest survives')
+    fs.appendFileSync(approvalLogPath('sess-a'), '{"at":123,"outcome":"all')
+    assert.equal(loadApprovalHistory('sess-a').length, 2, 'a torn last line is skipped, the rest survives')
     assert.equal(parseApprovalLines('not json\n{"at":1,"outcome":"allow"}\n').length, 1, 'garbage lines dropped')
 
     // 有界：超过上限后压实到上限以内。
-    for (let i = 0; i < APPROVAL_LOG_MAX + 20; i++) appendApproval(tmp, rec({ outcome: 'allow', toolName: `t${i}` }))
-    const lines = fs.readFileSync(approvalLogPath(tmp), 'utf8').split('\n').filter((l) => l !== '').length
+    for (let i = 0; i < APPROVAL_LOG_MAX + 20; i++) appendApproval('sess-a', rec({ outcome: 'allow', toolName: `t${i}` }))
+    const lines = fs.readFileSync(approvalLogPath('sess-a'), 'utf8').split('\n').filter((l) => l !== '').length
     assert.ok(lines <= APPROVAL_LOG_MAX, `log is compacted (${lines} <= ${APPROVAL_LOG_MAX})`)
+
+    if (prevHome === undefined) delete process.env['DSH_HOME']
+    else process.env['DSH_HOME'] = prevHome
     fs.rmSync(tmp, { recursive: true, force: true })
   }
 
