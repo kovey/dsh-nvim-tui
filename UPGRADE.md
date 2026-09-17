@@ -2,6 +2,12 @@
 
 本文件按"宿主版本轴"记录升级步骤与注意事项。**先读与你自己相关的那一段**：
 
+> **git/tag 依赖怎么升级（实测结论，2026-09-16）**：`pnpm update` 与
+> `update --latest` **都不会**推进 `github:owner/repo#tag` —— `--latest` 只重写
+> npm semver 范围，不改 git ref。唯一有效的是**用 `add` 带新 ref 重写**：
+> `dsh plugin --profile <p> add "owner/repo#vX.Y.Z"`（TUI 内：
+> `/plugin update owner/repo#vX.Y.Z`）。`update` 只对 npm 依赖有意义。
+
 | 你的现状 | 读这一节 |
 |---|---|
 | nvim-tui v0.4.1（宿主 0.1.5-rc.2） | [v0.4.1 → v0.4.2（插件升级，零破坏）](#v041--v042插件升级零破坏) |
@@ -21,9 +27,9 @@
 ### 升级步骤
 
 ```bash
-# 更新到 v0.4.2（git 依赖必须带 --latest）
-dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui
-#   或固定版本：dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.2"
+# git 依赖：必须用 add 带新 tag 重写 ref（update/--latest 都推不动 git ref —— 已实测）
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.2"
+#   TUI 内等价命令：/plugin update kovey/dsh-nvim-tui#v0.4.2
 
 dsh --profile nvim-tui     # 重启生效
 ```
@@ -64,9 +70,8 @@ dsh --profile nvim-tui     # 重启生效
 ### 升级步骤
 
 ```bash
-# 更新到 v0.4.1（git 依赖必须带 --latest）
-dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui
-#   或固定版本：dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.1"
+# git 依赖：用 add 带新 tag 重写 ref
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.1"
 
 dsh --profile nvim-tui     # 重启生效
 ```
@@ -172,9 +177,8 @@ cd <本仓库> && npm install         # peer 锚点已改为 ^0.1.5-rc.2
 npm i -g @deepseek-ai/dsh@next
 dsh --version                      # 期望 0.1.5-rc.1
 
-# 2) 升级插件到 v0.4.0
-dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui
-#    或固定版本：dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.0"
+# 2) 升级插件到 v0.4.0（git 依赖用 add 带 tag，见文首说明）
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.0"
 
 # 3) 依赖树对齐（v0.4.0 起 devDependency/lockfile 也锚定 0.1.5-rc.1；
 #    只有从源码开发才需要）
@@ -237,7 +241,7 @@ TypeScript 严格性：`strict` + `noUnusedLocals/Parameters` +
 ```bash
 npm i -g @deepseek-ai/dsh@next   # next dist-tag 现为 0.1.5-rc.2（rc.1 亦可）
 dsh --version                    # 应输出 0.1.5-rc.2（运行中的进程需重启生效）
-# 插件侧：dsh plugin --profile <name> update --latest kovey/dsh-nvim-tui
+# 插件侧（git 依赖）：dsh plugin --profile <name> add "kovey/dsh-nvim-tui#<tag>"
 ```
 
 > 当前 `next` dist-tag 已从 0.1.5-rc.1 前进到 **0.1.5-rc.2**；两者对本插件
@@ -268,7 +272,7 @@ currentSelection/saveSelection 等）逐一在 rc.1 定义中存在且签名一�
 ```bash
 npm i -g @deepseek-ai/dsh@next   # next dist-tag 即 0.1.2-rc.1
 dsh --version                    # 应输出 0.1.2-rc.1（运行中的进程需重启生效）
-# 插件侧：dsh plugin --profile <name> update --latest kovey/dsh-nvim-tui
+# 插件侧（git 依赖）：dsh plugin --profile <name> add "kovey/dsh-nvim-tui#<tag>"
 ```
 
 ---
@@ -290,7 +294,7 @@ dsh-nvim-tui v0.2.14 将 peer 依赖锚点抬升至 **`^0.1.2-alpha.5`**。本�
 ```bash
 npm i -g @deepseek-ai/dsh@alpha
 dsh --version        # 应输出 0.1.2-alpha.5（运行中的进程需重启生效）
-# 插件侧：dsh plugin --profile <name> update --latest kovey/dsh-nvim-tui
+# 插件侧（git 依赖）：dsh plugin --profile <name> add "kovey/dsh-nvim-tui#<tag>"
 ```
 
 ---
@@ -336,7 +340,7 @@ dsh --version        # 应输出 0.1.2-alpha.4（首次启动 profile 时共享 
                      # 自动抬升到 alpha.4；运行中的进程需重启生效）
 
 # 2. 更新 nvim-tui 插件
-dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#<tag>"
 # 或固定版本
 dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.12"
 
@@ -392,7 +396,7 @@ dsh --version        # 应输出 0.1.2-alpha.3
 # 抬升到 alpha.3；正在运行的 dsh 进程仍在内存里跑旧代码，需重启才生效。
 
 # 2. 更新 nvim-tui 插件（发布版）
-dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#<tag>"
 # 或固定版本
 dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.11"
 
@@ -485,7 +489,7 @@ following tool_calls message)` 400 拒绝，会话永久卡死。
    第二份拷贝带进 profile）：
 
    ```bash
-   dsh plugin --profile <name> update --latest kovey/dsh-nvim-tui
+   dsh plugin --profile <name> add "kovey/dsh-nvim-tui#<tag>"
    # 或固定版本
    dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.2.8"
    ```
@@ -539,7 +543,7 @@ git -C <仓库> pull && cd <仓库> && npm install && npm run build
 # profile 直链 lib/，无需重装依赖
 
 # 发布版（git 依赖必须带 --latest，否则 pnpm 不重新解析分支 HEAD）
-dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#<tag>"
 
 # 或固定版本（git ref 语法，@version 会被 pnpm 当作别名报错）
 dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.2.7"

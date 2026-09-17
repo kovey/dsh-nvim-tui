@@ -1,7 +1,7 @@
 /** dsh_tui command: /market — one command per file. */
 import { locale, t, tf } from '../../kernel/i18n.js'
 import { runningProfileName } from '../../kernel/profile.js'
-import { renameSync } from 'node:fs'
+import { readFileSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import type { App } from '../../kernel/app.js'
 import type { MarketEntry } from '../progress.js'
@@ -13,6 +13,22 @@ import {
   isNpmName, latestVersion, depMatchesEntry,
   profileDir, classifyPnpmError, firstErrorLine,
 } from '../progress.js'
+
+/** Dependencies pinned to a git ref (tag/branch/commit) — the ones a plain
+ *  `pnpm update` cannot move. Read from the profile manifest; a `link:`/`file:`
+ *  path is excluded (updating a local path is meaningless). */
+const gitPinnedDeps = (profileName: string): string[] => {
+  try {
+    const manifest = join(profileDir(profileName), 'package.json')
+    const deps = (JSON.parse(readFileSync(manifest, 'utf8')) as { dependencies?: Record<string, string> }).dependencies ?? {}
+    return Object.entries(deps)
+      .filter(([, spec]) => /^github:|^git\+|^git:|^https?:\/\//.test(spec))
+      .map(([name]) => name)
+      .sort()
+  } catch {
+    return []
+  }
+}
 
 export const marketCommand = async (app: App, a: string | undefined): Promise<void> => {
   const arg = (a ?? '').trim()
@@ -46,8 +62,18 @@ export const marketCommand = async (app: App, a: string | undefined): Promise<vo
       pg.bar(t('▸ 更新全部依赖…'))
       const r = await runPluginCliP(profileName, ['update'], pg)
       pg.bar(r.code === 0 ? t('✓ 全部插件已更新（重启 dsh 后生效）') : tf('✗ 更新失败 · {0}', [firstErrorLine(r.tail)]))
+      // `pnpm update` without --latest cannot move a GIT/TAG dependency off its
+      // ref, so "全部已更新" would be a false claim for those. Say what was NOT
+      // covered instead of letting the user assume everything moved.
+      const pinned = gitPinnedDeps(profileName)
+      if (r.code === 0 && pinned.length > 0) {
+        pg.log(tf('· 以下 git/tag 依赖未被推进（需 /plugin update <spec> --latest）：{0}', [pinned.join('、')]))
+      }
       pg.close(1500)
       app.notice(r.code === 0 ? t('全部插件已更新（重启 dsh 后生效）') : `update-all 失败: ${firstErrorLine(r.tail)}`)
+      if (r.code === 0 && pinned.length > 0) {
+        app.notice(tf('注意: {0} 个 git/tag 依赖仍是原 ref（用 /plugin update <spec> --latest 推进）', [pinned.length]))
+      }
     })()
     return
   }

@@ -87,9 +87,9 @@ profile 的 bundles 层栈（无需手改 package.json）；profile 首次使用
 "已是最新"不会重新解析）：
 
 ```bash
-# 更新到最新版
-dsh plugin --profile tui update --latest kovey/dsh-nvim-tui      # 官方 tui profile
-dsh plugin --profile nvim-tui update --latest kovey/dsh-nvim-tui # 自定义 profile
+# 更新/切换版本（git 依赖用 #tag 重写 ref；update/--latest 推不动 git ref）
+dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"      # 官方 tui profile
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#<tag>" # 自定义 profile
 
 # 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
 dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.2"

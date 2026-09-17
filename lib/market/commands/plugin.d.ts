@@ -21,6 +21,11 @@ export type PluginSub = {
     kind: 'remove';
     spec: string;
 } | {
+    kind: 'update';
+    spec: string;
+    latest: boolean;
+    ref: string | undefined;
+} | {
     kind: 'missing-spec';
     sub: string;
 } | {
@@ -34,6 +39,14 @@ export type PluginSub = {
  *  contain spaces (a local path) and is passed to the CLI verbatim, so a
  *  leading `-` is rejected here: it would be parsed as a CLI flag. */
 export declare const parsePluginArgs: (a: string | undefined) => PluginSub;
+/** The `#ref` of a git dependency spec, or undefined when there is none.
+ *  `undefined` means "no target to move to" for an update.
+ *
+ *  Accepts both the explicit forms (`github:`, `git+…`, `https://…`) and the
+ *  `owner/repo#ref` shorthand users actually type — pnpm normalizes that to
+ *  `github:owner/repo#ref` in the manifest, so the shorthand must not be missed
+ *  (missing it made `/plugin update owner/repo#v1` look ref-less). */
+export declare const gitSpecRef: (spec: string) => string | undefined;
 /** /plugin — install/remove/list third-party plugins outside the curated
  *  marketplace catalog. */
 export declare const pluginCommand: (app: App, a: string | undefined) => Promise<void>;

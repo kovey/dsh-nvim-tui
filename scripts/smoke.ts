@@ -29,7 +29,7 @@ import { checkSessionLog } from '../lib/kernel/session-health.js'
 import { sessionHealthLines } from '../lib/commands/commands/doctor.js'
 import { approvalHistoryLines } from '../lib/commands/commands/approvals.js'
 import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLines, APPROVAL_LOG_MAX, ensureApprovalHistory } from '../lib/kernel/approval-log.js'
-import { parsePluginArgs } from '../lib/market/commands/plugin.js'
+import { parsePluginArgs, gitSpecRef } from '../lib/market/commands/plugin.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN, installTodoGuard } from '../lib/kernel/todo-guard.js'
@@ -1990,6 +1990,36 @@ description:
     assert.deepEqual(parsePluginArgs('help'), { kind: 'usage' }, '/plugin help shows usage')
     assert.deepEqual(parsePluginArgs('list'), { kind: 'list' }, '/plugin list lists installed')
     assert.deepEqual(parsePluginArgs('ls'), { kind: 'list' }, '/plugin ls alias')
+    // update：安装的对称操作。此前只有 add/remove —— 目录外的插件在 TUI 里
+    // 根本没有更新入口（/market 只覆盖目录内插件）。
+    for (const verb of ['update', 'upgrade']) {
+      assert.deepEqual(parsePluginArgs(`${verb} dsh-context`), { kind: 'update', spec: 'dsh-context', latest: false, ref: undefined }, `${verb} <npm name>`)
+      assert.deepEqual(parsePluginArgs(`${verb} owner/repo`), { kind: 'update', spec: 'owner/repo', latest: false, ref: undefined }, `${verb} owner/repo`)
+    }
+    // git 依赖不带 --latest 会停在原 tag（UPGRADE.md 已有此结论），故必须能透传。
+    assert.deepEqual(
+      parsePluginArgs('update kovey/dsh-chat-interaction --latest'),
+      { kind: 'update', spec: 'kovey/dsh-chat-interaction', latest: true, ref: undefined },
+      '--latest 透传（位置在 spec 之后）')
+    assert.deepEqual(
+      parsePluginArgs('update --latest kovey/dsh-chat-interaction'),
+      { kind: 'update', spec: 'kovey/dsh-chat-interaction', latest: true, ref: undefined },
+      '--latest 透传（位置在 spec 之前）')
+    // 只有 --latest 没有包名 → 缺包名，而不是把 flag 当包名。
+    assert.deepEqual(parsePluginArgs('update --latest'), { kind: 'missing-spec', sub: 'update' }, 'only --latest → missing spec')
+    assert.deepEqual(parsePluginArgs('update'), { kind: 'missing-spec', sub: 'update' }, 'update without spec')
+    // 可见性/卸载词不误伤
+    assert.deepEqual(parsePluginArgs('upgrade-all'), { kind: 'usage' }, 'unknown verb still shows usage')
+    // 实测（隔离 profile）：`pnpm update --latest` **不会**推进
+    // `github:owner/repo#tag` —— --latest 只重写 npm semver 范围，不改 git ref。
+    // 唯一能推进的是用 add 带新 ref，故解析必须能识别出 ref。
+    assert.equal(gitSpecRef('github:kovey/x#v1.2.3'), 'v1.2.3', 'git ref extracted')
+    assert.equal(gitSpecRef('github:kovey/x'), undefined, 'git spec without ref → no target')
+    assert.equal(gitSpecRef('dsh-context'), undefined, 'npm spec has no ref')
+    assert.deepEqual(
+      parsePluginArgs('update kovey/dsh-nvim-tui#v0.4.2'),
+      { kind: 'update', spec: 'kovey/dsh-nvim-tui#v0.4.2', latest: false, ref: 'v0.4.2' },
+      'git spec carries its target ref (update routes through add)')
     // install / add (and the CLI's own verb) all map to add.
     for (const verb of ['install', 'add']) {
       assert.deepEqual(parsePluginArgs(`${verb} dsh-context`), { kind: 'add', spec: 'dsh-context' }, `${verb} <npm name>`)
