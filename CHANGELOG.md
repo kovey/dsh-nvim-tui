@@ -3,6 +3,61 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.3（2026-09-16）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.3)
+
+覆盖提交：
+[`411ecd8`](https://github.com/kovey/dsh-nvim-tui/commit/411ecd8)
+
+> **版本说明**：本版相对 v0.4.2 共 1 个提交，一项新能力 + 一处**会静默失效的文档
+> 错误**更正。**零破坏**：不需要动宿主、不需要改 `cordis.patch.yml`。升级前请先读
+> [UPGRADE.md](UPGRADE.md) —— **本版更正了 git/tag 依赖的升级方式**。
+
+### 1. 新能力：`/plugin update`
+
+此前 `/plugin` 只有 `install` / `remove` / `list`，**没有更新** —— 而目录外插件
+（正是 `/plugin` 存在的理由）在 TUI 里没有任何更新入口（`/market` 只覆盖目录内
+插件）。安装的对称操作补齐：
+
+- `/plugin update <spec>`：npm 依赖走 `pnpm update`；`--latest` 透传（跨大版本）。
+- `/plugin update <owner/repo#vX.Y.Z>`：**git/tag 依赖必须带新 ref**（见下），
+  路由到 `add` 而非 `update`。
+- `upgrade` 作为别名；`--latest` 可置于 spec 前后；只有 flag 而无包名时给出缺包名
+  提示（不把 flag 当作包名）。
+
+### 2. 更正：`update --latest` **推不动** git 依赖（本版最重要的修复）
+
+本文档此前 9 处写着「git 依赖必须带 `--latest`」。**实测证明这是错的**
+（隔离 DSH_HOME + 一次性 profile 真机验证）：
+
+| 做法 | 结果 |
+|---|---|
+| `update`（无 flag） | 停在原 tag |
+| `update --latest` | **也停在原 tag** |
+| `add "owner/repo#vX.Y.Z"` | **推进成功**（manifest ref 变为 `#vX.Y.Z`） |
+
+根因：`dsh plugin` 是 pnpm 的包装，而 `--latest` 只重写 **npm semver 范围**，
+从不改写 **git ref**（`github:…#tag` 是 ref 不是 range）。
+
+**危害是最高的一类**：`update --latest` 会**成功退出（exit 0）却什么都不改**，
+用户以为已经升级。已全文更正（UPGRADE.md 6 处 + README.md 3 处 + 文首新增实测
+澄清），TUI 内改用 `/plugin update <owner/repo#ref>`。
+
+### 3. `/market update-all` 的可发现性与诚实性
+
+- 该入口此前**零帮助、零补全暴露**，只能靠记得字符串；已在 `/plugin` 的 usage 中
+  点明它存在。
+- 它跑的是不带 `--latest` 的 `pnpm update`，**同样推不动 git 依赖** —— 因此完成后
+  会**点名哪些 git/tag 依赖未被推进**，不再让人误以为「全部已更新」。
+
+### 4. 验证
+
+- smoke 扩展 `/plugin` 参数解析：`update`/`upgrade` 两词、`--latest` 两种位置、
+  仅有 flag 的缺包名分支、`upgrade-all` 仍回落 usage；新增 `gitSpecRef` 断言
+  （含 `owner/repo#ref` 简写 —— pnpm 会将其规范化为 `github:`，实现漏掉简写时
+  断言当场失败）。
+- 真机端到端：隔离 profile 中 v0.4.1 → `add #v0.4.2` → 0.4.2。
+- `check`（含 arch-check / app-ops-check）、`smoke`、`i18n`（死键 0 · 未翻译 0）全绿。
+
 ## [v0.4.2（2026-09-16）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.2)
 
 覆盖提交：

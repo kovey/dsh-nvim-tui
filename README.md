@@ -92,7 +92,7 @@ dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"      # 官方 tui profil
 dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#<tag>" # 自定义 profile
 
 # 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
-dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.2"
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.3"
 ```
 
 > **宿主 dsh 升级与 0.1.5 适配**见 [UPGRADE.md](./UPGRADE.md)。
@@ -136,7 +136,7 @@ dsh --profile nvim-tui
 > 本仓库根目录就是 bundle 本身：`cordis.patch.yml` 挂载 `nvim-tui-runner` 行，
 > package.json 的 `dsh.bundle.patch` 声明了它。
 
-启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.2 (build YYYY-MM-DD HH:mm) · channel N`。
+启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.3 (build YYYY-MM-DD HH:mm) · channel N`。
 输入 `/help` 随时查看全部命令。
 
 ## 配置
@@ -248,7 +248,7 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 | 信息 | `/lines [路径]` | 文件行视图（只读浮窗，`i` 打开编辑；无参时弹目录选择器） |
 | 信息 | `/plugins` | 宿主插件清单（loader 条目只读投影） |
 | 信息 | `/market [关键词 \| refresh \| update-all]` | **插件市场**：awesome-dsh-plugin 精选目录（2140+ 插件）按 GitHub ★ 倒序，安装/更新/卸载（`dsh plugin` CLI，重启生效）+ **热启停**（cordis.patch.yml + HMR 免重启）+ `↑` 更新标记 + update-all，磁盘缓存 + 离线可用 |
-| 信息 | `/plugin [install\|remove <spec> \| list]` | **市场目录之外的直装入口**：`spec` 可为 npm 包名 / `owner/repo` / git URL，直接交给官方 CLI，小众或私有插件在 `/market` 里搜不到时用它；`install` 成功后重启 dsh 生效（`/market` 负责目录浏览，两者互补） |
+| 信息 | `/plugin [install\|update\|remove <spec> \| list]` | **市场目录之外的直装入口**：`spec` 可为 npm 包名 / `owner/repo` / git URL，直接交给官方 CLI，小众或私有插件在 `/market` 里搜不到时用它；装/更/卸后重启 dsh 生效。**更新 git/tag 依赖必须带新 ref**（`/plugin update owner/repo#vX.Y.Z`）—— `update --latest` 只重写 npm semver 范围、推不动 git ref（实测）。`/market` 负责目录浏览（含 `update-all`），两者互补 |
 | 模型 | `/models` | 模型/供应商目录（活路由 + 可配置 provider 清单 + 当前选择） |
 | 会话 | `/attach [路径]` | 附加文件/目录（图片 = durable attachment，其余 = @ 路径引用）；`@` 输入即文件引用补全 |
 | 会话 | `/image <路径> [提示]` | **多模态识图**：本地图片（png/jpg/webp/gif，支持 `~/`）随提示发送；macOS 无参数时读剪贴板图片；`/image clear` 清空 `<C-v>` 队列 |

@@ -10,6 +10,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.4.2（宿主 0.1.5-rc.2） | [v0.4.2 → v0.4.3（插件升级，零破坏）](#v042--v043插件升级零破坏) |
 | nvim-tui v0.4.1（宿主 0.1.5-rc.2） | [v0.4.1 → v0.4.2（插件升级，零破坏）](#v041--v042插件升级零破坏) |
 | nvim-tui v0.4.0（宿主 0.1.5-rc.1 或 rc.2） | [v0.4.0 → v0.4.1（插件升级，零破坏）](#v040--v041插件升级零破坏) |
 | nvim-tui 已适配 0.1.5（宿主 0.1.5-rc.1） | [宿主 0.1.5-rc.1 → 0.1.5-rc.2（零破坏）](#宿主-015-rc1--015-rc2零破坏) |
@@ -18,6 +19,35 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.4.2 → v0.4.3（插件升级，零破坏）
+
+> **结论先行**：只升插件即可，**不需要动宿主、不需要改 `cordis.patch.yml`**。
+> peer 锚点仍是 `^0.1.5-rc.2`（本版未改）。
+
+### 升级步骤
+
+```bash
+# git 依赖：必须用 add 带新 tag 重写 ref（见文首说明；update/--latest 都推不动）
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.3"
+#   TUI 内等价命令：/plugin update kovey/dsh-nvim-tui#v0.4.3
+
+dsh --profile nvim-tui     # 重启生效
+```
+
+### 本版新增
+
+- **`/plugin update`**：补齐安装的对称操作。此前 `/plugin` 只有 install/remove，
+  目录外插件在 TUI 里没有更新入口。npm 依赖用 `update [--latest]`；
+  **git/tag 依赖用 `update <owner/repo#新ref>`**（内部路由到 `add`）。
+- `/market update-all` 现在会**点名哪些 git/tag 依赖未被推进** —— 它跑的
+  `pnpm update` 不带 `--latest`，对 git 依赖无效，此前会让人误以为「全部已更新」。
+
+### 本版修复
+
+- **更正了本文档此前 9 处关于 git 依赖升级的错误说法**（原写「必须带 `--latest`」）。
+  实测：`update --latest` 对 `github:…#tag` **无效**（只重写 npm semver 范围），
+  且它会**成功退出却什么都不改**。唯一有效的是 `add` 带新 ref。
 
 ## v0.4.1 → v0.4.2（插件升级，零破坏）
 
