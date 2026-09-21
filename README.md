@@ -91,8 +91,11 @@ profile 的 bundles 层栈（无需手改 package.json）；profile 首次使用
 dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"      # 官方 tui profile
 dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#<tag>" # 自定义 profile
 
+# ⚠️ 若你装的是 v0.4.2 / v0.4.3，请尽快升级：那两版的终端通知会在非 TTY 场景
+#    泄漏转义序列、污染输入流并导致会话异常退出（v0.4.4 已修）。
+
 # 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
-dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.3"
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.4"
 ```
 
 > **宿主 dsh 升级与 0.1.5 适配**见 [UPGRADE.md](./UPGRADE.md)。
@@ -136,7 +139,7 @@ dsh --profile nvim-tui
 > 本仓库根目录就是 bundle 本身：`cordis.patch.yml` 挂载 `nvim-tui-runner` 行，
 > package.json 的 `dsh.bundle.patch` 声明了它。
 
-启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.3 (build YYYY-MM-DD HH:mm) · channel N`。
+启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.4 (build YYYY-MM-DD HH:mm) · channel N`。
 输入 `/help` 随时查看全部命令。
 
 ## 配置

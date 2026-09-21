@@ -3,6 +3,67 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.4（2026-09-21）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.4)
+
+覆盖提交：
+[`783898b`](https://github.com/kovey/dsh-nvim-tui/commit/783898b)
+
+> **版本说明**：本版相对 v0.4.3 共 1 个提交，**修一个崩溃级回归**。
+> **v0.4.2 与 v0.4.3 的终端通知会污染输入流并导致会话异常退出 —— 请尽快升级。**
+> 零破坏：不需要动宿主、不需要改 `cordis.patch.yml`。
+
+### ⚠️ 崩溃回归：非 TTY 环境下泄漏转义序列（v0.4.2 引入，本版修复）
+
+**症状**：`dsh --profile <p>` 会话运行一会儿后异常退出、多个会话相继崩；终端里出现
+类似 `64;1;2;4;6;17;18;21;22c` 的乱码。
+
+**根因**：v0.4.2 新增的终端通知（OSC 9 / 777）在写入前**未检查 stdout 是否为终端**，
+在非 TTY（管道 / headless / 重定向）场景把转义序列直接写进了输出流。实测泄漏字节：
+
+```
+\a \033 ] 9 ; 回合完成: 回复 OK \a      ← BEL + OSC 9 + 正文 + BEL
+```
+
+连锁后果有两层，第二层才是致命的：
+
+1. OSC 作为**可见乱码**出现在终端里；
+2. 终端对序列中类 `CSI c` 的字节回了**设备属性（DA）应答**，而该应答**没有读取方**,
+   滞留的字节进入输入流 → 污染 nvim 的 RPC 流。日志中的
+   `nvim_buf_set_lines: 'replacement string' item contains newlines` 与
+   `write EPIPE` 崩溃即由此而来。因为挂在**回合结束/定时器**上，所以表现为
+   「跑一会儿就崩」。
+
+**为什么错误日志没能定位它**：这条路径在字节层就被打断，`uncaughtException` 的
+上下文不足以写出可用的栈 —— 真正有用的线索是**终端里出现的那串 DA 应答**。
+
+### 修复
+
+- 新增 `stdout_is_tty()`（`vim.uv.guess_handle(1) == 'tty'`），**两侧保守**：
+  探测失败即返回 false（宁可静默，也不把转义写进管道）；非 `tty` 一律拒绝发射。
+- `raw()` 与 `notify_capability()` 均加此守卫 —— 后者在非 TTY 下直接报告
+  「不支持」，而不是返回一个根本发不出去的形式。
+- 为 `notify_capability(assume_tty)` 增加**测试缝**：headless 测试环境下仍可验证
+  「iTerm.app → `osc9`」这类终端映射，同时不削弱生产路径的守卫。
+
+### 验证
+
+- 隔离环境对照实测（同一 headless 场景，修复前 / 后）：输出 **29 字节 → 0 字节**，
+  OSC 出现次数 **1 → 0**，BEL **2 → 0**；且进程正常退出并生成 dump（排除「因没启动
+  才没有泄漏」的可能）。
+- smoke 断言改为**期望拒绝**：非 TTY 下 `notify`/`bell` 均返回 false。另修正一条更早
+  的断言（原 `bell() == true`）—— 它把「调用没抛错」当作「能响」，正是这次泄漏能长期
+  瞒过测试的原因。
+- `check`（含 arch-check / app-ops-check）、`smoke`、`i18n` 全绿。
+
+### 升级提示
+
+若你的 profile 以 `github:kovey/dsh-nvim-tui`（无 ref）或 `#v0.4.2` / `#v0.4.3`
+声明依赖，请立即换到 v0.4.4（git 依赖用 `add` 带新 ref，见 [UPGRADE.md](UPGRADE.md)）：
+
+```bash
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.4.4"
+```
+
 ## [v0.4.3（2026-09-16）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.3)
 
 覆盖提交：
