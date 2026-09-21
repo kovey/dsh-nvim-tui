@@ -2475,11 +2475,11 @@ description:
   assert.equal((await lua('return require("dsh_tui").ids()', [])).reasoningOpen, false, 'default layout closes reasoning panel')
 
   // 9l. bell + file tab + append_input helpers.
-  // NOTE: smoke runs nvim with `--headless` (no tty), so this proves only that
-  // `bell()` runs without throwing. It can NOT prove the bytes reach a terminal:
-  // the real profile spawns nvim WITHOUT --headless/--embed, where io.stdout IS
-  // the tty. Do not read this as "the bell is audible".
-  assert.equal(await lua('return require("dsh_tui").bell()', []), true, 'bell() runs without throwing (audibility not covered here)')
+  // smoke runs nvim with `--headless`, so stdout is NOT a tty — and the guard
+  // now REFUSES to emit in that case (v0.4.2 leaked the escape as literal text
+  // and left the terminal's DA reply unread, corrupting the RPC stream). So the
+  // expected value here is false BY DESIGN, not "true = it works".
+  assert.equal(await lua('return require("dsh_tui").bell()', []), false, 'bell() refuses on a non-tty stdout (no escape leaking)')
   const tabCountBefore = await lua('return vim.fn.tabpagenr("$")', [])
   const okTab = await lua('return require("dsh_tui").open_file_tab(...)', [process.cwd() + '/package.json'])
   assert.equal(okTab, true, 'file tab opens')
@@ -3393,7 +3393,7 @@ description:
         local want = ...
         local saved = {}
         for k, v in pairs(want) do saved[k] = vim.env[k]; vim.env[k] = v end
-        local cap = R.notify_capability()
+        local cap = R.notify_capability(true)  -- 测试缝：headless 下强制 tty 前提
         for k, v in pairs(saved) do vim.env[k] = v end
         return cap`, [env])
     const capIt = await probe({ TERM_PROGRAM: 'iTerm.app' })
@@ -3418,8 +3418,12 @@ description:
     // Emitted through io.stdout. In THIS harness (headless nvim) stdout is the
     // RPC pipe, so success means only "the write did not throw" — audibility is
     // out of scope here and must be checked against the real profile.
-    assert.equal(emitted.notify, true, 'notify runs without throwing')
-    assert.equal(emitted.bell, true, 'bell runs without throwing')
+    // 非 TTY 守卫（v0.4.2 泄漏回归）：smoke 自身就是 headless/管道环境，所以
+    // 这里正好覆盖「不该发」的分支 —— 期望 false，而不是"跑通即可"。
+    // 泄漏的后果实测是：OSC 变成可见乱码 + 终端的 DA 应答无人读取，
+    // 进而污染 nvim RPC 流（nvim_buf_set_lines contains newlines / write EPIPE）。
+    assert.equal(emitted.notify, false, 'non-tty stdout → notify refuses (never leak escapes into a pipe)')
+    assert.equal(emitted.bell, false, 'non-tty stdout → bell refuses too (same guard)')
     // 回归守门：源码里不得再出现 nvim_out_write —— 实测它写 OSC 是 0 字节
     // 到终端（被当 UI 消息），bell 因此静默了很久。
     const rpcSrc = fs.readFileSync(path.join(process.cwd(), 'nvim/lua/dsh_tui/rpc.lua'), 'utf8')

@@ -65,7 +65,25 @@ end
 --- CAUTION when measuring: never probe with a test/embedded instance — the
 --- smoke harness spawns `--headless` and its scratch dirs share the
 --- `dsh-nvim-tui-XXXX` naming, so they are easy to mistake for the real TUI.
+--- Is our stdout an actual terminal we may write escapes to?
+--- CONSERVATIVE on both sides: if the handle cannot be probed we return false
+--- (writing escapes into a pipe shows them as literal garbage), and a probe
+--- that reports anything other than "tty" is refused.
+local function stdout_is_tty()
+  local ok, kind = pcall(function()
+    return vim.uv.guess_handle(1)
+  end)
+  return ok and kind == 'tty'
+end
+
 local function raw(bytes)
+  -- NEVER write escapes to a non-tty. Measured failure mode (v0.4.2): the
+  -- notification was emitted unconditionally, so in a piped/headless run the
+  -- OSC appeared as literal text AND the terminal's device-attributes reply
+  -- (`CSI ?64;…c`) had no reader — that stray input corrupted the nvim RPC
+  -- stream, which surfaced as `nvim_buf_set_lines: 'replacement string' item
+  -- contains newlines` and `write EPIPE` crashes.
+  if not stdout_is_tty() then return false end
   local ok = pcall(function()
     io.stdout:write(bytes)
     io.stdout:flush()
@@ -127,7 +145,12 @@ end
 --- known. Probing is best-effort by design: an unknown terminal simply gets no
 --- notification (the BEL path is unaffected), because emitting an unrecognized
 --- OSC on some terminals prints the payload as garbage text.
-function R.notify_capability()
+--- @param assume_tty boolean|nil test seam: forces the tty precondition so the
+---   per-terminal mapping stays testable under a headless harness.
+function R.notify_capability(assume_tty)
+  -- A non-tty means we could not deliver an escape even if the terminal
+  -- supports it, so report "unsupported" rather than a form we cannot send.
+  if assume_tty ~= true and not stdout_is_tty() then return nil end
   local env = vim.env
   if env.TMUX ~= nil and env.TMUX ~= '' then
     -- tmux swallows OSC unless the passthrough wrapper is used; rather than
