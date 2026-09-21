@@ -1198,7 +1198,8 @@ description:
   assert.equal(menuSt.open, true, 'menu opens on "/"')
   assert.equal(menuSt.selected, '/exit', 'first fallback command selected')
   assert.ok(menuSt.names.includes('/help') && menuSt.names.includes('/model'), 'fallback catalog lists commands')
-  assert.equal(menuSt.names.length, 47, 'all 47 fallback commands listed')
+  // 46: /bell was removed with the notification feature (its toggle had no effect left).
+  assert.equal(menuSt.names.length, 46, 'all 46 fallback commands listed')
 
   // the runner's catalog (name + description) replaces the fallback
   await lua(`require("dsh_tui").set_commands({
@@ -2475,11 +2476,17 @@ description:
   assert.equal((await lua('return require("dsh_tui").ids()', [])).reasoningOpen, false, 'default layout closes reasoning panel')
 
   // 9l. bell + file tab + append_input helpers.
-  // smoke runs nvim with `--headless`, so stdout is NOT a tty — and the guard
-  // now REFUSES to emit in that case (v0.4.2 leaked the escape as literal text
-  // and left the terminal's DA reply unread, corrupting the RPC stream). So the
-  // expected value here is false BY DESIGN, not "true = it works".
-  assert.equal(await lua('return require("dsh_tui").bell()', []), false, 'bell() refuses on a non-tty stdout (no escape leaking)')
+  // The terminal bell / OSC notification feature was REMOVED: the plugin's nvim
+  // runs `--embed`, so its stdout is the RPC socket — no escape written from
+  // Lua can reach the terminal, and attempting it destroyed the display.
+  // NOTE: in Lua `nil == nil` is TRUE, so comparing the field to nil asserts
+  // nothing — ask for its TYPE instead (absence reads as "nil").
+  assert.equal(await lua('return type(require("dsh_tui").bell)', []), 'nil', 'bell() is gone (removed, not merely guarded)')
+  assert.equal(await lua('return type(require("dsh_tui.rpc").notify)', []), 'nil', 'R.notify is gone')
+  assert.equal(await lua('return type(require("dsh_tui.rpc").notify_capability)', []), 'nil', 'R.notify_capability is gone')
+  // …and nothing else in rpc.lua may write raw bytes to stdout again.
+  const rpcLua = fs.readFileSync(path.join(process.cwd(), 'nvim/lua/dsh_tui/rpc.lua'), 'utf8')
+  assert.ok(!/io\.stdout:write/.test(rpcLua), 'rpc.lua no longer writes escapes to stdout')
   const tabCountBefore = await lua('return vim.fn.tabpagenr("$")', [])
   const okTab = await lua('return require("dsh_tui").open_file_tab(...)', [process.cwd() + '/package.json'])
   assert.equal(okTab, true, 'file tab opens')
@@ -3385,54 +3392,6 @@ description:
   assert.equal(fiClosed, true, 'discard closes the float')
   const fiDraftKept = await lua('return require("dsh_tui.buffer").input_text()', [])
 
-  // 缺口3: 终端级通知（OSC 9 / 777）。BEL 会被静音终端吞掉，长回合完成时
-  // 用户可能完全不知情。终端归 nvim 所有，所以探测与发射都在 Lua 侧做。
-  {
-    const probe = async (env: Record<string, string>): Promise<unknown> =>
-      await lua(`local R = require("dsh_tui.rpc")
-        local want = ...
-        local saved = {}
-        for k, v in pairs(want) do saved[k] = vim.env[k]; vim.env[k] = v end
-        local cap = R.notify_capability(true)  -- 测试缝：headless 下强制 tty 前提
-        for k, v in pairs(saved) do vim.env[k] = v end
-        return cap`, [env])
-    const capIt = await probe({ TERM_PROGRAM: 'iTerm.app' })
-    assert.equal(capIt, 'osc9', 'iTerm.app → OSC 9')
-    assert.equal(await probe({ TERM_PROGRAM: 'Apple_Terminal', TMUX: '', KITTY_WINDOW_ID: '' }), null, 'Terminal.app → no OSC form (BEL only)')
-    assert.equal(await probe({ TERM_PROGRAM: '', TERM: 'rxvt-unicode' }), 'osc777', 'rxvt → OSC 777')
-
-    // io.stdout is USERDATA in nvim (cannot be monkey-patched), so instead of
-    // stubbing it we assert the two things that actually matter and are
-    // observable: (a) the emission path is io.stdout and NOT the UI-message
-    // API, and (b) notify()/bell() report success on a supported terminal.
-    const usesStdout = await lua(`local src = debug.getinfo(require("dsh_tui.rpc").notify).source
-      return src`, [])
-    assert.ok(typeof usesStdout === 'string', 'notify is a Lua function with a source file')
-    const emitted = await lua(`local R = require("dsh_tui.rpc")
-      local saved = { TERM_PROGRAM = vim.env.TERM_PROGRAM, TMUX = vim.env.TMUX }
-      vim.env.TMUX = nil; vim.env.TERM_PROGRAM = "iTerm.app"
-      local okNotify = R.notify("dsh", "turn done")
-      local okBell = R.bell()
-      vim.env.TERM_PROGRAM, vim.env.TMUX = saved.TERM_PROGRAM, saved.TMUX
-      return { notify = okNotify, bell = okBell }`, [])
-    // Emitted through io.stdout. In THIS harness (headless nvim) stdout is the
-    // RPC pipe, so success means only "the write did not throw" — audibility is
-    // out of scope here and must be checked against the real profile.
-    // 非 TTY 守卫（v0.4.2 泄漏回归）：smoke 自身就是 headless/管道环境，所以
-    // 这里正好覆盖「不该发」的分支 —— 期望 false，而不是"跑通即可"。
-    // 泄漏的后果实测是：OSC 变成可见乱码 + 终端的 DA 应答无人读取，
-    // 进而污染 nvim RPC 流（nvim_buf_set_lines contains newlines / write EPIPE）。
-    assert.equal(emitted.notify, false, 'non-tty stdout → notify refuses (never leak escapes into a pipe)')
-    assert.equal(emitted.bell, false, 'non-tty stdout → bell refuses too (same guard)')
-    // 回归守门：源码里不得再出现 nvim_out_write —— 实测它写 OSC 是 0 字节
-    // 到终端（被当 UI 消息），bell 因此静默了很久。
-    const rpcSrc = fs.readFileSync(path.join(process.cwd(), 'nvim/lua/dsh_tui/rpc.lua'), 'utf8')
-    // 剥掉注释再查：文档里提到这两个 API 是解释为什么不能用，不是使用。
-    const rpcCode = rpcSrc.replace(/^\s*---?.*$/gm, '')
-    assert.ok(!/nvim_out_write/.test(rpcCode), 'rpc.lua never calls nvim_out_write (measured: 0 bytes to the tty)')
-    // 正向守门：必须走 io.stdout —— 真实 profile 下它是 tty，而 nvim_out_write 不是。
-    assert.ok(/io\.stdout:write/.test(rpcCode), 'rpc.lua emits through io.stdout (the tty in the real profile)')
-  }
   assert.equal(fiDraftKept, '草稿行1\n草稿行2', 'discard keeps the input-box draft')
   await lua('vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "" }); require("dsh_tui").resize_input()', [])
   log('fullscreen input editor: open/prefill/discard ok')

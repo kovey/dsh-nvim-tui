@@ -37,7 +37,6 @@ interface IntentSpec {
   patterns?: PatternSpec[]
 }
 
-const MAP_ONOFF = (v: string): string => (v === '开' || v === '打开' || v === 'on' ? 'on' : 'off')
 const MAP_LANG = (v: string): string => (v === '英文' || v === 'english' || v === 'en' ? 'en' : 'zh')
 const MAP_EFFORT = (v: string): string =>
   ({ 低: 'off', 关: 'off', 关闭: 'off', off: 'off', 高: 'high', high: 'high', 最高: 'max', max: 'max', 自动: 'auto', auto: 'auto' } as Record<string, string>)[v] ?? v
@@ -62,7 +61,6 @@ const INTENTS: IntentSpec[] = [
   { name: 'stop', exact: [['停止'], ['停下'], ['停'], ['stop'], ['halt']] },
   { name: 'layout', exact: [['布局'], ['layout']], patterns: [{ re: /^布局[:： ]*(default|panel)$/i, arg: (m) => m[1] ?? '' }] },
   { name: 'panel', exact: [['活动面板'], ['面板'], ['收起面板'], ['展开面板'], ['panel']], contains: ['面板', 'panel'] },
-  { name: 'bell', exact: [['铃声'], ['响铃'], ['bell']], patterns: [{ re: /^(?:铃声|响铃|bell)[:： ]*(on|off|开|关)$/i, arg: (m) => MAP_ONOFF(m[1] ?? '') }] },
   { name: 'doctor', exact: [['诊断'], ['终端诊断'], ['体检'], ['doctor']], contains: ['诊断', 'doctor'] },
 
   // -- sessions --------------------------------------------------------------

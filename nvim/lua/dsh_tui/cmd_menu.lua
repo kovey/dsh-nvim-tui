@@ -25,7 +25,7 @@ local FALLBACK = {
   '/tasks', '/subagents', '/workflow', '/skills', '/mcp', '/goal',
   '/compact', '/rewind', '/stop', '/steer', '/plan', '/search', '/rename', '/fb',
   '/permission', '/attach', '/deliverables', '/settings', '/trajectory',
-  '/layout', '/bell',
+  '/layout',
 }
 
 --- Replace the completion catalog (called by the Node runner after attach).

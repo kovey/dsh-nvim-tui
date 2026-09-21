@@ -58,7 +58,6 @@ import { installHistoryCommand } from './commands/history.js'
 import { installDeliverablesCommand } from './commands/deliverables.js'
 import { installSettingsCommand } from './commands/settings.js'
 import { installApprovalsCommand } from './commands/approvals.js'
-import { installBellCommand } from './commands/bell.js'
 import { installDifficultyCommand } from './commands/difficulty.js'
 
 /** Fill the commands module's App slots and register its commands. */
@@ -242,7 +241,6 @@ export function installCommands(app: App): void {
     questionsResolve: null,
     pickerSettle: null,
     dirSettle: null,
-    bellOn: true,
   })
 
   // -- core services this module owns (moved out of createApp, I1) --
@@ -302,7 +300,6 @@ export function installCommands(app: App): void {
   installHistoryCommand(app)
   installDeliverablesCommand(app)
   installSettingsCommand(app)
-  installBellCommand(app)
   installApprovalsCommand(app)
   installDifficultyCommand(app)
 

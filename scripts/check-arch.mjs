@@ -28,7 +28,7 @@ const LEGACY_SENTINELS = [
   'nvim: NeovimClient', 'pickerSettle:',
   'pendingInput: string', 'workflowRuns: Map<string, WorkflowRun>',
   'extApi: TuiExtApi', 'sessions: Map<string, SessionRec>',
-  'bellOn: boolean', 'chatWinId: number', 'historyHeaders: Array',
+  'chatWinId: number', 'historyHeaders: Array',
   // (commandSpecs is the KERNEL command registry — sanctioned on the root)
 ]
 const appSrc = readFileSync(join(root, 'src/kernel/app.ts'), 'utf8')
@@ -71,7 +71,7 @@ for (const s of MOVED_SERVICES) {
 //    createApp only provides empty domain shells.
 const MOVED_STATE = [
   'live: new Map()', 'spinnerIndex: 0', 'pendingInput: []',
-  'workflowRuns: new Map()', 'bellOn: true', 'extNodeHandlers: new Map()',
+  'workflowRuns: new Map()', 'extNodeHandlers: new Map()',
   'hostDisposers: []', 'pendingEchoes: new Map()', 'extSessionSubs: []',
   'historyHeaders: []', 'pendingImages: []',
   // (registerCommands/commandCatalog/refreshCommandCatalog are KERNEL
@@ -93,6 +93,13 @@ const STATE_OWNERS = {
   'src/subagents/index.ts': new Set(['agent']),
   'src/transcript/index.ts': new Set(['trans', 'ui']),
   'src/commands/index.ts': new Set(['agent']),
+  // The command layer's own writers. Registered explicitly (rather than left
+  // implicit) so the guard's ownership map stays the single source of truth:
+  // F11 flagged that surface-boundary writes here were invisible to 3c.
+  'src/commands/core.ts': new Set(['agent']),
+  'src/commands/commands/image.ts': new Set(['agent']),
+  'src/subagents/commands/subagents.ts': new Set(['agent']),
+  'src/sessions/services.ts': new Set(['sessions']),
   'src/market/index.ts': new Set(),
   'src/deps/index.ts': new Set(),
   'src/kernel/rpc.ts': new Set(),
@@ -107,14 +114,31 @@ const STATE_FIELDS = {
   ui: ['pendingFileSnaps','renderedDiffCalls','pendingEchoes'],
   ext: ['extApi','extReadyResolve','extSessionSubs','extLuaSubs','extNodeCleanup','pendingCardInput','extNodeHandlers','extStatusSegments'],
   trans: ['workflowRuns'],
-  agent: ['pendingInput','pendingImages','pendingRename','pendingQueueEdit','approvalSettle','approvalReq','questionsResolve','pickerSettle','dirSettle','bellOn','subagentView','subagentChat','pendingSubagentFollowup','livePopup'],
+  agent: ['pendingInput','pendingImages','pendingRename','pendingQueueEdit','approvalSettle','approvalReq','questionsResolve','pickerSettle','dirSettle','subagentView','subagentChat','pendingSubagentFollowup','livePopup'],
 }
-for (const [file, owned] of Object.entries(STATE_OWNERS)) {
-  const src = readFileSync(join(root, file), 'utf8')
+// Scan EVERY source file, not just the ones named above: a file absent from
+// STATE_OWNERS owns NOTHING. Iterating the map instead meant any unlisted file
+// (every `src/commands/commands/*` command, for instance) was skipped entirely —
+// a suppressor loop that reported the tree clean while writes went unchecked.
+// Ownership stays explicit here; discovery does not.
+const OWNED_BY = (file) => STATE_OWNERS[file] ?? new Set()
+const checkedFiles = [...new Set([...Object.keys(STATE_OWNERS), ...walkTs(join(root, 'src')).map((f) => f.slice(root.length + 1))])]
+for (const file of checkedFiles) {
+  const owned = OWNED_BY(file)
+  let src
+  try {
+    src = readFileSync(join(root, file), 'utf8')
+  } catch {
+    continue // listed but absent (renamed/deleted): nothing to check
+  }
   for (const [dom, fields] of Object.entries(STATE_FIELDS)) {
     if (owned.has(dom)) continue
     for (const f of fields) {
-      const re = new RegExp(`app\\.slices\\.${dom}\\.${f}\\s*=(?!=)`)
+      // Two write spellings, same rule: the sanctioned `W()` view
+      // (`W(app.slices.agent).field = …`) and a direct assignment. Matching only
+      // the direct form let `W(...)`-based cross-domain writes pass unnoticed —
+      // the second half of the blind spot that hid image.ts.
+      const re = new RegExp(`(?:W\\(\\s*)?app\\.slices\\.${dom}\\s*\\)?\\.${f}\\s*=(?!=)`)
       const m = src.match(re)
       if (m) {
         const ln = src.slice(0, m.index).split('\n').length
@@ -129,7 +153,7 @@ for (const [file, owned] of Object.entries(STATE_OWNERS)) {
 for (const f of walkTs(join(root, 'src'))) {
   if (f === join(root, 'src/kernel/app.ts')) continue
   const src = readFileSync(f, 'utf8')
-  for (const m of src.matchAll(/\bapp\.(nvim|pickerSettle|pendingInput|workflowRuns|bellOn|chatWinId|historyHeaders|extApi|spinnerIndex|activeId|sessions)\b/g)) {
+  for (const m of src.matchAll(/\bapp\.(nvim|pickerSettle|pendingInput|workflowRuns|chatWinId|historyHeaders|extApi|spinnerIndex|activeId|sessions)\b/g)) {
     fail(`${f}: legacy flat access app.${m[1]} (use app.slices.<domain>.${m[1]})`)
   }
 }

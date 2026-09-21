@@ -84,8 +84,6 @@ export const doctorCommand = async (app: App) => {
   app.notice(t('诊断建议: 真彩异常时检查 COLORTERM；宽度异常检查 locale/字体'))
 
   const lines = ['', ...sessionHealthLines(sessionDirs())]
-  const cap = await app.luaCall('return require("dsh_tui.rpc").notify_capability()', []).catch(() => null)
-  lines.push('', tf('完成通知: {0}', [cap === null || cap === false || cap === undefined ? t('不支持（仅响铃）') : String(cap)]))
   await app.luaCall('require("dsh_tui").show_lines_float(...)', [t('会话与终端诊断'), lines]).catch(() => {})
 }
 

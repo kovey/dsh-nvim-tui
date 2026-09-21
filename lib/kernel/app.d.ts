@@ -428,7 +428,6 @@ export interface AppSlices {
         drainQuestions: () => void;
         readonly pickerSettle: ((value: string | null) => void) | null;
         readonly dirSettle: ((picked: string | null) => void) | null;
-        readonly bellOn: boolean;
         readonly subagentView: {
             childId: string;
             feed: FeedRenderer;

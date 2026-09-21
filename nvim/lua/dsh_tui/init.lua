@@ -30,7 +30,7 @@
 ---              history, fill/append, focus restore
 ---   session    chat/reasoning buffers, reasoning panel, set_active, ids
 ---   layout     window layout: input window build, mount, takeover, presets
----   rpc        runner-channel ops (attach/quit/bell/theme/…)
+---   rpc        runner-channel ops (attach/quit/theme/…)
 ---   keymaps    input-buffer keymaps (re-runnable for the self-heal layer)
 ---   autocmds   self-heal + window-ownership + plugin-isolation autocmds
 ---   popup_core generic float family (approval / questions / picker)
@@ -165,7 +165,6 @@ M.channel = R.channel
 M.quit = R.quit
 M.paste_image = R.paste_image
 M.abort_turn = R.abort_turn
-M.bell = R.bell
 M.open_file_tab = R.open_file_tab
 M.apply_theme = R.apply_theme
 

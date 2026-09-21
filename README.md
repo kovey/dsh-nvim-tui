@@ -222,7 +222,7 @@ REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**
 |---|---|---|
 | 系统 | `/exit` `/quit` `/restart` | 退出（teardown 2.5s 上限 + 硬兜底 5s；restart 9s）/ 重启 dsh 进程 |
 | 系统 | `/help` `/sessions` `/panel` | 分组列出全部命令 / 工作区分组会话浏览器（含移入工作区·移出分组）/ 活动面板 |
-| 系统 | `/settings [edit \| set <ns> <key.path> <value>]` `/bell [on\|off]` | 设置总览（官方 descriptor 形状渲染 + 用户覆盖星标，i/o 直接打开 settings.yaml 编辑）/ 类型化写入 / 回合结束响铃开关 |
+| 系统 | `/settings [edit \| set <ns> <key.path> <value>]` | 设置总览（官方 descriptor 形状渲染 + 用户覆盖星标，i/o 直接打开 settings.yaml 编辑）/ 类型化写入 |
 | 系统 | `/deps [install]` | 依赖体检（缺什么 / 一键装配） |
 | 会话 | `/new [目录]` `/clear` | 新建会话（可指定 cwd，含目录选择器浮窗）/ 清屏 |
 | 会话 | `/fork [directive]` `/branch` | 分叉当前会话（继承历史 + 血缘），directive 作为首条消息 |
@@ -523,7 +523,7 @@ nvim/lua/dsh_tui/             nvim 侧 UI（按职责拆分的 Lua 模块）
   session.lua   会话 buffer：chat/reasoning 创建、思考面板、set_active、ids
   autocmds.lua  自愈 + 窗口归属 + 插件隔离 + 启动守卫的 autocmd 层
   keymaps.lua   输入 buffer 键位（自愈层可重复安装）
-  rpc.lua       runner 通道操作（attach/quit/bell/theme/…）
+  rpc.lua       runner 通道操作（attach/quit/theme/…）
   statusline.lua 聊天状态栏 + 终端标题（OSC 2）
   highlight.lua DshTui* 高亮组 + 调色板 + treesitter 代码块着色
   buffer.lua    buffer 原语（展示 buffer 选项、输入文本、补全插件屏蔽）
