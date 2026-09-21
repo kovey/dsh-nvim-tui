@@ -5,7 +5,7 @@
  *  2. Every `app.slices.<domain>` reference in src/ must name a real slice.
  *  3. Legacy flat accessors (`app.<oldField>`) must not reappear anywhere.
  */
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, dirname, relative, resolve } from 'node:path'
 
 /** Recursive .ts walk (src/ is now a directory tree). */
@@ -205,6 +205,29 @@ const rootFiles = readdirSync(join(root, 'src'), { withFileTypes: true })
   .filter((e) => e.isFile() && e.name.endsWith('.ts')).map((e) => e.name)
 if (rootFiles.length !== 1 || rootFiles[0] !== 'index.ts') {
   fail(`src root must contain ONLY index.ts (found: ${rootFiles.join(', ')})`)
+}
+
+// 9) 构建产物不得残留孤儿：`lib/` 既提交进仓库、又随 package.json 的 files 发布，
+//    而 tsc 不会清理已删源文件留下的产物。删掉 src/commands/commands/bell.ts 后，
+//    lib/commands/commands/bell.js 仍被打包发布（v0.4.5 真实发生）——所以这里把
+//    「每个产物都有对应源文件」变成门禁条件。
+const libDir = join(root, 'lib')
+const orphanArtifacts = []
+const walkArtifacts = (dir) => {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name)
+    if (e.isDirectory()) { walkArtifacts(p); continue }
+    if (!e.name.endsWith('.js') && !e.name.endsWith('.d.ts')) continue
+    const srcName = e.name.replace(/\.d\.ts$/, '.ts').replace(/\.js$/, '.ts')
+    const srcPath = join(root, 'src', relative(libDir, dir), srcName)
+    if (!existsSync(srcPath)) orphanArtifacts.push(relative(root, p))
+  }
+}
+try {
+  walkArtifacts(libDir)
+} catch { /* lib absent (clean checkout): nothing to check */ }
+for (const f of orphanArtifacts) {
+  fail(`${f} is a build artifact with no matching src/*.ts — run a clean build (tsc does not delete stale output, and lib/ IS published)`)
 }
 
 console.log('✓ arch-check: App kernel-only, slice domains valid, no legacy flat access, dependency direction clean')

@@ -3,6 +3,46 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.6（2026-09-21）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.6)
+
+覆盖提交：
+[`7b696ca`](https://github.com/kovey/dsh-nvim-tui/commit/7b696ca)
+
+> **版本说明**：本版是 **v0.4.5 的发布物修正**。v0.4.5 的 git/npm 包里残留了一个已
+> 删除功能的编译产物（`lib/commands/commands/bell.js`），本版清除并加了门禁防止
+> 再发生。**功能上无差异**；若你已装 v0.4.5 可不必升级（残留文件无人引用，不影响
+> 运行），但**新装请用本版**。零破坏。
+
+### 问题：孤儿构建产物被一起发布
+
+`lib/` 在本仓库**既提交进 git、又随 `package.json` 的 `files` 发布**，而
+**tsc 不会清理已删源文件留下的产物**。v0.4.5 删掉 `src/commands/commands/bell.ts`
+之后：
+
+```
+lib/commands/commands/bell.js     <- 仍存在
+lib/commands/commands/bell.d.ts   <- 仍存在
+```
+
+于是这两个文件被 commit 进仓库、并被打进 v0.4.5 的发布包 —— 这是在本版发布后
+**验证真实发布物**时才发现的（只跑本地构建永远看不到）。无功能影响（无人引用），
+但属于「已移除的功能仍出现在发布物里」，会误导读者。
+
+### 修复
+
+- 删除 `lib/commands/commands/bell.{js,d.ts}`；全库复扫确认再无其他孤儿。
+- **在 `check-arch` 新增第 9 条规则**：`lib/` 下每个 `.js` / `.d.ts`
+  都必须有对应的 `src/**/*.ts`，否则门禁失败（提示需 clean build）。把「产物不得
+  残留孤儿」变成门禁条件，而不是靠人记得清理。
+  **变异验证**：造一个 `lib/commands/commands/zzz-orphan.js` 后门禁精确报错，
+  删除后通过。
+
+### 经验
+
+本地 `check` / `smoke` / `i18n` 全绿**并不能**证明发布物干净 —— 它们检查的是
+工作区，而发布物是 `files` 白名单打包的结果。**验证发布物必须从远端真实安装一次
+再看包内容。**
+
 ## [v0.4.5（2026-09-21）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.5)
 
 覆盖提交：
