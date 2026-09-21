@@ -6,7 +6,7 @@
 ## [v0.4.6（2026-09-21）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.6)
 
 覆盖提交：
-[`7b696ca`](https://github.com/kovey/dsh-nvim-tui/commit/7b696ca)
+[`d8c2759`](https://github.com/kovey/dsh-nvim-tui/commit/d8c2759)
 
 > **版本说明**：本版是 **v0.4.5 的发布物修正**。v0.4.5 的 git/npm 包里残留了一个已
 > 删除功能的编译产物（`lib/commands/commands/bell.js`），本版清除并加了门禁防止
