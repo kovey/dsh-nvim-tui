@@ -3,6 +3,71 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.5（2026-09-21）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.5)
+
+覆盖提交：
+[`afd49df`](https://github.com/kovey/dsh-nvim-tui/commit/afd49df)
+
+> **版本说明**：本版相对 v0.4.4 共 1 个提交。**移除了一项功能**（响铃 / 终端通知），
+> 并修好一条架构门禁的两处盲区。**零破坏**：不需要动宿主、不需要改
+> `cordis.patch.yml`。若你用过 `/bell`，该命令已不存在（见下）。
+
+### 1. 移除：响铃与终端通知（`/bell` 命令一并删除）
+
+**它从未真正可用。** 活体实例取证：插件所在的 nvim 以 `--embed` 启动，其
+`fd 0/1/2` 全部是 nvim↔宿主之间的 unix socket，`vim.uv.guess_handle(1)` 报
+**`"pipe"` 而非 `"tty"`**。因此：
+
+- `vim.api.nvim_out_write` 是 UI 消息（`msg_puts`），不写 fd；
+- `io.stdout:write` 写进的是 **RPC socket**，不是终端。
+
+**v0.4.2 的真实后果**：转义序列进入 RPC 通道并被透传到终端 → iTerm 解析到
+`\033]…` / `\a` 后**显示被摧毁**（表现为「TUI 窗口没了」，但**进程并没有死**），
+迟到的设备属性应答（如 `64;1;2;4;6;17;18;21;22c`）因无人读取而滞留，被当作键盘
+输入回显成乱码。v0.4.4 的 TTY 守卫只覆盖了**非 TTY** 场景（那是我当时的复现环境），
+而 `--embed` 下 stdout 是 socket —— 本就不是 tty，守卫挡不住这条路径。
+
+**既然从 Lua 侧没有任何通道能到达终端，本版整体移除**而不是继续打补丁：
+
+- Lua：`raw` / `stdout_is_tty` / `R.bell` / `R.notify` / `R.notify_capability`，
+  以及 `init.lua` 的 `M.bell` 导出；
+- Node：回合结束与审批两处调用点、`/bell` 命令文件、`bellOn` 字段与初值、
+  nlcmd 自然语言路由（连同随之无用的 `MAP_ONOFF`）、`cmd_menu` 与命令表条目、
+  `/doctor` 的能力探测行；
+- i18n：6 个专属键；smoke：OSC 载荷/能力断言 → 改为**断言该功能已移除**。
+
+命令总数因此从 47 降为 46。**若将来要恢复此功能，必须由持有 tty 的进程发射**，
+而不是从插件所在的 nvim。
+
+### 2. 修复：`check-arch` 规则 3c 的两处盲区
+
+历史审计 F11 记过「`bell.ts` / `image.ts` 绕过域操作直写 agent slice，3c 看不见」。
+删掉 `bell.ts` 只是少一个实例，**机制没修**。实测定位到两处独立缺陷：
+
+1. **只遍历 `STATE_OWNERS` 列出的文件** —— 未列出的文件（例如整个
+   `src/commands/commands/`）**从不被检查**。守卫看不到的东西永远不会报错，
+   于是长期静默全绿。
+   修法：遍历 `src` 下全部 TS 文件，**未列入者按「零可写域」**处理（归属仍然
+   显式声明，只把「发现过程」改为全量）。
+2. **正则只匹配 `app.slices.X.f =`** —— `W(app.slices.X).f =`（括号后赋值）
+   匹配不到。
+   修法：正则同时覆盖 `W()` 视图写法。
+
+修好后**立即暴露出 7 处此前静默的跨域写**（`commands/core.ts` 5 处、
+`commands/commands/image.ts` 1 处、`subagents/commands/subagents.ts` 1 处、
+`sessions/services.ts` 1 处）。它们属于**合法但未登记**的归属，按仓库既有模式
+（`src/commands/index.ts` 早有同类条目）显式登记，使归属表成为唯一事实来源。
+
+**变异验证**：撤销 `image.ts` 的登记后，守卫精确报出
+`src/commands/commands/image.ts:20 cross-domain state write app.slices.agent.pendingImages`
+—— 这一行此前完全不可见。
+
+### 3. 验证
+
+- `check`（含 arch-check / app-ops-check）、`smoke`、`i18n`（死键 0 · 未翻译 0）全绿。
+- 源码守门：断言 `rpc.lua` 不再出现 `io.stdout:write`，且 `R.bell`/`R.notify`/
+  `R.notify_capability` 的类型为 `nil`；注入违规后断言确实失败（变异验证通过）。
+
 ## [v0.4.4（2026-09-21）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.4)
 
 覆盖提交：
