@@ -3,6 +3,67 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.7（2026-09-24）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.7)
+
+覆盖提交：
+[`e4c7a79`](https://github.com/kovey/dsh-nvim-tui/commit/e4c7a79)
+
+> **版本说明**：适配 **dsh 0.1.7-rc.1**。这是**跨宿主版本**升级，**不是零破坏** ——
+> 插件与宿主必须一起动。0.1.7 的 peer 由区间改为**精确版本**，因此不能再跨 rc
+> 混用。若你暂时不想动宿主，**请留在 v0.4.6**。升级前务必读 [UPGRADE.md](UPGRADE.md)。
+
+### 1. `source.kind` 的 `'plugin'` 被官方移除（真破坏性变更）
+
+`MessageSourceMap` 在 0.1.7 删掉了共享的 catch-all `plugin` kind，官方注释写明
+*each producer declares its own `kind` in its own module; there is no shared
+catch-all `plugin` kind*；`ContextFormed` 也把未声明形态收窄为 `form?: never`。
+
+本插件的 todo-guard 注入消息是唯一使用点，按官方范例（`dsh-tools` 的
+`tool-registry`）改为 module augmentation 自建 kind：
+
+```ts
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'nvim-tui-todo-guard': { kind: 'nvim-tui-todo-guard' } & ContextFormed
+  }
+}
+```
+
+交叉 `ContextFormed` 是必需的 —— 否则丢掉 `form: 'notice'` + `summary`，而渲染层
+（`feed.ts`）正是靠这对字段把注入内容折叠成一行 dim notice，而不是伪装成用户输入。
+渲染侧对 kind 做**正向**判断（`!== 'user'`），天然兼容未知 kind，故无需改动。
+
+### 2. PTC 服务改名：`code-runtime` → `ptc-runtime`
+
+`dsh-code-runtime*` 止于 0.1.5-rc.3，0.1.7 换成 `dsh-ptc-runtime`
+（服务名 `ctx.codeRuntime` → `ctx.ptcRuntime`）。服务清单与 `host()` 条目**双列两代**，
+使 0.1.5 与 0.1.7 宿主都能正确报告 `/deps` 状态。
+
+### 3. peer 锚点精确化
+
+0.1.7 的 peer 声明是精确版本（`"@deepseek-ai/dsh-agent": "0.1.7-rc.1"`，无 `^`），
+故 `^0.1.5-rc.2` 全部改为 `0.1.7-rc.1`；devDependencies 补齐 0.1.7 新增的 peer 集
+（`dsh-workspace` / `dsh-sandbox(-policy)` / `dsh-ptc-runtime` / `dsh-scope` /
+`dsh-session(-projection)` / `dsh-system-prompt` / `dsh-typert-protocol` /
+`dsh-invariants` / `dsh-util-values` / `dsh-user-approval` / `cordis ~4.0.4`）。
+这些包互相 peer 依赖同一精确版本，本地装需 `--legacy-peer-deps`（运行时由宿主提供）。
+
+### 4. 未做的适配（有意）
+
+0.1.7 的新功能 —— MCP 资源发现与 URI 模板、headless `--json`、插件管理页、
+侧边栏文档预览等 —— **绝大多数是宿主/Web 侧实现**。TUI 通过既有服务面
+（如 `tools.schemas()`，签名未变）自然获得，不需要 TUI 侧改动。
+
+### 5. 验证
+
+- 类型面：`tsc --noEmit` 0 错（对着真实 0.1.7-rc.1 类型面）；
+  `check`（含 arch-check / app-ops-check）/ `smoke` / `i18n` 全绿。
+- **真机 e2e**：隔离 `DSH_HOME` 内装 0.1.7-rc.1 宿主 + link 本插件，headless 跑通
+  （`EXIT=0`、dump 正常、版本横幅 / history replay / turn 开合 / 状态栏渲染均正确）。
+- 配套经验：隔离装 0.1.7 宿主时 `npm i -g --legacy-peer-deps` 不解析 peer，需按启动
+  日志里的 `Cannot find package` 逐个把缺失 peer 解到嵌套解析点（本次 17 个），
+  迭代到 `EXIT=0`。
+
 ## [v0.4.6（2026-09-21）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.6)
 
 覆盖提交：

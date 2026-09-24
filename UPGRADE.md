@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.4.6（宿主 0.1.5-rc.2） | [v0.4.6 → v0.4.7（**宿主 0.1.5-rc.2 → 0.1.7-rc.1**，含破坏性适配）](#v046--v047宿主-015-rc2--017-rc1) |
 | nvim-tui v0.4.5（宿主 0.1.5-rc.2） | [v0.4.5 → v0.4.6（发布物修正 + 门禁加固，零破坏）](#v045--v046发布物修正--门禁加固零破坏) |
 | nvim-tui v0.4.4（宿主 0.1.5-rc.2） | [v0.4.4 → v0.4.5（移除 /bell 与终端通知，零破坏）](#v044--v045移除-bell-与终端通知零破坏) |
 | nvim-tui v0.4.3（宿主 0.1.5-rc.2） | [v0.4.3 → v0.4.4（**崩溃修复**，零破坏）](#v043--v044崩溃修复零破坏) |
@@ -32,6 +33,69 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.4.6 → v0.4.7（宿主 0.1.5-rc.2 → 0.1.7-rc.1）
+
+> **结论先行**：这是**跨宿主版本**的升级，**不是**零破坏。插件与宿主必须一起动，
+> 且升级后**必须重启**。若你暂时不想动宿主，**请留在 v0.4.6**（它锚定 0.1.5-rc.2）。
+
+### 升级步骤
+
+```bash
+# 1) 先升宿主（0.1.7-rc.1 在 next dist-tag 上）
+npm i -g @deepseek-ai/dsh@0.1.7-rc.1
+
+# 2) 再升插件（git 依赖用 add 带新 tag，update/--latest 推不动 git ref）
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.4.7"
+
+# 3) 重启
+dsh --profile <name>
+```
+
+### 为什么是破坏性的：锚点语义变了
+
+0.1.5 时期 peer 是**区间**（`^0.1.5-rc.2`），于是 rc.1 与 rc.2 可互换。
+0.1.7 的 peer 改成**精确版本**：
+
+```
+"@deepseek-ai/dsh-agent": "0.1.7-rc.1"    ← 无 ^
+```
+
+本插件随之精确锚定，**不能再跨 rc 混用**。若插件声明 0.1.7-rc.1 而宿主仍是
+0.1.5-rc.2，peer 不匹配，且类型面已按 0.1.7 校验，运行可能报错。
+
+### 本次适配的三处改动
+
+1. **`source.kind` 的 `'plugin'` 被官方移除**（真破坏性变更）。
+   `MessageSourceMap` 改为「每个生产者在自己的模块里声明自己的 kind」，
+   官方注释明确 *there is no shared catch-all `plugin` kind*。
+   本插件按官方范例（`dsh-tools` 的 `tool-registry`）用 module augmentation
+   自建 `'nvim-tui-todo-guard'`，并交叉 `ContextFormed` 以保留
+   `form: 'notice'` + `summary`（渲染层靠这对字段把注入内容折叠成一行 dim notice，
+   而不是伪装成用户输入）。
+2. **PTC 服务改名**：`dsh-code-runtime*` 止于 0.1.5-rc.3，0.1.7 换成
+   `dsh-ptc-runtime`（服务名 `ctx.codeRuntime` → `ctx.ptcRuntime`）。
+   服务清单**双列两代**，因此 0.1.5 与 0.1.7 宿主都能正确报告 `/deps` 状态。
+3. **peer 锚点精确化** + devDependencies 补齐 0.1.7 新增的 peer 集
+   （`dsh-workspace` / `dsh-sandbox(-policy)` / `dsh-ptc-runtime` /
+   `dsh-scope` / `dsh-session(-projection)` / `dsh-system-prompt` /
+   `dsh-typert-protocol` / `dsh-invariants` / `dsh-util-values` /
+   `dsh-user-approval` / `cordis ~4.0.4`）。本地装需 `--legacy-peer-deps`
+   （这些包互相 peer 依赖同一精确版本，npm 严格解析无解；运行时由宿主提供）。
+
+### 本版未做的适配（有意）
+
+0.1.7 的新功能 —— MCP 资源发现与 URI 模板、headless `--json`、插件管理页、
+侧边栏预览等 —— **绝大多数是宿主/Web 侧实现**。TUI 通过既有服务面
+（如 `tools.schemas()`，签名未变）自然获得，**不需要 TUI 侧改动**。
+Agent Team 面板、Word/Excel 预览、语音转写等为 Web 专有，TUI 不涉及。
+
+### 验证
+
+- 类型面：`check`（含 arch-check / app-ops-check）/ `smoke` / `i18n`
+  对着 0.1.7-rc.1 的真实类型面全绿（`tsc --noEmit` 0 错）。
+- **真机 e2e**：隔离 `DSH_HOME` 内装 0.1.7-rc.1 宿主 + link 本插件，headless 跑通
+  （`EXIT=0`、dump 正常、版本横幅 / history replay / turn 开合 / 状态栏渲染均正确）。
 
 ## v0.4.5 → v0.4.6（发布物修正 + 门禁加固，零破坏）
 

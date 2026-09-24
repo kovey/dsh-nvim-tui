@@ -98,22 +98,26 @@ dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#<tag>" # 自定义 profile
 dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.6"
 ```
 
-> **宿主 dsh 升级与 0.1.5 适配**见 [UPGRADE.md](./UPGRADE.md)。
-> v0.4.0 起 peer 依赖锚定 `^0.1.5-rc.1`，**v0.4.1 起锚定 `^0.1.5-rc.2`**。
-> dsh `0.1.5-rc.1` 与 `0.1.5-rc.2` 的**运行时代码与类型面逐字节相同**
-> （仅版本号与 peer 区间不同），两者可互换使用
-> （v0.3.4 及更早仍可跑 0.1.2-rc.1，但不建议混用）。
+> **宿主 dsh 升级与适配**见 [UPGRADE.md](./UPGRADE.md)。
+> 版本轴：v0.4.1 起 `^0.1.5-rc.2` → **v0.4.7 起精确锚定 `0.1.7-rc.1`**。
+>
+> ⚠️ **锚点语义变了**：0.1.7 的 peer 声明是**精确版本**（`"@deepseek-ai/dsh-agent": "0.1.7-rc.1"`，
+> 无 `^`），所以本插件也改为精确锚定 —— 宿主与插件必须同版本族，不能再跨 rc 混用。
+> 这与 0.1.5 时期「rc.1 与 rc.2 可互换」的口径**不同**。
 
 ## 运行依赖
 
 | 依赖 | 最低版本 | 说明 |
 |---|---|---|
-| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | **0.1.5-rc.2**（`next` dist-tag） | peer 依赖 `@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-llm` `^0.1.5-rc.2`，由 profile 的 dsh 安装锚点提供 |
+| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | **0.1.7-rc.1**（`next` dist-tag） | peer 依赖 `@deepseek-ai/dsh-agent` / `dsh-llm` / `dsh-tools` **精确** `0.1.7-rc.1`（0.1.7 的 peer 不再用 `^` 区间），由 profile 的 dsh 安装锚点提供 |
 | [Neovim](https://neovim.io) | **0.9**（推荐 **0.10+**） | 0.10+ 完整体验（输入框四边边框、弹窗提示嵌入边框）；0.9 可运行但降级（`❯` 提示列与左边框以虚拟文本呈现、弹窗提示为分离提示条） |
 | Node.js | 23.6+ | 由 dsh 提供（`engines` 声明），一般无需单独安装 |
 
-> 开发与 CI 实测：dsh 0.1.5-rc.2 / nvim 0.12.5（smoke 全量在 0.12.4 与
-> 0.12.5 双版本通过；rc.2 类型面门禁 + smoke 全绿）。
+> 开发与 CI 实测：dsh **0.1.7-rc.1** / nvim 0.12.5。
+> - 类型面门禁（`check` / `smoke` / `i18n`）对着 0.1.7-rc.1 的真实类型面全绿；
+> - **真机 e2e 已在隔离 `DSH_HOME` + 0.1.7-rc.1 宿主上跑通**（headless dump 正常，
+>   版本横幅 / history replay / turn 开合 / 状态栏渲染均正确）。
+> - 更早的 0.1.5-rc.2 仍是 v0.4.6 及以前的锚点。
 
 > 升级宿主：`npm i -g @deepseek-ai/dsh@next`（当前 next dist-tag 即
 > 0.1.5-rc.2；v0.4.1 起 peer 依赖锚定 `^0.1.5-rc.2` —— 该区间**仍接受
