@@ -29,7 +29,7 @@ import { checkSessionLog } from '../lib/kernel/session-health.js'
 import { sessionHealthLines } from '../lib/commands/commands/doctor.js'
 import { approvalHistoryLines } from '../lib/commands/commands/approvals.js'
 import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLines, APPROVAL_LOG_MAX, ensureApprovalHistory } from '../lib/kernel/approval-log.js'
-import { parsePluginArgs, gitSpecRef } from '../lib/market/commands/plugin.js'
+import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market/commands/plugin.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN, installTodoGuard } from '../lib/kernel/todo-guard.js'
@@ -2474,6 +2474,30 @@ description:
   assert.equal((await lua('return require("dsh_tui").ids()', [])).reasoningOpen, true, 'panel layout opens reasoning panel')
   await lua('require("dsh_tui").apply_layout(...)', ['default'])
   assert.equal((await lua('return require("dsh_tui").ids()', [])).reasoningOpen, false, 'default layout closes reasoning panel')
+
+  // Command argument completion: `/plugin` must carry positional metadata so
+  // the input box can answer "what do I type next?" (<Tab> candidates + hint).
+  // Driven through the REAL registration path (installPluginCommand) with a stub
+  // App, so dropping `args` from the spec fails here instead of silently
+  // degrading to "no hints".
+  {
+    const specs: Array<{ name: string; args?: Array<{ kind: string; values?: string[] }> }> = []
+    const stub = {
+      registerCommands: (list: unknown[]) => { specs.push(...(list as typeof specs)) },
+    } as unknown as Parameters<typeof installPluginCommand>[0]
+    installPluginCommand(stub)
+    const pluginSpec = specs.find((sp) => sp.name === '/plugin')
+    assert.ok(pluginSpec !== undefined, '/plugin registers a spec')
+    assert.ok(Array.isArray(pluginSpec.args), '/plugin carries args metadata (Tab completion + hints)')
+    assert.equal(pluginSpec.args?.[0]?.kind, 'oneof', 'first /plugin arg is the subcommand choice')
+    assert.deepEqual(pluginSpec.args?.[0]?.values, ['install', 'update', 'remove', 'list'],
+      'the four /plugin subcommands are offered')
+    assert.equal(pluginSpec.args?.[1]?.kind, 'free', 'second /plugin arg is free-form (hinted, not completed)')
+    assert.equal(pluginSpec.args?.[2]?.kind, 'flag', 'the third /plugin arg is the --latest flag')
+  }
+  // The Lua side must expose the two surfaces the input box drives.
+  assert.equal(await lua('return type(require("dsh_tui.cmd_menu").suggest)', []), 'function', 'CM.suggest exists')
+  assert.equal(await lua('return type(require("dsh_tui.cmd_menu").hint)', []), 'function', 'CM.hint exists')
 
   // 9l. bell + file tab + append_input helpers.
   // The terminal bell / OSC notification feature was REMOVED: the plugin's nvim

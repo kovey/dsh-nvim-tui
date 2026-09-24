@@ -225,6 +225,19 @@ export function installPluginCommand(app: App): void {
     desc: t('插件安装/更新/卸载（市场目录之外）'),
     usage: t('[install|update|remove <spec> [--latest] | list]'),
     group: t('信息'),
+    // Drives <Tab> completion and the input hint: after `/plugin` offer the
+    // subcommands, then spell out exactly what each one expects. `spec` accepts
+    // an npm name, a git ref or an owner/repo shorthand — the hint says so,
+    // because that is the part users cannot guess.
+    args: [
+      { kind: 'oneof', values: ['install', 'update', 'remove', 'list'], hint: t('插件操作') },
+      {
+        kind: 'free',
+        label: '<spec>',
+        hint: t('npm 包名 · owner/repo · owner/repo#tag · git URL'),
+      },
+      { kind: 'flag', value: '--latest', hint: t('跨大版本（仅 npm 依赖；git ref 推不动）') },
+    ],
     fn: (a?: string) => pluginCommand(app, a),
   }])
 }

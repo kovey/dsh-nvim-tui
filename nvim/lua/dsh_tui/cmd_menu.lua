@@ -198,6 +198,10 @@ function CM.update(text)
     return
   end
   text = text or B.input_text()
+  -- Hint surfaces follow every keystroke, including the ones that close the
+  -- menu (a space after the command name) — that is exactly when the user needs
+  -- to know what goes next.
+  pcall(CM.refresh_hints, text)
   local prefix = text:match('^(/[%w-]*)')
   if prefix == nil or #text ~= #prefix then
     CM.close()
@@ -268,6 +272,194 @@ function CM.prev()
   end
   S.cmdIdx = (S.cmdIdx + #S.cmdMatches - 2) % #S.cmdMatches + 1
   render()
+end
+--- Find the catalog entry for a command name (nil when unknown).
+local function entry_for(name)
+  for _, e in ipairs(entries()) do
+    if e.name == name then return e end
+  end
+  return nil
+end
+
+--- Parse a draft into { name, tokens, argIndex, partial, hasTrailingSpace }.
+--- tokens are the whitespace-separated tokens AFTER the command name; argIndex
+--- is 1-based (the argument currently being typed). A trailing space means the
+--- user finished a token, so the next one starts empty.
+local function parse_draft(text)
+  local name = text:match('^(/[%w-]+)')
+  if name == nil then return nil end
+  local rest = text:sub(#name + 1)
+  if rest:sub(1, 1) ~= ' ' then return nil end
+  local tokens, partial, trailing = {}, '', false
+  for tok in rest:gmatch('%S+') do tokens[#tokens + 1] = tok end
+  if rest:match('%s$') then
+    trailing = true
+  else
+    partial = tokens[#tokens] or ''
+    if #tokens > 0 then table.remove(tokens) end
+  end
+  return {
+    name = name,
+    tokens = tokens,
+    argIndex = #tokens + 1,
+    partial = partial,
+    trailing = trailing,
+  }
+end
+
+--- Candidates for the token currently being typed, or nil when the command has
+--- no argument metadata (then the caller must behave exactly as before).
+---
+--- @return table|nil { entry, argIndex, arg, values, hint, done }
+function CM.suggest(text)
+  local p = parse_draft(text or '')
+  if p == nil then return nil end
+  local e = entry_for(p.name)
+  if e == nil or type(e.args) ~= 'table' then return nil end
+  local arg = e.args[p.argIndex]
+  -- Past the declared arguments: nothing left to suggest, but keep the usage
+  -- line visible so the user can still see the full shape.
+  if arg == nil then
+    return { entry = e, argIndex = p.argIndex, arg = nil, values = {}, done = true }
+  end
+  local values = {}
+  if arg.kind == 'oneof' then
+    for _, v in ipairs(arg.values or {}) do
+      if v:sub(1, #p.partial) == p.partial then values[#values + 1] = v end
+    end
+  elseif arg.kind == 'flag' then
+    if arg.value:sub(1, #p.partial) == p.partial then values[#values + 1] = arg.value end
+  end
+  -- Flags are position-INDEPENDENT: users type `--latest` after the spec, i.e.
+  -- one argument slot past the one the flag is declared in. Offer every flag
+  -- whose name still matches what is being typed, wherever the cursor is.
+  -- Measured need: `/plugin install --` must offer `--latest`.
+  if p.partial:sub(1, 1) == '-' then
+    for _, candidate in ipairs(e.args) do
+      if candidate.kind == 'flag' and candidate.value ~= arg.value
+        and candidate.value:sub(1, #p.partial) == p.partial then
+        values[#values + 1] = candidate.value
+      end
+    end
+  end
+  return { entry = e, argIndex = p.argIndex, arg = arg, values = values, done = false }
+end
+
+--- One-line "what to type next" text for the hint bar / floating hint.
+--- Returns nil when there is nothing useful to show.
+function CM.hint(text)
+  local s = CM.suggest(text)
+  if s == nil then return nil end
+  local arg = s.arg
+  if arg == nil then return s.entry.usage end
+  if arg.kind == 'oneof' then
+    local parts = {}
+    for _, v in ipairs(arg.values or {}) do parts[#parts + 1] = v end
+    local joined = table.concat(parts, ' │ ')
+    if arg.hint and arg.hint ~= '' then
+      return joined .. '   ' .. arg.hint
+    end
+    return joined
+  end
+  if arg.kind == 'flag' then
+    return arg.value .. (arg.hint and ('   ' .. arg.hint) or '')
+  end
+  -- free / file: label plus the producer's explanation.
+  local label = arg.label or '<arg>'
+  if arg.hint and arg.hint ~= '' then return label .. '   ' .. arg.hint end
+  return label
+end
+
+--- The static hint bar, restored when a draft has nothing command-specific.
+local BASE_HINT = '%#DshTuiBorder#╰─%#DshTuiStatus# Enter 发送 · C-cr 换行 · C-e 全屏 · C-c 停止 · / 命令菜单 · C-o 面板 %#DshTuiBorder#%=─╯'
+
+--- Swap the input window's hint bar between the static key list and the
+--- command-specific "what to type next" line. The bar is the input window's
+--- statusline: it is always visible while typing, which is exactly where the
+--- answer to "what goes here?" belongs.
+local function refresh_hint_bar(text)
+  if S.input_win == nil or not vim.api.nvim_win_is_valid(S.input_win) then return end
+  local hint = (text ~= nil and text:match('^/')) and CM.hint(text) or nil
+  local line
+  if hint == nil or hint == '' then
+    line = BASE_HINT
+  else
+    -- Keep the trailing edge of the frame: the hint replaces only the middle.
+    line = '%#DshTuiBorder#╰─%#DshTuiStatus# ' .. hint
+      .. ' %#DshTuiBorder#%=─╯'
+  end
+  if line == S.cmdHintLine then return end
+  S.cmdHintLine = line
+  pcall(vim.api.nvim_win_set_option, S.input_win, 'statusline', line)
+end
+
+--- Floating "what to type next" panel above the input box, shown only while a
+--- command draft has argument metadata. Deliberately passive: it never steals
+--- focus and never intercepts keys — the <Tab> menu keeps that job.
+local HINT_NS = vim.api.nvim_create_namespace('dsh_tui_cmd_hint')
+local hint_buf, hint_win = nil, nil
+
+local function close_float()
+  if hint_win ~= nil and vim.api.nvim_win_is_valid(hint_win) then
+    pcall(vim.api.nvim_win_close, hint_win, true)
+  end
+  hint_win = nil
+  if hint_buf ~= nil and vim.api.nvim_buf_is_valid(hint_buf) then
+    pcall(vim.api.nvim_buf_delete, hint_buf, { force = true })
+  end
+  hint_buf = nil
+end
+
+local function show_float(text)
+  local hint = (text ~= nil and text:match('^/')) and CM.hint(text) or nil
+  if hint == nil or hint == '' or S.input_win == nil
+    or not vim.api.nvim_win_is_valid(S.input_win) then
+    close_float()
+    return
+  end
+  pcall(function()
+    if hint_buf == nil or not vim.api.nvim_buf_is_valid(hint_buf) then
+      hint_buf = vim.api.nvim_create_buf(false, true)
+      vim.bo[hint_buf].bufhidden = 'wipe'
+    end
+    vim.api.nvim_buf_set_lines(hint_buf, 0, -1, false, { ' ' .. hint .. ' ' })
+    vim.api.nvim_buf_clear_namespace(hint_buf, HINT_NS, 0, -1)
+    vim.api.nvim_buf_set_extmark(hint_buf, HINT_NS, 0, 0, {
+      end_col = #hint + 2,
+      hl_group = 'DshTuiCmdHint',
+    })
+    local width = math.min(#hint + 2, math.max(10, vim.o.columns - 4))
+    local pos = vim.api.nvim_win_get_position(S.input_win)
+    local row = math.max(0, pos[1] - 1)
+    local cfg = {
+      relative = 'editor',
+      row = row,
+      col = pos[2],
+      width = width,
+      height = 1,
+      style = 'minimal',
+      focusable = false,
+      noautocmd = true,
+      zindex = 5,
+    }
+    if hint_win ~= nil and vim.api.nvim_win_is_valid(hint_win) then
+      vim.api.nvim_win_set_config(hint_win, cfg)
+    else
+      hint_win = vim.api.nvim_open_win(hint_buf, false, cfg)
+      vim.wo[hint_win].winblend = 0
+    end
+  end)
+end
+
+--- Public: refresh both hint surfaces for a draft (no-op for non-command text).
+function CM.refresh_hints(text)
+  refresh_hint_bar(text)
+  show_float(text)
+end
+
+--- Public: close the floating hint (layout rebuilds, submit, teardown).
+function CM.close_hint()
+  close_float()
 end
 
 return CM

@@ -91,6 +91,22 @@ export interface ServiceMap {
   credentials: { resolve?: (ref: string) => Promise<{ value?: unknown } | undefined> }
 }
 
+/** One positional argument of a slash command, for completion + hints.
+ *
+ *  The point is that the input box must answer "what do I type next?" without
+ *  the user reading /help: after `/plugin` the next token is one of
+ *  `install|update|remove|list`; after `/plugin install` it is a package spec.
+ *  Both the <Tab> completion and the floating hint are driven from here. */
+export type CommandArg =
+  /** Fixed alternatives (subcommands, enum values) — offered in the menu. */
+  | { kind: 'oneof'; values: string[]; hint?: string }
+  /** Free text with a label, e.g. `<spec>`: hints only, never completed. */
+  | { kind: 'free'; label: string; hint?: string }
+  /** A filesystem path — hints only (path completion is a separate feature). */
+  | { kind: 'file'; label: string; hint?: string }
+  /** An optional switch, e.g. `--latest`; offered but never required. */
+  | { kind: 'flag'; value: string; hint?: string }
+
 /** One slash command: metadata for /help + the completion catalog, plus the
  *  handler. Modules register their own commands with registerCommands(). */
 export interface CommandSpec {
@@ -99,6 +115,9 @@ export interface CommandSpec {
   usage: string
   group: string
   fn: (arg: string) => unknown
+  /** Optional positional arguments; drives <Tab> completion and the input hint.
+   *  Commands that omit this behave exactly as before. */
+  args?: CommandArg[]
 }
 
 export interface ModelRef {
@@ -430,7 +449,7 @@ export interface App {
   /** Command registry (kernel bootstrap facility: every module registers
    *  its specs at install time, so the mechanism exists from t=0). */
   registerCommands: (specs: CommandSpec[]) => CommandSpec[]
-  commandCatalog: () => Array<{ name: string; desc: string }>
+  commandCatalog: () => Array<{ name: string; desc: string; args?: CommandArg[] }>
   refreshCommandCatalog: () => Promise<void>
   /** Registered command specs — the kernel registry's storage (modules
    *  register at install time, so it must live from t=0). */
@@ -542,7 +561,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
       }
       return accepted
     },
-    commandCatalog: () => app.commandSpecs.map(({ name, desc }) => ({ name, desc: t(desc) })),
+    commandCatalog: () => app.commandSpecs.map(({ name, desc, args }) => ({ name, desc: t(desc), ...(args === undefined ? {} : { args }) })),
     refreshCommandCatalog: async (): Promise<void> => {
       // t() at PUSH time (not at registration): /locale re-pushes the catalog
       // and the descriptions must follow the new locale both ways.

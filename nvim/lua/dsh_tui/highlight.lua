@@ -131,6 +131,9 @@ function H.applyHighlights()
   vim.cmd('highlight default DshTuiWhalePW guifg=#f5a8b8 guibg=#f2f5fa ctermfg=217 ctermbg=255')
   vim.cmd('highlight default link DshTuiBold Bold')
   vim.cmd('highlight default link DshTuiPrompt DshTuiUser') -- input-line '❯'
+  -- Floating "what to type next" hint above the input box: readable but
+  -- clearly secondary to the text being typed.
+  vim.cmd('highlight default link DshTuiCmdHint DshTuiDim')
   -- Slash-command completion menu: the selection reuses the pum look.
   vim.cmd('highlight default link DshTuiCmdName MoreMsg')
   vim.cmd('highlight default link DshTuiCmdDesc Comment')

@@ -54,6 +54,37 @@ export interface ServiceMap {
         } | undefined>;
     };
 }
+/** One positional argument of a slash command, for completion + hints.
+ *
+ *  The point is that the input box must answer "what do I type next?" without
+ *  the user reading /help: after `/plugin` the next token is one of
+ *  `install|update|remove|list`; after `/plugin install` it is a package spec.
+ *  Both the <Tab> completion and the floating hint are driven from here. */
+export type CommandArg = 
+/** Fixed alternatives (subcommands, enum values) — offered in the menu. */
+{
+    kind: 'oneof';
+    values: string[];
+    hint?: string;
+}
+/** Free text with a label, e.g. `<spec>`: hints only, never completed. */
+ | {
+    kind: 'free';
+    label: string;
+    hint?: string;
+}
+/** A filesystem path — hints only (path completion is a separate feature). */
+ | {
+    kind: 'file';
+    label: string;
+    hint?: string;
+}
+/** An optional switch, e.g. `--latest`; offered but never required. */
+ | {
+    kind: 'flag';
+    value: string;
+    hint?: string;
+};
 /** One slash command: metadata for /help + the completion catalog, plus the
  *  handler. Modules register their own commands with registerCommands(). */
 export interface CommandSpec {
@@ -62,6 +93,9 @@ export interface CommandSpec {
     usage: string;
     group: string;
     fn: (arg: string) => unknown;
+    /** Optional positional arguments; drives <Tab> completion and the input hint.
+     *  Commands that omit this behave exactly as before. */
+    args?: CommandArg[];
 }
 export interface ModelRef {
     current: ReturnType<ModelSelection['currentSelection']>;
@@ -565,6 +599,7 @@ export interface App {
     commandCatalog: () => Array<{
         name: string;
         desc: string;
+        args?: CommandArg[];
     }>;
     refreshCommandCatalog: () => Promise<void>;
     /** Registered command specs — the kernel registry's storage (modules
