@@ -2543,7 +2543,36 @@ description:
   // Commands without metadata must not be touched at all.
   assert.equal(await lua('return tostring(require("dsh_tui.cmd_menu").hint("/nometa "))', []),
     'nil', 'a command without args metadata produces no hint')
+  // Argument mode must reuse the MENU (the user asked for the same popup as
+  // command completion, not just a hint line). `CM.update` past the command
+  // name is what the input box calls on every keystroke.
+  assert.equal(await lua(`require("dsh_tui").set_commands({
+    { name = '/plugin', desc = 'x', args = {
+        { kind = 'oneof', values = { 'install', 'update', 'remove', 'list' }, hint = 'h' },
+        { kind = 'free', label = '<spec>', hint = 'spec hint' },
+    } },
+  })` + ' return true', []), true, 'argument catalog pushed')
+  assert.equal(await lua(`local I = require("dsh_tui.input")
+    I.set_text('/plugin ')
+    require("dsh_tui.cmd_menu").update('/plugin ')
+    local st = require("dsh_tui.cmd_menu").state()
+    return st.open and #require("dsh_tui.state").cmdMatches or 0`, []),
+    4, 'a space after the command name opens the subcommand menu')
+  assert.equal(await lua(`local I = require("dsh_tui.input")
+    I.set_text('/plugin in')
+    require("dsh_tui.cmd_menu").update('/plugin in')
+    local S = require("dsh_tui.state")
+    return tostring(S.cmdArgMode) .. '/' .. tostring(#S.cmdMatches)`, []),
+    'true/1', 'typing a prefix narrows the subcommand menu (argument mode on)')
+  // A free-form argument has no candidates: the menu must CLOSE rather than show
+  // an empty box.
+  assert.equal(await lua(`local I = require("dsh_tui.input")
+    I.set_text('/plugin install ')
+    require("dsh_tui.cmd_menu").update('/plugin install ')
+    return require("dsh_tui.cmd_menu").state().open`, []),
+    false, 'a free-form argument closes the menu (hint-only)')
   await lua(`require("dsh_tui").set_commands({ { name = '/exit', desc = 'exit' } })`, [])
+
 
   // 9l. bell + file tab + append_input helpers.
   // The terminal bell / OSC notification feature was REMOVED: the plugin's nvim

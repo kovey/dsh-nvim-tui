@@ -204,6 +204,27 @@ function CM.update(text)
   pcall(CM.refresh_hints, text)
   local prefix = text:match('^(/[%w-]*)')
   if prefix == nil or #text ~= #prefix then
+    -- Past the command name: offer the ARGUMENT candidates in the same menu, so
+    -- `/plugin <Tab>` picks a subcommand exactly like the command menu picks a
+    -- command. A free-form argument has no candidates — then only the hint
+    -- surfaces speak (a menu with nothing to choose would be noise).
+    local sug = CM.suggest(text)
+    if sug ~= nil and #sug.values > 0 then
+      local arg_matches = {}
+      for _, v in ipairs(sug.values) do
+        arg_matches[#arg_matches + 1] = { name = v, desc = sug.arg and (sug.arg.hint or '') or '' }
+      end
+      S.cmdMatches = arg_matches
+      S.cmdIdx = 1
+      S.cmdArgMode = true
+      -- The token being replaced ('' right after a space → a fresh token).
+      S.cmdArgPartial = text:match('(%S*)$') or ''
+      local ok = pcall(function()
+        if not CM.open() then open_menu() else render() end
+      end)
+      if not ok then CM.close() end
+      return
+    end
     CM.close()
     return
   end
@@ -217,8 +238,9 @@ function CM.update(text)
     CM.close()
     return
   end
-  -- Keep the current selection when it survives the new filter, else start
-  -- at the first match; a fully typed name always selects itself.
+  -- Command-NAME mode: the argument-mode marker must not leak in here, or the
+  -- accept path would try to splice an argument into a bare command draft.
+  S.cmdArgMode = false
   local prev = S.cmdMatches[S.cmdIdx]
   S.cmdMatches = matches
   S.cmdIdx = 1

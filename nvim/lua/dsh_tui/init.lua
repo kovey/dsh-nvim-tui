@@ -288,7 +288,19 @@ function M.submit()
   end
   if CM.state().open then
     local sel = S.cmdMatches[S.cmdIdx]
+    local argMode = S.cmdArgMode
     CM.close()
+    if sel and argMode then
+      -- ARGUMENT mode: splice the chosen candidate in place of the token being
+      -- typed, keeping everything already typed. `/plugin in` + `install` →
+      -- `/plugin install ` (trailing space: the next token starts clean).
+      local head = text:match('^(.*%s)%S*$') or (text .. ' ')
+      local next_text = head .. sel.name .. ' '
+      I.set_text(next_text)
+      I.resize()
+      CM.update(next_text)
+      return
+    end
     if sel and text ~= sel.name then
       -- A bare prefix is being typed: fill the selected command and let the
       -- user continue with its arguments (a second <CR> executes it).

@@ -93,6 +93,13 @@ S.cmdBuf = nil
 S.cmdMatches = {}         -- entries matching the current prefix
 S.cmdIdx = 0              -- 1-based selection index
 S.cmdTop = 1              -- first visible row
+-- Argument-completion mode: the same menu is reused past the command name to
+-- pick a subcommand, so the accept path must know which kind of token it is
+-- splicing. `cmdArgPartial` is the token being replaced.
+S.cmdArgMode = false
+S.cmdArgPartial = ''
+-- Last hint-bar line written, so refresh_hint_bar can skip redundant writes.
+S.cmdHintLine = nil
 S.subagentView = { buf = nil, win = nil }
 S.subagentChat = { buf = nil, win = nil, inputBuf = nil, inputWin = nil, hist = {}, histIdx = nil, draft = nil }
 S.fullInput = { win = nil, buf = nil }
