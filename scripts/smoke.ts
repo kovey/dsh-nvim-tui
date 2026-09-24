@@ -2476,6 +2476,39 @@ description:
   assert.equal((await lua('return require("dsh_tui").ids()', [])).reasoningOpen, false, 'default layout closes reasoning panel')
 
   // 9l. bell + file tab + append_input helpers.
+  // Host-stderr capture: dsh writes its activation diagnostics straight to the
+  // tty AFTER our nvim owns the screen (measured with `2>file`: the text lands
+  // in the file, i.e. the fd is the terminal we draw on), which painted
+  // "dsh: warning: N entries did not activate" across the input row and pushed
+  // the cursor onto the status line. The capture must be installed from
+  // apply() — i.e. before the host can write — and released at boot.
+  const stderrMod = await import('../lib/kernel/host-stderr.js')
+  const originalWrite = process.stderr.write
+  try {
+    stderrMod.captureHostStartupStderr()
+    process.stderr.write('smoke-swallowed-line\n')
+    assert.equal(stderrMod.peekHostStartupStderr().includes('smoke-swallowed-line'), true,
+      'capture swallows host stderr instead of letting it reach the terminal')
+    const released = stderrMod.releaseHostStartupStderr()
+    assert.equal(released.includes('smoke-swallowed-line'), true, 'release returns what it swallowed')
+    // Behaviour, not identity: the module wraps the original with .bind(), so
+    // `process.stderr.write === originalWrite` can never hold. What matters is
+    // that writes reach the terminal again after release.
+    assert.equal(stderrMod.peekHostStartupStderr(), '', 'capture is empty after release')
+    stderrMod.captureHostStartupStderr()
+    process.stderr.write('smoke-second-line\n')
+    assert.equal(stderrMod.releaseHostStartupStderr().includes('smoke-second-line'), true,
+      'capture can be reinstalled (idempotent install, repeatable)')
+  } finally {
+    process.stderr.write = originalWrite
+    stderrMod.releaseHostStartupStderr()
+  }
+  const indexTs = fs.readFileSync(path.join(process.cwd(), 'src/index.ts'), 'utf8')
+  assert.ok(/export function apply\([\s\S]{0,1200}captureHostStartupStderr\(\)/.test(indexTs),
+    'apply() installs the capture (host writes the warning after activation, so it must be installed by then)')
+  assert.ok(!/await[\s\S]{0,200}captureHostStartupStderr\(\)/.test(indexTs),
+    'the capture is installed synchronously, not after an await')
+
   // Terminal-splash guard: the runner writes startup diagnostics (e.g.
   // "dsh: warning: N entries did not activate") straight to the terminal on
   // stderr BEFORE our nvim comes up, and those rows are never repainted by our

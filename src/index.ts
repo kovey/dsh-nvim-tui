@@ -37,6 +37,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { setLocale } from './kernel/i18n.js'
 import { createApp } from './kernel/app.js'
+import { captureHostStartupStderr } from './kernel/host-stderr.js'
 import { installExtApi } from './ext-api/index.js'
 import { installStatusline } from './statusline/index.js'
 import { installSessions } from './sessions/index.js'
@@ -66,6 +67,12 @@ export { EXT_API_VERSION, EXT_HANDLER_TIMEOUT_MS, matchSessionEventFilter } from
  * Mount the Neovim TUI runner over dsh-base.
  */
 export function apply(ctx: Context, config: RunnerConfig = {}): void {
+  // FIRST, before anything can await: take over stderr for the host's startup
+  // window. dsh writes its activation diagnostics (e.g. "dsh: warning: N entries
+  // did not activate") straight to the tty AFTER our nvim owns the screen, which
+  // painted that text across the input row. The capture is released at boot and
+  // replayed into the chat instead — see kernel/host-stderr.ts.
+  captureHostStartupStderr()
   // dsh 0.1.5 removed the `sessions` service: the live-session store is the
   // agents registry itself (createApp builds the store-shaped adapter over
   // `agents.get/list` → `Agent.session`). Inject only what 0.1.5 provides —

@@ -32,6 +32,7 @@ import { resumeOrCreate } from '../sessions/index.js'
 import { drainPendingInput } from '../commands/index.js'
 import { restoreGlance } from '../statusline/commands/glance.js'
 import { maybeOnboard } from './onboarding.js'
+import { releaseHostStartupStderr } from '../kernel/host-stderr.js'
 import type { AppSlices, WritableSlice } from '../kernel/app.js'
 import type { App } from '../kernel/app.js'
 import { tf, t } from '../kernel/i18n.js'
@@ -245,6 +246,16 @@ export async function boot(app: App): Promise<void> {
     await maybeOnboard(app)
     drainPendingInput(app)
     app.exitDiag('boot-complete', `active=${app.slices.sessions.activeId}`)
+    // The host's activation diagnostics were swallowed while we were coming up
+    // (kernel/host-stderr.ts) so they could not paint over the input row.
+    // Replay them into the chat now that the feed exists — the text reaches the
+    // user, just not through the terminal we are drawing on.
+    const hostStartupStderr = releaseHostStartupStderr().trim()
+    if (hostStartupStderr !== '') {
+      for (const line of hostStartupStderr.split('\n')) {
+        if (line.trim() !== '') app.notice(line)
+      }
+    }
     announceReady(app)
     headlessCtl.kick()
   } catch (err: unknown) {
