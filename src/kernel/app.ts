@@ -21,6 +21,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { NeovimClient } from 'neovim'
 import type { FeedRenderer } from '../feed/feed.js'
 import { t, tf } from './i18n.js'
+import { COMMAND_ARGS } from './command-args.js'
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js'
 import type { RunnerConfig } from './types.js'
 import type {
@@ -519,11 +520,17 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
    *  path silently dropped `args` — which killed argument completion right after
    *  boot, because the refresh overwrote the good catalog. */
   const catalogEntries = () =>
-    app.commandSpecs.map(({ name, desc, args }) => ({
-      name,
-      desc: t(desc),
-      ...(args === undefined ? {} : { args }),
-    }))
+    app.commandSpecs.map(({ name, desc, args }) => {
+      // A command may declare its grammar inline (it is the author's own
+      // contract) OR leave it to the central table, where the whole input
+      // language of the TUI is reviewable in one read. Inline wins.
+      const grammar = args ?? COMMAND_ARGS[name]
+      return {
+        name,
+        desc: t(desc),
+        ...(grammar === undefined ? {} : { args: grammar }),
+      }
+    })
 
   const app: App = {
     ctx,

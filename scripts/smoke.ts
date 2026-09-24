@@ -30,6 +30,7 @@ import { sessionHealthLines } from '../lib/commands/commands/doctor.js'
 import { approvalHistoryLines } from '../lib/commands/commands/approvals.js'
 import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLines, APPROVAL_LOG_MAX, ensureApprovalHistory } from '../lib/kernel/approval-log.js'
 import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market/commands/plugin.js'
+import { COMMAND_ARGS } from '../lib/kernel/command-args.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN, installTodoGuard } from '../lib/kernel/todo-guard.js'
@@ -2516,11 +2517,71 @@ description:
   // overwrote the good catalog. Measured on a real instance.
   {
     const appSrc = fs.readFileSync(path.join(process.cwd(), 'src/kernel/app.ts'), 'utf8')
-    assert.equal((appSrc.match(/args === undefined \? \{\} : \{ args \}/g) ?? []).length, 1,
-      'the completion-catalog mapping is defined exactly once')
+    assert.equal((appSrc.match(/args === undefined \? \{\} : \{ args \}/g) ?? []).length, 0,
+      'the inline-only mapping is gone (grammar now resolved in one place)')
+    assert.equal((appSrc.match(/const grammar = args \?\? COMMAND_ARGS\[name\]/g) ?? []).length, 1,
+      'the catalog resolves the grammar exactly once (inline wins, else the table)')
     assert.ok(/const catalogEntries = \(\) =>/.test(appSrc), 'catalogEntries() exists')
     assert.equal((appSrc.match(/catalogEntries\(\)/g) ?? []).length >= 2, true,
       'both catalog pushes go through catalogEntries()')
+  }
+
+  // The central grammar table must stay in SYMMETRY with the real command set.
+  // The failure that matters: a command that takes arguments but has NO entry —
+  // the input box then stays dumb for it (silent degradation). The opposite (a
+  // table key for a command that no longer exists) is dead data. Both are caught
+  // by scanning the real registrations: `usage` is the author's own statement of
+  // whether the command takes arguments, so a usage line with a placeholder or
+  // an enumeration must be covered by the table (or declare `args` inline).
+  {
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        const full = path.join(dir, e.name)
+        if (e.isDirectory()) return walk(full)
+        return e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.d.ts') ? [full] : []
+      })
+    const registered = new Map<string, { usage: string; inline: boolean }>()
+    for (const file of walk(path.join(process.cwd(), 'src'))) {
+      const src = fs.readFileSync(file, 'utf8')
+      // NOTE: `matchAll` yields ARRAYS (with `index`), not RegExpExecArray — no
+      // `.group()` method. Destructuring is the correct access.
+      for (const [full, cmdName] of src.matchAll(/name:\s*'(\/[^']+)'/g)) {
+        if (cmdName === undefined) continue
+        const at = src.indexOf(full)
+        const seg = src.slice(at, at + 600)
+        const u = /usage:\s*t\('([^']*)'\)/.exec(seg)
+        registered.set(cmdName, {
+          usage: u?.[1] ?? '',
+          inline: /args:\s*\[/.test(seg),
+        })
+      }
+    }
+    const tableKeys = Object.keys(COMMAND_ARGS)
+    const catalogNames = new Set(registered.keys())
+    const strays = tableKeys.filter((n) => !catalogNames.has(n))
+    assert.deepEqual(strays, [], 'every COMMAND_ARGS key names a real registered command')
+
+    // A usage line mentioning a placeholder/enumeration means the command takes
+    // arguments; it must then have a grammar (table or inline).
+    const needsGrammar = [...registered.entries()].filter(([, v]) =>
+      !v.inline && /[<[\]|]/.test(v.usage))
+    const uncovered = needsGrammar.map(([n]) => n).filter((n) => COMMAND_ARGS[n] === undefined)
+    assert.deepEqual(uncovered, [],
+      'every command whose usage declares arguments has a grammar entry')
+    assert.ok(tableKeys.length >= 25, `the table is populated (${tableKeys.length} commands)`)
+
+    // Spot-check the shapes that the tree exists for. `byValue` only exists on
+    // the `oneof` arm, so the arm is narrowed rather than cast away.
+    const fb = COMMAND_ARGS['/fb']?.[0]
+    assert.ok(fb?.kind === 'oneof', '/fb starts with a choice')
+    assert.deepEqual(fb.kind === 'oneof' ? fb.values : undefined, ['up', 'down', 'clear'],
+      '/fb offers every accepted operation (its usage omits `clear`)')
+    const goal = COMMAND_ARGS['/goal']?.[0]
+    assert.ok(goal?.kind === 'oneof', '/goal starts with a choice')
+    if (goal?.kind === 'oneof') {
+      assert.equal(goal.byValue?.['clear']?.length, 0, '/goal clear is terminal')
+      assert.ok((goal.byValue?.['new']?.length ?? 0) > 0, '/goal new takes a description')
+    }
   }
 
   // Command argument completion — the Lua side. Pushed through the SAME
