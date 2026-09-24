@@ -358,20 +358,6 @@ function M.start()
   -- popup. Window navigation is <C-w>/keyboard-first anyway — disabling the
   -- mouse removes the whole failure class at the source.
   vim.o.mouse = ''
-  -- Clear the terminal BEFORE laying out. The runner (dsh) writes startup
-  -- diagnostics straight to the terminal on stderr — e.g. "dsh: warning: N
-  -- entries did not activate" — and those bytes land while our nvim is still
-  -- coming up, so they sit on rows our own windows never repaint and the user
-  -- sees them mixed into the input area. This TUI fully owns the screen (it
-  -- builds every window itself, cmdheight=0, no tabline), so wiping here is
-  -- safe and the only reliable way to drop foreign output. It does NOT
-  -- suppress the diagnostic: dsh still prints it, so a pre-nvim failure is
-  -- never hidden, and the full text also lands in the startup-*.log.
-  -- Guard on a real UI: with no attached UI (`--headless`, tests) `:mode` is
-  -- a no-op anyway, and the cleanup is only meaningful when a terminal exists.
-  if #vim.api.nvim_list_uis() > 0 then
-    pcall(vim.cmd, 'mode')
-  end
   H.applyHighlights()
   L.takeover()
   I.make_buffer()
