@@ -2634,6 +2634,30 @@ description:
       'a name containing the id is not mistaken for the id line')
   }
 
+  // `/diff` opens a side-by-side review. Asserted by RUNNING it in the harness
+  // nvim: two `diff` windows in a new tab, both non-modifiable, both scroll-
+  // bound. A shape-only assertion would pass even if the split never opened.
+  assert.equal(await lua('return type(require("dsh_tui").show_diff_split)', []), 'function',
+    'the side-by-side viewer is exported')
+  assert.equal(await lua(`local before = vim.fn.tabpagenr()
+    require("dsh_tui").show_diff_split('t', '/tmp/x.lua', 'a\\nb\\nc', 'a\\nB\\nc')
+    local tab = vim.api.nvim_get_current_tabpage()
+    local wins = vim.api.nvim_tabpage_list_wins(tab)
+    local both = 0
+    for _, w in ipairs(wins) do
+      if vim.wo[w].diff and vim.wo[w].scrollbind then both = both + 1 end
+    end
+    local n = #wins
+    vim.cmd('tabclose')
+    return tostring(both) .. '/' .. tostring(n) .. '/' .. tostring(vim.fn.tabpagenr() == before)`, []),
+    '2/2/true', 'the review opens two diff+scrollbind windows and closes back')
+  assert.equal(await lua(`require("dsh_tui").show_diff_split('t', '/tmp/y', nil, 'new')
+    local w = vim.api.nvim_tabpage_list_wins(vim.api.nvim_get_current_tabpage())
+    local n = #w
+    vim.cmd('tabclose')
+    return n`, []),
+    2, 'a brand-new file (nil old side) still opens both sides')
+
   // Command argument completion — the Lua side. Pushed through the SAME
   // set_commands path the runner uses, then asked what it would offer. A
   // regression here means the input box silently stops hinting.

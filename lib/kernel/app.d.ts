@@ -361,6 +361,15 @@ export interface AppSlices {
             owner?: string | undefined;
         }>;
         readonly renderedDiffCalls: WeakMap<FeedRenderer, Set<string>>;
+        /** Most recent render-intent diff per path — the data a side-by-side review
+         *  needs. The feed renders a UNIFIED diff inline and then discards both
+         *  sides; keeping them here is what makes `/diff` possible WITHOUT re-reading
+         *  the files, which may have changed since the turn that produced the diff. */
+        readonly recentDiffs: Map<string, {
+            oldText: string | null;
+            newText: string | null;
+            at: number;
+        }>;
         readonly pendingEchoes: Map<string, string[]>;
         /** Notices emitted before the first session attached (flushed on attach). */
         readonly pendingNotices: unknown[];

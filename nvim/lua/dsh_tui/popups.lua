@@ -817,4 +817,67 @@ function P.close_input_history()
 end
 
 
+-- ---------------------------------------------------------------------------
+-- Side-by-side diff review (/diff): a NEW TAB with two `diff` windows bound
+-- together. nvim already does line matching, intra-line highlight, folding and
+-- scroll sync — re-implementing any of that in a float would be strictly worse.
+--
+--- @param title string shown as the tab's label line
+--- @param path string the reviewed path (used for the buffer names)
+--- @param oldText string|nil left side; nil means "did not exist"
+--- @param newText string|nil right side; nil means "was deleted"
+function P.show_diff_split(title, path, oldText, newText)
+  local left = type(oldText) == 'string' and oldText or ''
+  local right = type(newText) == 'string' and newText or ''
+  local lines = function(t)
+    local out = {}
+    for line in (t .. '\n'):gmatch('([^\n]*)\n') do out[#out + 1] = line end
+    -- gmatch over "t\n" yields a trailing empty element for content ending in a
+    -- newline; drop ONE so the buffer does not grow a phantom last line.
+    if #out > 1 and out[#out] == '' then out[#out] = nil end
+    if #out == 0 then out = { '' } end
+    return out
+  end
+  local name = tostring(path or 'diff')
+  -- A dedicated tab keeps the TUI's own windows untouched: the plugin's
+  -- takeover logic keeps working in its tab while the review lives here.
+  vim.cmd('tabnew')
+  local tab = vim.api.nvim_get_current_tabpage()
+  local lbuf = vim.api.nvim_create_buf(false, true)
+  local rbuf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(lbuf, 0, -1, false, lines(left))
+  vim.api.nvim_buf_set_lines(rbuf, 0, -1, false, lines(right))
+  for _, b in ipairs({ lbuf, rbuf }) do
+    vim.bo[b].buftype = 'nofile'
+    vim.bo[b].bufhidden = 'wipe'
+    vim.bo[b].swapfile = false
+  end
+  vim.api.nvim_win_set_buf(0, lbuf)
+  vim.cmd('vsplit')
+  vim.api.nvim_win_set_buf(0, rbuf)
+  vim.cmd('windo diffthis')
+  -- `diffopt` keeps folds out of the way: a folded diff hides exactly the lines
+  -- the review is for. Sides are labelled so the orientation is never in doubt.
+  vim.cmd('setlocal diffopt+=context:3 foldcolumn:0')
+  -- MEASURED: `windo diffthis` ALREADY sets scrollbind on both windows (2/2
+  -- without these lines, because `scrollopt` defaults to `ver,jump,hor`). They
+  -- are kept as an explicit statement of intent — NOT as the thing that makes
+  -- scroll sync work, so do not read their removal as a behaviour change.
+  -- `cursorbind` IS an addition: it is not implied by diff mode.
+  vim.cmd('windo setlocal scrollbind cursorbind')
+  vim.api.nvim_buf_set_name(lbuf, ('[before] %s'):format(name))
+  vim.api.nvim_buf_set_name(rbuf, ('[after] %s'):format(name))
+  vim.bo[lbuf].modifiable = false
+  vim.bo[rbuf].modifiable = false
+  vim.keymap.set('n', 'q', '<Cmd>tabclose<CR>', { buffer = lbuf })
+  vim.keymap.set('n', 'q', '<Cmd>tabclose<CR>', { buffer = rbuf })
+  vim.keymap.set('n', '<Esc>', '<Cmd>tabclose<CR>', { buffer = lbuf })
+  vim.keymap.set('n', '<Esc>', '<Cmd>tabclose<CR>', { buffer = rbuf })
+  -- Put the cursor on the first change so a long file does not open at line 1
+  -- with the interesting part somewhere below.
+  pcall(vim.cmd, 'normal! ]c')
+  pcall(vim.api.nvim_set_current_tabpage, tab)
+  return { tab = tab, left = lbuf, right = rbuf }
+end
+
 return P

@@ -56,6 +56,7 @@ import { installDirCommand } from './commands/dir.js'
 import { installLinesCommand } from './commands/lines.js'
 import { installHistoryCommand } from './commands/history.js'
 import { installDeliverablesCommand } from './commands/deliverables.js'
+import { installDiffCommand } from './commands/diff.js'
 import { installSettingsCommand } from './commands/settings.js'
 import { installApprovalsCommand } from './commands/approvals.js'
 import { installDifficultyCommand } from './commands/difficulty.js'
@@ -299,6 +300,7 @@ export function installCommands(app: App): void {
   installLinesCommand(app)
   installHistoryCommand(app)
   installDeliverablesCommand(app)
+  installDiffCommand(app)
   installSettingsCommand(app)
   installApprovalsCommand(app)
   installDifficultyCommand(app)

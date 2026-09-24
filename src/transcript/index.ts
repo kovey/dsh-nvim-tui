@@ -224,6 +224,7 @@ export function installTranscript(app: App): void {
     readFileSnapshot: async () => null,
     pendingFileSnaps: new Map(),
     renderedDiffCalls: new WeakMap(),
+    recentDiffs: new Map(),
     pendingEchoes: new Map(),
   })
 
@@ -264,6 +265,16 @@ export function installTranscript(app: App): void {
       for (const d of metaDiffs.slice(0, 4)) {
         const block = diffTexts(d.oldText ?? null, d.newText ?? null)
         if (block.stats.added === 0 && block.stats.removed === 0) continue
+        // Keep both sides for a side-by-side review (`/diff`). The feed renders
+        // a unified diff and drops them; re-reading the files later would show
+        // the CURRENT content, not what this turn changed.
+        if (d.path !== undefined) {
+          app.slices.ui.recentDiffs.set(d.path, {
+            oldText: d.oldText ?? null,
+            newText: d.newText ?? null,
+            at: Date.now(),
+          })
+        }
         const action = d.oldText === undefined
           ? t('新增')
           : d.newText === undefined

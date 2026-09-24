@@ -199,6 +199,7 @@ M.dir_enter = PP.dir_enter
 M.dir_up = PP.dir_up
 M.close_dir_picker = PP.close_dir_picker
 M.show_lines_float = PP.show_lines_float
+M.show_diff_split = PP.show_diff_split
 M.close_lines_float = PP.close_lines_float
 M.show_progress = PP.show_progress
 M.progress_update = PP.progress_update
