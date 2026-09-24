@@ -31,6 +31,7 @@ import { approvalHistoryLines } from '../lib/commands/commands/approvals.js'
 import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLines, APPROVAL_LOG_MAX, ensureApprovalHistory } from '../lib/kernel/approval-log.js'
 import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market/commands/plugin.js'
 import { COMMAND_ARGS } from '../lib/kernel/command-args.js'
+import { togglePluginEntry } from '../lib/kernel/plugin-toggle.js'
 import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
@@ -2599,6 +2600,38 @@ description:
       'macOS reveals with `open -R`')
     assert.equal(systemRevealArgv('/tmp/x.pdf', 'linux'), undefined,
       'reveal is macOS-only (no portable spelling)')
+  }
+
+  // Plugin enable/disable edits exactly ONE line of a user-authored YAML, so the
+  // line-finding rule matters more than the IO: a loose match would clobber an
+  // unrelated line in someone's profile. `togglePluginEntry` is pure and is
+  // asserted directly.
+  {
+    const doc = [
+      '- insert:',
+      '    - id: alpha',
+      "      name: '@x/alpha'",
+      '    - id: beta',
+      "      name: '@x/beta'",
+      '',
+    ].join('\n')
+    const off = togglePluginEntry(doc, 'beta', false)
+    assert.equal(off.kind, 'changed', 'disabling a present entry reports a change')
+    assert.equal(off.line, 4, 'the touched line is the entry id line (1-based)')
+    assert.ok(off.text.includes('#disabled# ') && off.text.includes('- id: beta'),
+      'disable COMMENTS the line (stays valid YAML, reason visible)')
+    assert.ok(off.text.includes('- id: alpha'), 'unrelated entries untouched')
+    // Idempotent: disabling an already-disabled entry writes nothing.
+    assert.equal(togglePluginEntry(off.text, 'beta', false).kind, 'unchanged',
+      'disabling twice is a no-op (no empty diff)')
+    // Round trip.
+    assert.equal(togglePluginEntry(off.text, 'beta', true).text, doc, 'enable restores it verbatim')
+    // A MISSING id must not touch anything.
+    assert.equal(togglePluginEntry(doc, 'nope', false).kind, 'unchanged', 'an unknown id is a no-op')
+    // A substring that merely CONTAINS the id must not match the id line.
+    const tricky = ['- insert:', '    - id: beta2', "      name: '@x/beta'"].join('\n')
+    assert.equal(togglePluginEntry(tricky, 'beta', false).kind, 'unchanged',
+      'a name containing the id is not mistaken for the id line')
   }
 
   // Command argument completion — the Lua side. Pushed through the SAME
