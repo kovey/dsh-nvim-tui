@@ -91,15 +91,24 @@ export interface ServiceMap {
   credentials: { resolve?: (ref: string) => Promise<{ value?: unknown } | undefined> }
 }
 
-/** One positional argument of a slash command, for completion + hints.
+/**
+ * Positional-argument grammar of a slash command, for completion + hints.
  *
- *  The point is that the input box must answer "what do I type next?" without
- *  the user reading /help: after `/plugin` the next token is one of
- *  `install|update|remove|list`; after `/plugin install` it is a package spec.
- *  Both the <Tab> completion and the floating hint are driven from here. */
+ * The input box must answer "what do I type next?" without reading /help.
+ *
+ * It is a TREE, not a flat list, because a flat list cannot express that a
+ * subcommand changes what follows: `/plugin list` takes NO further arguments,
+ * while `/plugin install` takes a spec and an optional flag. A flat list made
+ * `list` keep asking for arguments — actively misleading, and measured on a
+ * real run.
+ */
 export type CommandArg =
-  /** Fixed alternatives (subcommands, enum values) — offered in the menu. */
-  | { kind: 'oneof'; values: string[]; hint?: string }
+  /** Fixed alternatives — offered in the menu. `byValue` gives an alternative
+   *  its OWN argument list; an alternative ABSENT from `byValue` terminates the
+   *  command, so neither the menu nor the hint may ask for anything after it.
+   *  (Measured: `/plugin list` took no arguments, yet a flat list kept asking
+   *  for them — actively misleading.) */
+  | { kind: 'oneof'; values: string[]; hint?: string; byValue?: Record<string, CommandArg[]> }
   /** Free text with a label, e.g. `<spec>`: hints only, never completed. */
   | { kind: 'free'; label: string; hint?: string }
   /** A filesystem path — hints only (path completion is a separate feature). */

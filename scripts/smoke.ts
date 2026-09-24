@@ -2481,7 +2481,10 @@ description:
   // App, so dropping `args` from the spec fails here instead of silently
   // degrading to "no hints".
   {
-    const specs: Array<{ name: string; args?: Array<{ kind: string; values?: string[] }> }> = []
+    const specs: Array<{
+      name: string
+      args?: Array<{ kind: string; values?: string[]; byValue?: Record<string, Array<{ kind: string }>> }>
+    }> = []
     const stub = {
       registerCommands: (list: unknown[]) => { specs.push(...(list as typeof specs)) },
     } as unknown as Parameters<typeof installPluginCommand>[0]
@@ -2489,11 +2492,19 @@ description:
     const pluginSpec = specs.find((sp) => sp.name === '/plugin')
     assert.ok(pluginSpec !== undefined, '/plugin registers a spec')
     assert.ok(Array.isArray(pluginSpec.args), '/plugin carries args metadata (Tab completion + hints)')
-    assert.equal(pluginSpec.args?.[0]?.kind, 'oneof', 'first /plugin arg is the subcommand choice')
+    assert.equal(pluginSpec.args?.length, 1, '/plugin has ONE argument: the subcommand choice')
+    assert.equal(pluginSpec.args?.[0]?.kind, 'oneof', '/plugin arg is the subcommand choice')
     assert.deepEqual(pluginSpec.args?.[0]?.values, ['install', 'update', 'remove', 'list'],
       'the four /plugin subcommands are offered')
-    assert.equal(pluginSpec.args?.[1]?.kind, 'free', 'second /plugin arg is free-form (hinted, not completed)')
-    assert.equal(pluginSpec.args?.[2]?.kind, 'flag', 'the third /plugin arg is the --latest flag')
+    // The grammar is a TREE: each subcommand carries its OWN arguments, and an
+    // empty list marks a terminal one. A flat list could not express `list`
+    // taking nothing, and the UI kept asking for arguments after it.
+    const byValue = pluginSpec.args?.[0]?.byValue ?? {}
+    assert.deepEqual(Object.keys(byValue).sort(), ['install', 'list', 'remove', 'update'],
+      'every subcommand names its own branch')
+    assert.deepEqual(byValue['list'], [], '`list` is explicitly terminal (takes no arguments)')
+    assert.deepEqual(byValue['install']?.map((a: { kind: string }) => a.kind), ['free', 'flag'],
+      '`install` takes a spec then an optional flag')
   }
   // The Lua side must expose the two surfaces the input box drives.
   assert.equal(await lua('return type(require("dsh_tui.cmd_menu").suggest)', []), 'function', 'CM.suggest exists')
@@ -2517,9 +2528,22 @@ description:
   // regression here means the input box silently stops hinting.
   await lua(`require("dsh_tui").set_commands({
     { name = '/plugin', desc = 'x', args = {
-        { kind = 'oneof', values = { 'install', 'update', 'remove', 'list' }, hint = 'h' },
-        { kind = 'free', label = '<spec>', hint = 'spec hint' },
-        { kind = 'flag', value = '--latest', hint = 'f' },
+        { kind = 'oneof', values = { 'install', 'update', 'remove', 'list' }, hint = 'h',
+          byValue = {
+            install = {
+              { kind = 'free', label = '<spec>', hint = 'spec hint' },
+              { kind = 'flag', value = '--latest', hint = 'f' },
+            },
+            update = {
+              { kind = 'free', label = '<spec>', hint = 'spec hint' },
+              { kind = 'flag', value = '--latest', hint = 'f' },
+            },
+            remove = {
+              { kind = 'free', label = '<spec>', hint = 'spec hint' },
+              { kind = 'flag', value = '--latest', hint = 'f' },
+            },
+            list = {},
+          } },
     } },
     { name = '/nometa', desc = 'y' },
   })`, [])
@@ -2540,6 +2564,23 @@ description:
   // slot past where it is declared. Measured requirement.
   assert.equal(await lua('local s = require("dsh_tui.cmd_menu").suggest("/plugin install foo --") return s and s.values[1] or "nil"', []),
     '--latest', 'a flag is offered even one argument slot later')
+  // A TERMINAL subcommand must go quiet: `list` takes no arguments, so neither
+  // the menu nor the hint may ask for more. (Measured misfire: the flat version
+  // kept offering the four subcommands and repeating the usage line here.)
+  assert.equal(await lua('local s = require("dsh_tui.cmd_menu").suggest("/plugin list ") return s and #s.values or -1', []),
+    0, 'a terminal subcommand offers no candidates')
+  assert.equal(await lua('return tostring(require("dsh_tui.cmd_menu").hint("/plugin list "))', []),
+    'nil', 'a terminal subcommand shows no hint (no misleading "type more")')
+  // …and it must not leak the subcommand menu either.
+  assert.equal(await lua(`local I = require("dsh_tui.input")
+    I.set_text('/plugin list ')
+    require("dsh_tui.cmd_menu").update('/plugin list ')
+    return require("dsh_tui.cmd_menu").state().open`, []),
+    false, 'a terminal subcommand closes the menu')
+  // The branch's OWN first argument is what applies after a subcommand.
+  assert.equal(await lua('return require("dsh_tui.cmd_menu").hint("/plugin install ")', []),
+    '<spec>   spec hint', 'after install the SPEC is what applies (not the flag)')
+
   // Commands without metadata must not be touched at all.
   assert.equal(await lua('return tostring(require("dsh_tui.cmd_menu").hint("/nometa "))', []),
     'nil', 'a command without args metadata produces no hint')

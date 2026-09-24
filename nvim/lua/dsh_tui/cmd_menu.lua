@@ -329,6 +329,43 @@ local function parse_draft(text)
   }
 end
 
+--- Walk the argument grammar with the tokens already typed, descending into a
+--- chosen alternative's own `byValue` branch.
+---
+--- Two cursors, deliberately distinct: `grammar`/`pos` say which argument of the
+--- CURRENT list we are on, `at` says which typed token we are consuming. A
+--- `oneof` jumps to a branch, so its grammar restarts at 1 while `at` keeps
+--- advancing — conflating the two is what made `/plugin install ` hint the flag
+--- instead of the spec.
+---
+--- Returns nil when the path TERMINATES: an alternative absent from `byValue`
+--- (e.g. `/plugin list`) means nothing may follow it, so the caller stays silent
+--- instead of asking for more arguments.
+---
+--- @return table|nil args the argument list, or nil when the branch ended
+--- @return number pos which element of `args` the NEXT token fills (1-based)
+local function walk_grammar(grammar, pos, tokens, at)
+  -- No more typed tokens: this is the element the user is about to fill.
+  if at > #tokens then return grammar, pos end
+  -- More tokens than the grammar declares: the command ran past its shape.
+  if grammar[pos] == nil then return nil, pos end
+  local arg = grammar[pos]
+  if arg.kind == 'oneof' then
+    local branch = arg.byValue and arg.byValue[tokens[at]]
+    if branch == nil then return nil, pos end -- this alternative ends the command
+    -- An empty branch is terminal, and stating it explicitly documents the
+    -- contract. NOTE (measured by mutation): the recursion already reaches the
+    -- same verdict without this line, because `pos` runs past the empty list and
+    -- the next call returns nil. Kept for readability, not as the sole guard —
+    -- the real fix was branching into `branch` instead of returning the parent
+    -- list, which is what made `/plugin list ` re-offer the subcommands.
+    if #branch == 0 then return nil, pos end
+    return walk_grammar(branch, 1, tokens, at + 1)
+  end
+  -- free / file / flag consume exactly one token and stay in this list.
+  return walk_grammar(grammar, pos + 1, tokens, at + 1)
+end
+
 --- Candidates for the token currently being typed, or nil when the command has
 --- no argument metadata (then the caller must behave exactly as before).
 ---
@@ -338,11 +375,19 @@ function CM.suggest(text)
   if p == nil then return nil end
   local e = entry_for(p.name)
   if e == nil or type(e.args) ~= 'table' then return nil end
-  local arg = e.args[p.argIndex]
-  -- Past the declared arguments: nothing left to suggest, but keep the usage
-  -- line visible so the user can still see the full shape.
+  -- Walk the grammar with what has been typed so far. `nil` means the path
+  -- TERMINATED (e.g. `/plugin list`) — then there is nothing to offer and
+  -- nothing to hint, and `terminated` tells the hint surface to stay silent
+  -- rather than repeat the usage line.
+  local args, at = walk_grammar(e.args, 1, p.tokens, 1)
+  if args == nil then
+    return { entry = e, argIndex = p.argIndex, arg = nil, values = {}, done = true, terminated = true }
+  end
+  local arg = args[at]
+  -- Past this branch's declared arguments: nothing left to suggest, but keep the
+  -- usage line visible so the user can still see the full shape.
   if arg == nil then
-    return { entry = e, argIndex = p.argIndex, arg = nil, values = {}, done = true }
+    return { entry = e, argIndex = at, arg = nil, values = {}, done = true, terminated = false }
   end
   local values = {}
   if arg.kind == 'oneof' then
@@ -353,18 +398,18 @@ function CM.suggest(text)
     if arg.value:sub(1, #p.partial) == p.partial then values[#values + 1] = arg.value end
   end
   -- Flags are position-INDEPENDENT: users type `--latest` after the spec, i.e.
-  -- one argument slot past the one the flag is declared in. Offer every flag
-  -- whose name still matches what is being typed, wherever the cursor is.
+  -- one argument slot past the one the flag is declared in. Offer every flag in
+  -- the APPLICABLE branch whose name still matches what is being typed.
   -- Measured need: `/plugin install --` must offer `--latest`.
   if p.partial:sub(1, 1) == '-' then
-    for _, candidate in ipairs(e.args) do
+    for _, candidate in ipairs(args) do
       if candidate.kind == 'flag' and candidate.value ~= arg.value
         and candidate.value:sub(1, #p.partial) == p.partial then
         values[#values + 1] = candidate.value
       end
     end
   end
-  return { entry = e, argIndex = p.argIndex, arg = arg, values = values, done = false }
+  return { entry = e, argIndex = p.argIndex, arg = arg, values = values, done = false, terminated = false }
 end
 
 --- One-line "what to type next" text for the hint bar / floating hint.
@@ -373,7 +418,13 @@ function CM.hint(text)
   local s = CM.suggest(text)
   if s == nil then return nil end
   local arg = s.arg
-  if arg == nil then return s.entry.usage end
+  if arg == nil then
+    -- TERMINATED (e.g. `/plugin list`, which takes no arguments): stay silent.
+    -- Showing the usage line here is what made the UI keep asking for arguments
+    -- after a complete command — actively misleading, measured on a real run.
+    if s.terminated then return nil end
+    return s.entry.usage
+  end
   if arg.kind == 'oneof' then
     local parts = {}
     for _, v in ipairs(arg.values or {}) do parts[#parts + 1] = v end

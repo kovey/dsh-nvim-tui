@@ -8,7 +8,7 @@
  *  works. The marketplace keeps its curated browsing path.
  *
  *  @module dsh-nvim-tui/market/commands/plugin */
-import type { App } from '../../kernel/app.js'
+import type { App, CommandArg } from '../../kernel/app.js'
 import { t, tf } from '../../kernel/i18n.js'
 import { runningProfileName } from '../../kernel/profile.js'
 import { homedir } from 'node:os'
@@ -219,6 +219,20 @@ export const pluginCommand = async (app: App, a: string | undefined): Promise<vo
   await runVerb(app, profileName, parsed.kind === 'add' ? 'add' : 'remove', parsed.spec)
 }
 
+/** What `install` / `update` / `remove` accept: one spec, then an optional flag.
+ *
+ *  `spec` deliberately says what it accepts — an npm name, a git ref or an
+ *  `owner/repo` shorthand. That is the part users cannot guess, so the hint
+ *  spells it out instead of leaving `<spec>` bare. */
+const SPEC_THEN_FLAG: CommandArg[] = [
+  {
+    kind: 'free',
+    label: '<spec>',
+    hint: t('npm 包名 · owner/repo · owner/repo#tag · git URL'),
+  },
+  { kind: 'flag', value: '--latest', hint: t('跨大版本（仅 npm 依赖；git ref 推不动）') },
+]
+
 export function installPluginCommand(app: App): void {
   app.registerCommands([{
     name: '/plugin',
@@ -226,17 +240,27 @@ export function installPluginCommand(app: App): void {
     usage: t('[install|update|remove <spec> [--latest] | list]'),
     group: t('信息'),
     // Drives <Tab> completion and the input hint: after `/plugin` offer the
-    // subcommands, then spell out exactly what each one expects. `spec` accepts
-    // an npm name, a git ref or an owner/repo shorthand — the hint says so,
-    // because that is the part users cannot guess.
+    // subcommands, then spell out exactly what each one expects. `byValue` is
+    // what keeps this honest — `list` has NO entry, so it terminates the command
+    // and nothing is suggested after it. (The earlier flat list kept asking for
+    // arguments after `list`, which takes none — see parsePluginArgs, which
+    // returns {kind:'list'} and ignores the rest.)
     args: [
-      { kind: 'oneof', values: ['install', 'update', 'remove', 'list'], hint: t('插件操作') },
       {
-        kind: 'free',
-        label: '<spec>',
-        hint: t('npm 包名 · owner/repo · owner/repo#tag · git URL'),
+        kind: 'oneof',
+        values: ['install', 'update', 'remove', 'list'],
+        hint: t('插件操作'),
+        byValue: {
+          install: SPEC_THEN_FLAG,
+          update: SPEC_THEN_FLAG,
+          remove: SPEC_THEN_FLAG,
+          // `list` takes NO arguments (parsePluginArgs returns {kind:'list'} and
+          // ignores the rest). An EMPTY list states that explicitly — without it
+          // the UI kept offering the subcommands after `/plugin list `, which is
+          // a strong misfire.
+          list: [],
+        },
       },
-      { kind: 'flag', value: '--latest', hint: t('跨大版本（仅 npm 依赖；git ref 推不动）') },
     ],
     fn: (a?: string) => pluginCommand(app, a),
   }])
