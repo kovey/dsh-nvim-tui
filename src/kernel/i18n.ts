@@ -167,6 +167,7 @@ const EN_DICT: Record<string, string> = {
   '无法确定当前 profile（该 profile 未把本插件 link 到工作区）—— 请直接编辑 profile 的 cordis.patch.yml': 'cannot determine the current profile (it does not link this plugin to the worktree) — edit the cordis.patch.yml of the profile directly',
   '该 profile 的 patch 没有可启停的插件条目': 'this patch of the profile has no toggleable plugin entry',
   '读取失败: {0}': 'read failed: {0}',
+  '📄 资源类工具已启用（{0}）—— 让 agent 调用，TUI 无法直接列出资源': '📄 resource tools enabled ({0}) — the agent drives them; the TUI cannot list resources directly',
   '插件安装/更新/卸载（市场目录之外）': 'plugin install/update/remove (outside the marketplace catalog)',
   '插件操作': 'plugin operation',
   'npm 包名 · owner/repo · owner/repo#tag · git URL': 'npm package · owner/repo · owner/repo#tag · git URL',

@@ -17,7 +17,9 @@ export const mcpCommand = (app: App) => {
     return
   }
   const byServer = new Map()
+  const names = new Set<string>()
   for (const s of tools.schemas(rec.handle.agent)) {
+    names.add(s.name)
     if (!s.name.startsWith('mcp__')) continue
     const server = s.name.slice(5).split('__')[0]
     byServer.set(server, (byServer.get(server) ?? 0) + 1)
@@ -27,6 +29,20 @@ export const mcpCommand = (app: App) => {
     return
   }
   for (const [server, count] of byServer) app.notice(tf('🔌 {0}: {1} 个工具', [server, count]))
+  // dsh 0.1.7 added MCP resource support as three SHARED tools (registered by
+  // `mcpResources` for the agent to call), not as a service the UI can query —
+  // measured: `McpResourceRuntime` exposes only `register(server, provider)` to
+  // connection plugins, so a `/mcp resources` listing is not implementable from
+  // here. Report them when they are actually present, so the user knows the
+  // capability exists and that the AGENT is the one that drives it.
+  const shared = [
+    'list_mcp_resources',
+    'list_mcp_resource_templates',
+    'read_mcp_resource',
+  ].filter((n) => names.has(n))
+  if (shared.length > 0) {
+    app.notice(tf('📄 资源类工具已启用（{0}）—— 让 agent 调用，TUI 无法直接列出资源', [shared.join(' · ')]))
+  }
 }
 
 export function installMcpCommand(app: App): void {
