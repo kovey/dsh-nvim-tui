@@ -398,11 +398,27 @@ end
 --- (j/k/G/gg/C-d/C-u) work as expected; the hint is the last line and the
 --- window height fits the content. `editPath` (optional): map i/o to open
 --- that file in a new tab. Without it i/o are Nop'd so a read-only float
-function P.show_lines_float(title, lines, editPath)
+--- cannot surface a raw E21.
+---
+--- `actions` (optional) is a list of `{ key = 'o', label = '…', argv = {…} }`:
+--- extra single-key bindings that spawn an OS command. The CALLER supplies the
+--- argv (it knows the platform), so this float stays platform-agnostic; the
+--- point is that a produced file can be handed to the system's own application
+--- instead of only nvim — a PDF or an image has no use for a nvim tab.
+function P.show_lines_float(title, lines, editPath, actions)
   local all = lines or {}
-  local hint = type(editPath) == 'string' and editPath ~= ''
-    and '[i/o] 打开文件编辑  [q]/[Esc] 关闭'
-    or '[q]/[Esc] 关闭'
+  local actList = type(actions) == 'table' and actions or {}
+  local hintParts = {}
+  if type(editPath) == 'string' and editPath ~= '' then
+    hintParts[#hintParts + 1] = '[i/o] 打开文件编辑'
+  end
+  for _, a in ipairs(actList) do
+    if type(a.key) == 'string' and type(a.label) == 'string' then
+      hintParts[#hintParts + 1] = '[' .. a.key .. '] ' .. a.label
+    end
+  end
+  hintParts[#hintParts + 1] = '[q]/[Esc] 关闭'
+  local hint = table.concat(hintParts, '  ')
   local rows = {}
   for _, l in ipairs(all) do
     rows[#rows + 1] = l
@@ -447,6 +463,16 @@ function P.show_lines_float(title, lines, editPath)
     -- Read-only float: an edit attempt must not surface a raw E21.
     vim.keymap.set('n', 'i', '<Nop>', { buffer = buf })
     vim.keymap.set('n', 'o', '<Nop>', { buffer = buf })
+  end
+  -- Caller-supplied OS actions. `jobstart` (not `:!`) so nvim never blocks and
+  -- no shell is involved: the argv is passed verbatim.
+  for _, a in ipairs(actList) do
+    if type(a.key) == 'string' and type(a.argv) == 'table' and #a.argv > 0 then
+      vim.keymap.set('n', a.key, function()
+        pcall(vim.fn.jobstart, a.argv, { detach = true })
+        P.close_lines_float()
+      end, { buffer = buf, desc = tostring(a.label or a.key) })
+    end
   end
   vim.cmd('stopinsert') -- input window hands over in insert mode
   S.linesWin = win

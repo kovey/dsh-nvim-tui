@@ -31,6 +31,7 @@ import { approvalHistoryLines } from '../lib/commands/commands/approvals.js'
 import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLines, APPROVAL_LOG_MAX, ensureApprovalHistory } from '../lib/kernel/approval-log.js'
 import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market/commands/plugin.js'
 import { COMMAND_ARGS } from '../lib/kernel/command-args.js'
+import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN, installTodoGuard } from '../lib/kernel/todo-guard.js'
@@ -2582,6 +2583,22 @@ description:
       assert.equal(goal.byValue?.['clear']?.length, 0, '/goal clear is terminal')
       assert.ok((goal.byValue?.['new']?.length ?? 0) > 0, '/goal new takes a description')
     }
+  }
+
+  // OS opener mapping is pure and platform-parameterised, so it is asserted
+  // directly instead of pretending to run on another OS. A wrong argv would
+  // silently do nothing when the user presses the key.
+  {
+    assert.deepEqual(systemOpenArgv('/tmp/x.pdf', 'darwin'), ['open', '/tmp/x.pdf'],
+      'macOS opens with `open`')
+    assert.deepEqual(systemOpenArgv('/tmp/x.pdf', 'linux'), ['xdg-open', '/tmp/x.pdf'],
+      'linux opens with `xdg-open`')
+    assert.equal(systemOpenArgv('/tmp/x.pdf', 'win32'), undefined,
+      'an unknown platform offers NO action rather than a broken one')
+    assert.deepEqual(systemRevealArgv('/tmp/x.pdf', 'darwin'), ['open', '-R', '/tmp/x.pdf'],
+      'macOS reveals with `open -R`')
+    assert.equal(systemRevealArgv('/tmp/x.pdf', 'linux'), undefined,
+      'reveal is macOS-only (no portable spelling)')
   }
 
   // Command argument completion — the Lua side. Pushed through the SAME

@@ -2,6 +2,7 @@
  *  wired by the commands module index). */
 import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
+import { jobTailCommand } from '../job-tail.js'
 
 
 /** /tasks [kill <id>] — job registry view / cancel one job. */
@@ -17,6 +18,18 @@ export const tasksCommand = async (app: App, a: string | undefined) => {
     return
   }
   const arg = (a ?? '').trim()
+  if (arg.startsWith('log ')) {
+    // Live tail of one job's output in the EXISTING progress float. The
+    // registry's view carries no output text, but it names the complete stream
+    // on disk while the producer keeps one.
+    const id = arg.slice(4).trim()
+    if (id === '') {
+      app.notice(t('用法: /tasks log <job-id>（id 见 /tasks 列表）'))
+      return
+    }
+    await jobTailCommand(app, id)
+    return
+  }
   if (arg.startsWith('kill ')) {
     const id = arg.slice(5).trim()
     if (id === '') {
