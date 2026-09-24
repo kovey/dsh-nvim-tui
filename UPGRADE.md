@@ -83,6 +83,20 @@ dsh --profile <name>
    `dsh-user-approval` / `cordis ~4.0.4`）。本地装需 `--legacy-peer-deps`
    （这些包互相 peer 依赖同一精确版本，npm 严格解析无解；运行时由宿主提供）。
 
+### 本版修复：startup 警告不再画到输入框
+
+升到 0.1.7 后，`dsh: warning: 1 entry did not activate` 会出现在**输入框那一行**并把
+光标顶到状态栏上。根因：`dsh` 进程自己持有终端（`fd0/1/2 → /dev/ttysNNN`），
+而插件跑在它 spawn 的 `nvim --embed` 里（fd 全是 unix socket）；宿主用
+`process.stderr.write` 写激活诊断，裸字节直接落到我们正在画的终端上（这些字节
+**不在任何 buffer 里**，只在终端字节层）。
+
+本版在**模块顶层**接管 `process.stderr.write`（警告来自 dsh 重写 `cordis.yml`
+触发的 reload，发生在插件求值之后，故顶层足够早），缓冲后**回放进聊天区**。
+**诊断不丢**；`DSH_NVIM_TUI_HOST_STDERR=raw` 可关闭接管。
+
+> 你仍会看到那行警告 —— 但它现在**在聊天区**（带 `· `前缀），而不是画在输入框上。
+
 ### 本版未做的适配（有意）
 
 0.1.7 的新功能 —— MCP 资源发现与 URI 模板、headless `--json`、插件管理页、

@@ -6,7 +6,12 @@
 ## [v0.4.7（2026-09-24）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.7)
 
 覆盖提交：
-[`e4c7a79`](https://github.com/kovey/dsh-nvim-tui/commit/e4c7a79)
+[`e4c7a79`](https://github.com/kovey/dsh-nvim-tui/commit/e4c7a79) ·
+[`eb3e545`](https://github.com/kovey/dsh-nvim-tui/commit/eb3e545) ·
+[`299595e`](https://github.com/kovey/dsh-nvim-tui/commit/299595e) ·
+[`eacfad7`](https://github.com/kovey/dsh-nvim-tui/commit/eacfad7) ·
+[`0427219`](https://github.com/kovey/dsh-nvim-tui/commit/0427219) ·
+[`73e1af5`](https://github.com/kovey/dsh-nvim-tui/commit/73e1af5)
 
 > **版本说明**：适配 **dsh 0.1.7-rc.1**。这是**跨宿主版本**升级，**不是零破坏** ——
 > 插件与宿主必须一起动。0.1.7 的 peer 由区间改为**精确版本**，因此不能再跨 rc
@@ -48,13 +53,39 @@ declare module '@deepseek-ai/dsh-llm' {
 `dsh-invariants` / `dsh-util-values` / `dsh-user-approval` / `cordis ~4.0.4`）。
 这些包互相 peer 依赖同一精确版本，本地装需 `--legacy-peer-deps`（运行时由宿主提供）。
 
-### 4. 未做的适配（有意）
+### 4. startup 警告不再画到输入框（宿主 stderr 接管）
+
+**现象**：`dsh: warning: 1 entry did not activate` 出现在**输入框那一行**，把光标顶到
+状态栏上，打乱输入区布局。
+
+**根因（fd 级实测）**：`dsh` 进程自己持有终端（`fd0/1/2 → /dev/ttysNNN`），而插件跑在
+它 spawn 的 `nvim --embed` 里（fd 全是 unix socket）。宿主用 `process.stderr.write`
+写激活诊断，裸字节直接落到我们正在画的终端上 —— 转录显示它**紧接状态栏文字之后、
+无任何光标定位序列**。这些字节**不在任何 buffer 里**（实测三个 buffer 全部 0 命中），
+只在终端字节层。
+
+**修复**：插件在**模块顶层**接管 `process.stderr.write`（警告来自 dsh 重写
+`cordis.yml` 触发的 reload，发生在插件模块求值之后，故顶层足够早），把宿主输出**缓冲**
+而非写终端；`boot-complete` 及 1.5/4/8/15s 各 drain 一次，**回放进聊天区**。
+drain **不释放 writer**（释放再重装会开出竞态窗口，实测 3 次漏 2 次）；状态挂在
+`globalThis` 上以**跨模块重载存活**（reload 会重新求值插件模块）。回放前剥离
+CSI/OSC/C0/DEL 并把 `\r` 归一为 `\n`（宿主会把 spinner 更新与真实行混在一起）。
+
+**诊断不丢**：完整文本进聊天区；`DSH_NVIM_TUI_HOST_STDERR=raw` 可关闭接管。
+
+**验证（真实 PTY）**：宿主 stderr 重定向到文件后为 **0 字节**（100% 被捕获），转录里
+只剩干净的聊天区文本。
+
+> 本版开发过程中还提交过两次方向错误的尝试（启动时清屏、以及 release+re-arm 版接管），
+> 均已由 `0427219` 撤销；此处保留说明以便追溯，不再出现在发布物中。
+
+### 5. 未做的适配（有意）
 
 0.1.7 的新功能 —— MCP 资源发现与 URI 模板、headless `--json`、插件管理页、
 侧边栏文档预览等 —— **绝大多数是宿主/Web 侧实现**。TUI 通过既有服务面
 （如 `tools.schemas()`，签名未变）自然获得，不需要 TUI 侧改动。
 
-### 5. 验证
+### 6. 验证
 
 - 类型面：`tsc --noEmit` 0 错（对着真实 0.1.7-rc.1 类型面）；
   `check`（含 arch-check / app-ops-check）/ `smoke` / `i18n` 全绿。
