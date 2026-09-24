@@ -32,6 +32,7 @@ import { resumeOrCreate } from '../sessions/index.js'
 import { drainPendingInput } from '../commands/index.js'
 import { restoreGlance } from '../statusline/commands/glance.js'
 import { maybeOnboard } from './onboarding.js'
+import { cleanHostStderrText, drainHostStderr } from '../kernel/host-stderr.js'
 import type { AppSlices, WritableSlice } from '../kernel/app.js'
 import type { App } from '../kernel/app.js'
 import { tf, t } from '../kernel/i18n.js'
@@ -245,6 +246,20 @@ export async function boot(app: App): Promise<void> {
     await maybeOnboard(app)
     drainPendingInput(app)
     app.exitDiag('boot-complete', `active=${app.slices.sessions.activeId}`)
+    // The host's stderr is kept off the terminal while the TUI owns it
+    // (kernel/host-stderr.ts) — otherwise its activation warning is painted onto
+    // the input row. Replay it into the chat so the diagnostic still reaches the
+    // user, and re-arm the capture after each drain (releasing restores the raw
+    // writer, so the next host line would land on the terminal again).
+    const replayHostStderr = () => {
+      const text = cleanHostStderrText(drainHostStderr()).trim()
+      if (text === '') return
+      for (const line of text.split('\n')) {
+        if (line.trim() !== '') app.notice(line)
+      }
+    }
+    replayHostStderr()
+    for (const delay of [1500, 4000, 8000, 15000]) setTimeout(replayHostStderr, delay)
     announceReady(app)
     headlessCtl.kick()
   } catch (err: unknown) {

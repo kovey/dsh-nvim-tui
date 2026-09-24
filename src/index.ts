@@ -48,6 +48,18 @@ import { installDeps } from './deps/index.js'
 import { boot, installRuntime } from './boot/boot.js'
 import type { RuntimeCtx, RunnerConfig } from './kernel/types.js'
 
+import { captureHostStartupStderr } from './kernel/host-stderr.js'
+
+// Module-scope side effect, NOT inside apply(): measured in a real PTY, the
+// host's activation warning reaches the terminal only AFTER this module is
+// evaluated (it comes from the reload dsh triggers by rewriting cordis.yml),
+// so importing this file is early enough. Installing it in apply() was also
+// fine, but module scope is the earliest point we control.
+//
+// Without this the raw bytes land on the input/statusline row — see
+// kernel/host-stderr.ts for the fd-level evidence.
+captureHostStartupStderr()
+
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
 export { BUILD_VERSION, BUILD_STAMP } from './kernel/app.js'
 
