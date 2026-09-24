@@ -505,6 +505,17 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
   const slices = { runtime: {}, sessions: {}, ui: {}, ext: {}, trans: {}, agent: {} } as unknown as AppSlices
   // Kernel primitives live on the root as REAL properties; everything else
   // is domain state in `slices`.
+  /** The completion catalog shape pushed to Lua. ONE definition: the boot push
+   *  and refreshCommandCatalog() used to map this separately, and the refresh
+   *  path silently dropped `args` — which killed argument completion right after
+   *  boot, because the refresh overwrote the good catalog. */
+  const catalogEntries = () =>
+    app.commandSpecs.map(({ name, desc, args }) => ({
+      name,
+      desc: t(desc),
+      ...(args === undefined ? {} : { args }),
+    }))
+
   const app: App = {
     ctx,
     runtimeCtx,
@@ -561,11 +572,11 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
       }
       return accepted
     },
-    commandCatalog: () => app.commandSpecs.map(({ name, desc, args }) => ({ name, desc: t(desc), ...(args === undefined ? {} : { args }) })),
+    commandCatalog: () => catalogEntries(),
     refreshCommandCatalog: async (): Promise<void> => {
       // t() at PUSH time (not at registration): /locale re-pushes the catalog
       // and the descriptions must follow the new locale both ways.
-      const entries = app.commandSpecs.map(({ name, desc }) => ({ name, desc: t(desc) }))
+      const entries = catalogEntries()
       const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
       const skills = svc('skills')
       if (rec !== undefined && skills !== undefined) {

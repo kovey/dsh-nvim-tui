@@ -2499,6 +2499,52 @@ description:
   assert.equal(await lua('return type(require("dsh_tui.cmd_menu").suggest)', []), 'function', 'CM.suggest exists')
   assert.equal(await lua('return type(require("dsh_tui.cmd_menu").hint)', []), 'function', 'CM.hint exists')
 
+  // The catalog builder must stay ONE definition. It used to be written twice
+  // (commandCatalog() and refreshCommandCatalog()) and the refresh path dropped
+  // `args`, so argument completion died right after boot when the refresh push
+  // overwrote the good catalog. Measured on a real instance.
+  {
+    const appSrc = fs.readFileSync(path.join(process.cwd(), 'src/kernel/app.ts'), 'utf8')
+    assert.equal((appSrc.match(/args === undefined \? \{\} : \{ args \}/g) ?? []).length, 1,
+      'the completion-catalog mapping is defined exactly once')
+    assert.ok(/const catalogEntries = \(\) =>/.test(appSrc), 'catalogEntries() exists')
+    assert.equal((appSrc.match(/catalogEntries\(\)/g) ?? []).length >= 2, true,
+      'both catalog pushes go through catalogEntries()')
+  }
+
+  // Command argument completion — the Lua side. Pushed through the SAME
+  // set_commands path the runner uses, then asked what it would offer. A
+  // regression here means the input box silently stops hinting.
+  await lua(`require("dsh_tui").set_commands({
+    { name = '/plugin', desc = 'x', args = {
+        { kind = 'oneof', values = { 'install', 'update', 'remove', 'list' }, hint = 'h' },
+        { kind = 'free', label = '<spec>', hint = 'spec hint' },
+        { kind = 'flag', value = '--latest', hint = 'f' },
+    } },
+    { name = '/nometa', desc = 'y' },
+  })`, [])
+  assert.equal(await lua('return type(require("dsh_tui.cmd_menu").suggest)', []), 'function', 'CM.suggest exists')
+  assert.equal(await lua('return type(require("dsh_tui.cmd_menu").hint)', []), 'function', 'CM.hint exists')
+  // After the command name + space the subcommands are offered.
+  assert.equal(await lua('local s = require("dsh_tui.cmd_menu").suggest("/plugin ") return s and #s.values or -1', []),
+    4, 'a bare /plugin offers its four subcommands')
+  // Narrowing by prefix.
+  assert.equal(await lua('local s = require("dsh_tui.cmd_menu").suggest("/plugin re") return s and s.values[1] or "nil"', []),
+    'remove', 'prefix narrows the candidates')
+  // The next argument is free-form: hinted, never completed.
+  assert.equal(await lua('local s = require("dsh_tui.cmd_menu").suggest("/plugin install ") return s and #s.values or -1', []),
+    0, 'a free-form argument offers no candidates')
+  assert.equal(await lua('return require("dsh_tui.cmd_menu").hint("/plugin install ")', []),
+    '<spec>   spec hint', 'the free-form argument shows its label + hint')
+  // Flags are position-INDEPENDENT: `--latest` is typed after the spec, i.e. one
+  // slot past where it is declared. Measured requirement.
+  assert.equal(await lua('local s = require("dsh_tui.cmd_menu").suggest("/plugin install foo --") return s and s.values[1] or "nil"', []),
+    '--latest', 'a flag is offered even one argument slot later')
+  // Commands without metadata must not be touched at all.
+  assert.equal(await lua('return tostring(require("dsh_tui.cmd_menu").hint("/nometa "))', []),
+    'nil', 'a command without args metadata produces no hint')
+  await lua(`require("dsh_tui").set_commands({ { name = '/exit', desc = 'exit' } })`, [])
+
   // 9l. bell + file tab + append_input helpers.
   // The terminal bell / OSC notification feature was REMOVED: the plugin's nvim
   // runs `--embed`, so its stdout is the RPC socket — no escape written from
