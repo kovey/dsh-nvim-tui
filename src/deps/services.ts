@@ -51,6 +51,13 @@ const ROW_TEMPLATES: Record<string, RowTemplate> = {
     pkg: '@deepseek-ai/dsh-session-stats', file: 'package.json',
     yaml: "    - id: session-stats\n      name: '@deepseek-ai/dsh-session-stats'",
   },
+  // dsh 0.1.7 renamed the PTC seam: `dsh-code-runtime*` stopped at 0.1.5-rc.3
+  // and was replaced by `dsh-ptc-runtime` (ctx.ptcRuntime). Keep the OLD key too
+  // so a 0.1.5 host still reports correctly — both are probed by package name.
+  'ptc-runtime': {
+    pkg: '@deepseek-ai/dsh-ptc-runtime', file: 'package.json',
+    yaml: "    - id: ptc-runtime\n      name: '@deepseek-ai/dsh-ptc-runtime'",
+  },
   'code-runtime': {
     pkg: '@deepseek-ai/dsh-code-runtime-worker-thread', file: 'package.json',
     yaml: "    - id: code-runtime\n      name: '@deepseek-ai/dsh-code-runtime-worker-thread'",
@@ -264,6 +271,7 @@ const HOST_SVC_KEYS: Record<string, string> = {
   'message-feedback': 'messageFeedback',
   'session-reference': 'sessionReferenceResolver',
   'session-stats': 'sessionStats',
+  'ptc-runtime': 'ptcRuntime',
   'code-runtime': 'codeRuntime',
   'subagent-model-selection-settings': 'subagentModelSelection',
 }
@@ -315,7 +323,8 @@ export async function checkAll(app: App, s: AppSlices['agent'], patchPath: strin
   host('message-feedback', 'message-feedback', '/fb 消息反馈', 'messageFeedback')
   host('session-reference', 'session-reference', '💬 跨会话引用补全', 'sessionReferenceResolver')
   host('session-stats', 'session-stats', '状态栏 TTFT / tok/s', 'sessionStats')
-  host('code-runtime', 'code-runtime', '/preset ptc 的 run_code', 'codeRuntime')
+  host('ptc-runtime', 'ptc-runtime', '/preset ptc 的 run_code（0.1.7+）', 'ptcRuntime')
+  host('code-runtime', 'code-runtime', '/preset ptc 的 run_code（0.1.5）', 'codeRuntime')
   host('subagent-model-selection-settings', 'subagent-model-selection-settings', '子代理独立模型设置', 'subagentModelSelection')
 
   // -- 配置生效性 -----------------------------------------------------------

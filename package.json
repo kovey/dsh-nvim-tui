@@ -35,9 +35,9 @@
     "i18n:report": "node scripts/i18n-check.mjs"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-agent": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-llm": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-tools": "^0.1.5-rc.2"
+    "@deepseek-ai/dsh-agent": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-llm": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-tools": "0.1.7-rc.1"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-tools": {
@@ -61,7 +61,22 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "@deepseek-ai/dsh-tools": "^0.1.5-rc.2",
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/dsh-agent": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-invariants": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-llm": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-ptc-runtime": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-sandbox": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-sandbox-policy": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-scope": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-session": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-session-projection": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-tools": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-user-approval": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-util-values": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-workspace": "0.1.7-rc.1",
     "@types/node": "^26.2.0",
     "typescript": "^7.0.2"
   }

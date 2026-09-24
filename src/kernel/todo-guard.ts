@@ -26,6 +26,29 @@
  * @module dsh-nvim-tui/kernel/todo-guard
  */
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
+
+/**
+ * Source kind for this plugin's injected reminders.
+ *
+ * dsh 0.1.7 REMOVED the shared catch-all `plugin` kind: `MessageSourceMap` is a
+ * merge-extensible sum type and "each producer declares its own `kind` in its
+ * own module". Augmenting the map here is the documented pattern (dsh-tools
+ * does the same for `tool-registry`), and it is also what our own feed expects —
+ * feed.ts tests positively for kind `'user'` and treats every other kind as
+ * host-injected context, so an unrecognised kind renders as a dim notice row
+ * rather than masquerading as human input.
+ *
+ * Intersecting `ContextFormed` is required to keep carrying `form: 'notice'` +
+ * `summary`: the feed collapses that combination to its one-line account.
+ */
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'nvim-tui-todo-guard': {
+      kind: 'nvim-tui-todo-guard'
+    } & ContextFormed
+  }
+}
 
 /** Stable section name (a duplicate registration would throw). */
 export const TODO_GUARD_SECTION = 'nvim-tui-todo-discipline'
@@ -179,7 +202,7 @@ export function installTodoGuard(agentCtx: unknown, opts?: { enabled?: boolean; 
             ...(Array.isArray(decision?.messages) ? decision.messages : []),
             createUserMessage({
               content: [{ type: 'text', text: reminder }],
-              source: { kind: 'plugin', plugin: 'nvim-tui-todo-guard', form: 'notice', summary: '任务清单纪律提醒' },
+              source: { kind: 'nvim-tui-todo-guard', form: 'notice', summary: '任务清单纪律提醒' },
             }),
           ],
         }
@@ -217,7 +240,7 @@ export function installTodoGuard(agentCtx: unknown, opts?: { enabled?: boolean; 
         state.turnEndSteered = true
         agent.steer(createUserMessage({
           content: [{ type: 'text', text: reminder }],
-          source: { kind: 'plugin', plugin: 'nvim-tui-todo-guard', form: 'notice', summary: '任务清单收尾提醒' },
+          source: { kind: 'nvim-tui-todo-guard', form: 'notice', summary: '任务清单收尾提醒' },
         }))
       } catch (err) {
         fail('turn-stopping', err)
