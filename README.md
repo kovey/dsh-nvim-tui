@@ -95,11 +95,11 @@ dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#<tag>" # 自定义 profile
 #    摧毁终端显示（v0.4.4 修了非 TTY 场景；v0.4.5 起该功能已整体移除）。
 
 # 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
-dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.7"
+dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.8"
 ```
 
 > **宿主 dsh 升级与适配**见 [UPGRADE.md](./UPGRADE.md)。
-> 版本轴：v0.4.1 起 `^0.1.5-rc.2` → **v0.4.7 起精确锚定 `0.1.7-rc.1`**。
+> 版本轴：v0.4.1 起 `^0.1.5-rc.2` → **v0.4.7 起精确锚定 `0.1.7-rc.x`（v0.4.8 = rc.2）**。
 >
 > ⚠️ **锚点语义变了**：0.1.7 的 peer 声明是**精确版本**（`"@deepseek-ai/dsh-agent": "0.1.7-rc.1"`，
 > 无 `^`），所以本插件也改为精确锚定 —— 宿主与插件必须同版本族，不能再跨 rc 混用。
@@ -143,7 +143,7 @@ dsh --profile nvim-tui
 > 本仓库根目录就是 bundle 本身：`cordis.patch.yml` 挂载 `nvim-tui-runner` 行，
 > package.json 的 `dsh.bundle.patch` 声明了它。
 
-启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.7 (build YYYY-MM-DD HH:mm) · channel N`。
+启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.8 (build YYYY-MM-DD HH:mm) · channel N`。
 输入 `/help` 随时查看全部命令。
 
 ## 配置

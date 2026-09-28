@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.4.7（宿主 0.1.7-rc.1） | [v0.4.7 → v0.4.8（**宿主 0.1.7-rc.1 → 0.1.7-rc.2**，锚点前移）](#v047--v048宿主-017-rc1--017-rc2) |
 | nvim-tui v0.4.6（宿主 0.1.5-rc.2） | [v0.4.6 → v0.4.7（**宿主 0.1.5-rc.2 → 0.1.7-rc.1**，含破坏性适配）](#v046--v047宿主-015-rc2--017-rc1) |
 | nvim-tui v0.4.5（宿主 0.1.5-rc.2） | [v0.4.5 → v0.4.6（发布物修正 + 门禁加固，零破坏）](#v045--v046发布物修正--门禁加固零破坏) |
 | nvim-tui v0.4.4（宿主 0.1.5-rc.2） | [v0.4.4 → v0.4.5（移除 /bell 与终端通知，零破坏）](#v044--v045移除-bell-与终端通知零破坏) |
@@ -33,6 +34,49 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.4.7 → v0.4.8（宿主 0.1.7-rc.1 → 0.1.7-rc.2）
+
+> **结论先行**：**代码零改动**，只是 peer 锚点前移。rc.2 已成为 `latest`。
+> 但 peer 是**精确版本**，所以 v0.4.8 与 rc.1 宿主**不匹配** —— 请宿主与本插件一起升。
+
+### 升级步骤
+
+```bash
+# 1) 先升宿主（rc.2 现在是 latest）
+npm i -g @deepseek-ai/dsh@latest
+
+# 2) 再升插件
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.4.8"
+
+# 3) 重启
+dsh --profile <name>
+```
+
+### 为什么这次是零破坏
+
+双版本 tarball diff 逐包比对 `lib/types` 与 `peerDependencies`：
+
+- `dsh-agent`：类型面**完全一致**
+- `dsh-llm`：**纯新增**（`ACCOUNT_QUOTA_EXCEEDED_CODE` / `projectToolUpdates` /
+  `ToolUpdate` / `ToolHistory` / `ProjectedToolUpdates`，以及可选字段 `toolUpdate`）
+- `dsh-tools`：**纯新增**（审批决策的可选 `displayReason`)
+
+无移除、无签名变更。peers 本身逐字节相同，所以只有锚点字符串变了。
+
+### ⚠️ rc.2 会跳过锚在 rc.1 的插件
+
+升级宿主后，profile 里**每个锚定 `0.1.7-rc.1` 的插件都会被整个跳过**：
+
+```
+dsh: skipping profile bundle "dsh-memory": Error: Plugin dsh-memory@0.2.0 is
+    incompatible with dsh 0.1.7-rc.2: peerDependencies {…}
+```
+
+**这不是本插件的问题** —— 是 peer 精确锚点与 rc.2 兼容性检查共同作用的结果。
+排查方法：把启动 stderr 抓下来看 `skipping profile bundle` 那几行，逐个项目前移锚点。
+
+若你暂时不想动这些插件，可以**留在 v0.4.7 + rc.1**（那一组是自洽的）。
 
 ## v0.4.6 → v0.4.7（宿主 0.1.5-rc.2 → 0.1.7-rc.1）
 

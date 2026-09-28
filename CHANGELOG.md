@@ -3,6 +3,53 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.8] — 2026-09-28
+
+> **宿主锚点前移**：本版锚定 **dsh 0.1.7-rc.2**（rc.2 已成为 `latest`）。
+> peer 是**精确版本**，所以本版与 0.1.7-rc.1 宿主**不匹配** —— 请一起升级。
+
+### Changed
+
+- **peer 锚点 0.1.7-rc.1 → 0.1.7-rc.2**（peer 3 个 + devDependencies 15 个 + lock 同步）。
+  peers 本身在 rc1→rc2 之间**逐字节相同**，所以这是纯粹的锚点前移。
+
+### 适配结论：rc1 → rc2 **无破坏性变更**
+
+双版本 tarball diff 取证（`dsh-agent` / `dsh-llm` / `dsh-tools`，逐包比对
+`lib/types` 与 `peerDependencies`）：
+
+| 包 | 差异 | 性质 |
+|---|---|---|
+| `dsh-agent` | 类型面**完全一致**（0 个文件不同） | — |
+| `dsh-llm` | 新增 `ACCOUNT_QUOTA_EXCEEDED_CODE`、`projectToolUpdates`、`ToolUpdate` /
+  `ToolHistory` / `ProjectedToolUpdates`；`LlmResolvedModelInfo` 增可选 `toolUpdate` | **纯增量** |
+| `dsh-tools` | 审批决策增可选 `displayReason`（本地化提示文案） | **纯增量** |
+
+无移除、无签名变更，故本插件**代码零改动**即可适配。类型面已用 **rc.2 的真实
+`.d.ts` 跑过 `tsc`**（并核对 rc2 独有符号 `ProjectedToolUpdates` /
+`ACCOUNT_QUOTA_EXCEEDED_CODE` / `displayReason` 确实在场，确保验的不是旧类型）。
+
+### 注意：rc.2 会跳过锚在 rc.1 的插件
+
+真机实测：升级宿主到 rc.2 后，profile 里 8 个插件被**整个跳过**：
+
+```
+dsh: skipping profile bundle "dsh-memory": Error: Plugin dsh-memory@0.2.0 is
+    incompatible with dsh 0.1.7-rc.2: peerDependencies {…}
+```
+
+（`dsh-memory` · `dsh-audit-trail` · `dsh-evidence-gate` · `dsh-orchestrator` ·
+`dsh-quality-gate` · `dsh-role-guard` · `dsh-spec-gate` · `dsh-test-design-gate`）
+
+这是 **peer 精确锚点 + rc.2 的兼容性检查**共同作用的结果，**不是本插件的缺陷** ——
+每个锚在 rc.1 的插件都要各自前移锚点。
+
+### 验证
+
+真机 e2e（真实 PTY）：`did not activate` = 0、无失败条目、TUI 正常启动、
+`SessionFormatError` = 0；门禁 check（含 arch-check / app-ops-check）/ smoke /
+i18n 全绿。
+
 ## [v0.4.7（2026-09-24）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.7)
 
 覆盖提交：
