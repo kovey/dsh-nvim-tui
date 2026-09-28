@@ -3,20 +3,59 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [v0.4.8] — 2026-09-28
+## [v0.4.8（2026-09-28）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.8)
 
-> **宿主锚点前移**：本版锚定 **dsh 0.1.7-rc.2**（rc.2 已成为 `latest`）。
-> peer 是**精确版本**，所以本版与 0.1.7-rc.1 宿主**不匹配** —— 请一起升级。
+> **升级两步都要做**：本版同时带来**宿主锚点前移**（rc.2）与**一批新功能**。
+> peer 是精确版本，故本版与 0.1.7-rc.1 宿主**不匹配** —— 宿主与插件请一起升。
 
-### Changed
+### Added · 命令参数补全（本版主要功能）
+
+选择命令后按 <Tab> 现在能**补全子命令与固定参数**，输入框上方还会浮动提示"该填什么"。
+
+- **复用同一个选择框**：`/plugin` + <Tab> 弹出 `install|update|remove|list`，边打字边收窄，
+  选中即插入（不重复已输入的前缀）。参数补全不是新菜单 —— 是同一个菜单。
+- **文法是一棵树，不是平铺列表**：`oneof.byValue` 给每个子命令**自己的**参数表，
+  **空表 = 终止**。这让 `/plugin list`（不接受任何后续参数）之后**不再提示参数** ——
+  平铺模型做不到这点，会持续误导。
+- **34 条带参数命令全部覆盖**（`src/kernel/command-args.ts` 集中一张表 + 命令内联优先）。
+  自由的文本/路径只提示不补全；`/model` `/permission` `/preset` 暂只提示（候选需问服务，
+  给错的候选比不给更糟）。
+- **接入点选在 `CM.update()`**：所有输入路径都汇聚于此，**包括空格后菜单关闭的那一刻**
+  —— 那正是最需要提示的时候。
+- **flag 与位置无关**：`--latest` 写在 spec 之后也能被给出（实测需求）。
+
+### Added · P0
+
+- **`/tasks log <job-id>` —— 后台任务实时输出**。注册表原本只给状态/进度，看不到任务在
+  输出什么。现在每 700ms 增量读取 `JobView.output.spillPaths` 指向的完整流，把尾部推进
+  **既有的进度浮窗**（与插件安装同一个 —— 再写一个浮窗就是再写一套关闭/拆解 bug）。
+- **`/deliverables` 交给系统程序**。产物不再只能在 nvim 标签页打开：`O` 用系统程序打开、
+  `R` 在文件管理器中显示（PDF/图片在 nvim 里没有用）。平台映射抽成**纯函数且平台可传参**，
+  未知平台**不给动作而不是给一个坏的**；Lua 侧用 `jobstart`（非 `:!`）——不阻塞、不经 shell。
+- **`/plugins:set` 启停 profile 条目**。Web 插件页能开关是因为它拥有 settings store；
+  本插件没有 —— profile 的 `cordis.patch.yml` 就是那个开关。所以只改**一行**（注释掉条目的
+  ``- id:`` 行）。安全规则：**符号链接反推 profile**（进程拿不到 profile 名）、歧义即拒绝、
+  严格整行匹配、先备份再写、已是目标状态不写空 diff、只允许切换 profile 自己声明的条目。
+
+### Added · P1
+
+- **`/diff` 左右对照审阅**。feed 里的统一 diff 适合顺序阅读，不适合审阅。现在在新标签页开
+  两个 `diff` 窗口（行匹配/行内高亮/同步滚动都是 nvim 自己的），打开即跳到第一处改动。
+  数据用**工具结果到达时捕获的两侧内容**，而非重读文件 —— 重读显示的是"现在的样子"，
+  不是"这一回合改了什么"。
+- **`/mcp` 如实呈现资源类工具**。核实结论：0.1.7 的 MCP 资源支持**不是** UI 可查询的服务面，
+  而是三个共享工具（`list_mcp_resources` / `list_mcp_resource_templates` /
+  `read_mcp_resource`）由 `mcpResources` 注册给 **agent 调用**（`McpResourceRuntime` 只对
+  连接插件暴露 `register()`）。故不造"看起来能用、实际列空"的命令，只如实告知能力存在。
+
+### Changed · 宿主锚点前移
 
 - **peer 锚点 0.1.7-rc.1 → 0.1.7-rc.2**（peer 3 个 + devDependencies 15 个 + lock 同步）。
   peers 本身在 rc1→rc2 之间**逐字节相同**，所以这是纯粹的锚点前移。
 
-### 适配结论：rc1 → rc2 **无破坏性变更**
+### 适配结论：rc1 → rc2 **无破坏性变更**（代码零改动）
 
-双版本 tarball diff 取证（`dsh-agent` / `dsh-llm` / `dsh-tools`，逐包比对
-`lib/types` 与 `peerDependencies`）：
+双版本 tarball diff 取证（逐包比对 `lib/types` 与 `peerDependencies`）：
 
 | 包 | 差异 | 性质 |
 |---|---|---|
@@ -25,9 +64,9 @@
   `ToolHistory` / `ProjectedToolUpdates`；`LlmResolvedModelInfo` 增可选 `toolUpdate` | **纯增量** |
 | `dsh-tools` | 审批决策增可选 `displayReason`（本地化提示文案） | **纯增量** |
 
-无移除、无签名变更，故本插件**代码零改动**即可适配。类型面已用 **rc.2 的真实
-`.d.ts` 跑过 `tsc`**（并核对 rc2 独有符号 `ProjectedToolUpdates` /
-`ACCOUNT_QUOTA_EXCEEDED_CODE` / `displayReason` 确实在场，确保验的不是旧类型）。
+无移除、无签名变更，故本插件**代码零改动**即可适配。类型面已用 **rc.2 的真实 `.d.ts`
+跑过 `tsc`**（并核对 rc2 独有符号确实在场，确保验的不是旧类型 —— 只改 `package.json`
+而 `node_modules` 仍是 rc.1 时，`tsc` 验的是旧类型，这是"自以为适配了"的经典陷阱）。
 
 ### 注意：rc.2 会跳过锚在 rc.1 的插件
 
@@ -42,13 +81,36 @@ dsh: skipping profile bundle "dsh-memory": Error: Plugin dsh-memory@0.2.0 is
 `dsh-quality-gate` · `dsh-role-guard` · `dsh-spec-gate` · `dsh-test-design-gate`）
 
 这是 **peer 精确锚点 + rc.2 的兼容性检查**共同作用的结果，**不是本插件的缺陷** ——
-每个锚在 rc.1 的插件都要各自前移锚点。
+每个锚在 rc.1 的插件都要各自前移锚点。排查：抓启动 stderr 看 `skipping profile bundle`。
+
+### 修复
+
+- **命令目录刷新路径漏传 `args`**，导致启动后参数补全静默失效。同一份目录被映射了两次
+  （`commandCatalog()` 与 `refreshCommandCatalog()`），刷新那次漏了 `args` 并**覆盖**掉
+  正确的那份。已**收敛为单一 `catalogEntries()`** —— 从结构上消除漂移，并加守门断言
+  （映射表达式只允许出现 1 次，变异验证：改回丢 `args` 即精确失败）。
+- 顺带修掉三处测试自身的错：`matchAll` 产出的是**数组**（无 `.group()`）；`byValue` 只能在
+  `oneof` 分支访问（改用类型收窄而非强转）；对称性守门初版写成恒真断言。
 
 ### 验证
 
-真机 e2e（真实 PTY）：`did not activate` = 0、无失败条目、TUI 正常启动、
-`SessionFormatError` = 0；门禁 check（含 arch-check / app-ops-check）/ smoke /
-i18n 全绿。
+真机 e2e（真实 PTY，宿主 rc.2）：`did not activate` = **0**、无失败条目、TUI 正常启动、
+`SessionFormatError` = **0**；门禁 check（含 arch-check / app-ops-check）/ smoke /
+i18n 全绿。多处改动做了**变异验证**（移除被测逻辑后断言是否真会失败），并如实标注了
+两处"变异后仍通过"的结论 —— `windo diffthis` 本身已设置 `scrollbind`（故显式设置是冗余的，
+非承重结构）；空分支终止靠索引越界也能达成（显式判定是自解释而非唯一防线）。
+
+覆盖提交：
+[`2e0e729`](https://github.com/kovey/dsh-nvim-tui/commit/2e0e729) ·
+[`53058fa`](https://github.com/kovey/dsh-nvim-tui/commit/53058fa) ·
+[`2c012c9`](https://github.com/kovey/dsh-nvim-tui/commit/2c012c9) ·
+[`62a76e7`](https://github.com/kovey/dsh-nvim-tui/commit/62a76e7) ·
+[`0d47de2`](https://github.com/kovey/dsh-nvim-tui/commit/0d47de2) ·
+[`9231bb9`](https://github.com/kovey/dsh-nvim-tui/commit/9231bb9) ·
+[`addea21`](https://github.com/kovey/dsh-nvim-tui/commit/addea21) ·
+[`c32789a`](https://github.com/kovey/dsh-nvim-tui/commit/c32789a) ·
+[`8d3e623`](https://github.com/kovey/dsh-nvim-tui/commit/8d3e623) ·
+[`cfeb1e1`](https://github.com/kovey/dsh-nvim-tui/commit/cfeb1e1)
 
 ## [v0.4.7（2026-09-24）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.7)
 
