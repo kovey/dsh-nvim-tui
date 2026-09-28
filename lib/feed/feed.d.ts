@@ -101,6 +101,12 @@ interface ToolCallRecord {
     name: string;
     startedAt: number;
 }
+/** Prefix for a quota failure, or '' for anything else.
+ *
+ * Pure and exported so the mapping is asserted directly: the two codes mean
+ * different things and a wrong mapping sends the user to top up the wrong
+ * account — which is exactly the mistake the codes exist to prevent. */
+export declare const quotaAdvice: (code: string | undefined) => string;
 export declare class FeedRenderer {
     nvim: NeovimClient;
     bufId: number;

@@ -136,6 +136,17 @@ interface ToolCallRecord {
   startedAt: number
 }
 
+/** Prefix for a quota failure, or '' for anything else.
+ *
+ * Pure and exported so the mapping is asserted directly: the two codes mean
+ * different things and a wrong mapping sends the user to top up the wrong
+ * account — which is exactly the mistake the codes exist to prevent. */
+export const quotaAdvice = (code: string | undefined): string => {
+  if (code === 'ACCOUNT_QUOTA') return t('⚠ 账号额度已用尽 —— 在账号计费页补充额度（不是 API Key 的余额）\n')
+  if (code === 'QUOTA') return t('⚠ API Key 余额不足 —— 请为该 Key 充值\n')
+  return ''
+}
+
 export class FeedRenderer {
   nvim: NeovimClient
   bufId: number
@@ -779,10 +790,20 @@ export class FeedRenderer {
           // A turn that dies (missing credential, gateway, …) must be visible.
           this.commitReasoning()
           this.commitTail()
-          const msg = chunk.reason.failure?.message
+          const failure = chunk.reason.failure
+          const base = failure?.message
             ?? chunk.reason.error?.message
             ?? JSON.stringify(chunk.reason)
-          this.pushError(msg)
+          // A quota failure is actionable, and the ACTION DIFFERS by code: an
+          // account quota is replenished on the billing page, while a plain
+          // `QUOTA` is the API key's own balance. dsh 0.1.7-rc.2 introduced
+          // `ACCOUNT_QUOTA` precisely to tell them apart — the Web UI warns
+          // against topping up the wrong one, and dropping the code here would
+          // put the TUI back to a message the user cannot act on.
+          // `failure` arrives as a loosely typed event payload (not the host's
+          // own type at this boundary), so the code is read defensively.
+          const fcode = (failure as { code?: unknown } | undefined)?.['code']
+          this.pushError(quotaAdvice(typeof fcode === 'string' ? fcode : undefined) + base)
         }
         break
       }

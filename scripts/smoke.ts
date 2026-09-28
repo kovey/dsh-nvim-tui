@@ -33,6 +33,7 @@ import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market
 import { COMMAND_ARGS } from '../lib/kernel/command-args.js'
 import { togglePluginEntry } from '../lib/kernel/plugin-toggle.js'
 import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
+import { quotaAdvice } from '../lib/feed/feed.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN, installTodoGuard } from '../lib/kernel/todo-guard.js'
@@ -2657,6 +2658,21 @@ description:
     vim.cmd('tabclose')
     return n`, []),
     2, 'a brand-new file (nil old side) still opens both sides')
+
+  // Quota advice: the two codes mean DIFFERENT things, and a wrong mapping sends
+  // the user to top up the wrong account — the exact mistake these codes exist to
+  // prevent (`ACCOUNT_QUOTA` is added in 0.1.7-rc.2 for the account billing page;
+  // plain `QUOTA` is the API key's own balance). Asserted directly because
+  // dropping the code yields a message the user cannot act on.
+  {
+    assert.ok(quotaAdvice('ACCOUNT_QUOTA').includes('账号'), 'ACCOUNT_QUOTA points at the account')
+    assert.ok(quotaAdvice('ACCOUNT_QUOTA').includes('不是 API Key'),
+      'ACCOUNT_QUOTA explicitly rules OUT the API key (that is the whole point)')
+    assert.ok(quotaAdvice('QUOTA').includes('API Key'), 'plain QUOTA points at the API key')
+    assert.equal(quotaAdvice('ACCOUNT_QUOTA'), quotaAdvice('ACCOUNT_QUOTA'), 'mapping is stable')
+    assert.equal(quotaAdvice(undefined), '', 'no code → no advice (never guess)')
+    assert.equal(quotaAdvice('SOMETHING_ELSE'), '', 'an unknown code adds nothing')
+  }
 
   // Command argument completion — the Lua side. Pushed through the SAME
   // set_commands path the runner uses, then asked what it would offer. A
