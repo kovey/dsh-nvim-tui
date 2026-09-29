@@ -141,6 +141,18 @@ interface ToolCallRecord {
  * Pure and exported so the mapping is asserted directly: the two codes mean
  * different things and a wrong mapping sends the user to top up the wrong
  * account — which is exactly the mistake the codes exist to prevent. */
+/**
+ * How a FAILED tool result must be presented.
+ *
+ * `unknown` is the case that matters: the call may already have taken effect
+ * (a run, a write, a network side effect), so showing it as a plain `✗` invites
+ * a blind retry of something that already happened. dsh 0.2.0 spells this out in
+ * its repair docs ("cause-specific retry guidance") and the code is emitted by
+ * our own tail repair as well. Pure, so the mapping is asserted directly.
+ */
+export const failureMark = (code: string | undefined): 'unknown' | 'failed' =>
+  code === 'TOOL_OUTCOME_UNKNOWN' ? 'unknown' : 'failed'
+
 export const quotaAdvice = (code: string | undefined): string => {
   if (code === 'ACCOUNT_QUOTA') return t('⚠ 账号额度已用尽 —— 在账号计费页补充额度（不是 API Key 的余额）\n')
   if (code === 'QUOTA') return t('⚠ API Key 余额不足 —— 请为该 Key 充值\n')
@@ -840,11 +852,28 @@ export class FeedRenderer {
         let line: string
         if (failed) {
           const err = data.error
-          line = `✗ ${name}${elapsedText} · ${err?.code ?? err?.name ?? 'failed'}${previewPart}`
+          const code = (err as { code?: unknown } | undefined)?.['code']
+          // A tool whose OUTCOME IS UNKNOWN is not a plain failure: the call may
+          // have taken effect (# run / write / network side effects). Marking it
+          // ✗ invites a blind retry of an operation that already happened, so it
+          // gets its own shape and an explicit "verify first" line.
+          // dsh 0.2.0 states this in its own repair docs ("cause-specific retry
+          // guidance") and the code is emitted by our own tail repair too.
+          if (failureMark(typeof code === 'string' ? code : undefined) === 'unknown') {
+            line = `⚠ ${name}${elapsedText} · ${t('结果未知')}${previewPart}`
+          } else {
+            line = `✗ ${name}${elapsedText} · ${err?.code ?? err?.name ?? 'failed'}${previewPart}`
+          }
         } else {
           line = `✓ ${name}${elapsedText}${previewPart}`
         }
+        const errCode = (data.error as { code?: unknown } | undefined)?.['code']
+        const unknownOutcome = failed
+          && failureMark(typeof errCode === 'string' ? errCode : undefined) === 'unknown'
         const outLines = structured === null || this.dense ? [line] : [line, ...structured.map((h) => `  · ${h}`)]
+        if (unknownOutcome) {
+          outLines.push(`  ${t('· 该操作可能已生效：先核实副作用再重试，不要盲目重跑')}`)
+        }
         for (const l of outLines) {
           if (this.reasoningBuf !== null) {
             this.panelLines.push(l)

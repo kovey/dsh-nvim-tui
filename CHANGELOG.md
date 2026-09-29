@@ -3,6 +3,65 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.9] — 2026-09-28
+
+> **宿主锚点前移**：本版锚定 **dsh 0.2.0-rc.1**。peer 是**精确版本**，故与
+> 0.1.7-rc.2 宿主**不匹配** —— 宿主与插件请一起升（0.2.0-rc.1 在 `next` tag 上）。
+
+### Added · 额度不足时区分「账号额度」与「API Key 余额」
+
+rc2 起新增 {B}ACCOUNT_QUOTA{B} 错误码（*可通过第一方计费页补充的账号额度*），与既有的
+{B}QUOTA{B}（**API Key 自己的余额**）是**两个码** —— 目的正是避免用户**充到错误的账号**。
+
+原先的错误渲染只取 {B}failure.message{B}、**丢掉 {B}code{B}**，于是两种额度耗尽提示长得一样。
+现由纯函数 {B}quotaAdvice(code){B} 分流：{B}ACCOUNT_QUOTA{B} → 账号计费页（并**显式排除**
+API Key 余额）；{B}QUOTA{B} → 为该 Key 充值；其它/无码 → **不加建议**（加错建议比不加更糟）。
+
+### Added · 工具结果未知时不再伪装成普通失败
+
+dsh 0.2.0 的修复说明：*已执行但结果未知的操作会提示先核实副作用，不盲目重试*。
+对应 `TOOL_OUTCOME_UNKNOWN` —— 一个**结果未知**的工具调用不是普通失败：它可能**已经
+生效**（run / write / 网络副作用），标成 `✗` 会诱导用户**重跑一件已经发生过的事**。
+
+本版把这种情况单独呈现：`⚠` 标记 + 「**该操作可能已生效：先核实副作用再重试，
+不要盲目重跑**」一行。判定抽成纯函数 `failureMark(code)`（导出以便直接断言），
+区分 `TOOL_OUTCOME_UNKNOWN`（unknown）与 `TOOL_NOT_STARTED`（failed —— 根本没开始，
+可安全重试）。
+
+### Changed · 宿主锚点前移
+
+- **peer 锚点 0.1.7-rc.2 → 0.2.0-rc.1**（peer 3 个 + devDependencies + lock 同步）。
+
+### 适配结论：rc.2 → 0.2.0-rc.1 **无破坏性变更**（零代码改动）
+
+双版本 tarball diff 取证：
+
+| 包 | 差异 | 性质 |
+|---|---|---|
+| `dsh-agent` | 类型面 **0 文件不同**；peer **键集合完全相同** | — |
+| `dsh-llm` | 类型面 **0 文件不同** | — |
+| `dsh-tools` | 类型面 **0 文件不同**；peer 键集合完全相同 | — |
+| `dsh-session` | 仅**新增导出** `ToolCallRecovery`（类型） | **纯增量** |
+
+无移除、无签名变更。类型面已用 **0.2.0-rc.1 的真实 `.d.ts` 跑过 `tsc`**，并核对
+新版独有符号 `ToolCallRecovery` 在场（确保验的不是旧类型 —— 只改 `package.json` 而
+`node_modules` 仍是旧版时，`tsc` 验的是旧类型，这是"自以为适配了"的经典陷阱）。
+
+### 验证
+
+真机 e2e（真实 PTY，宿主 0.2.0-rc.1）：`did not activate` = 0、本插件未被跳过、
+TUI 正常启动、`SessionFormatError` = 0、横幅显示 `dsh-nvim-tui 0.4.9`。
+
+### 提示：另外两个插件也需要前移锚点
+
+同一次实测显示 `dsh-memory@0.2.1` 与 `dsh-chat-interaction@0.1.8` 被 0.2.0-rc.1
+跳过（前者精确锚 `0.1.7-rc.2`，后者的范围 `^0.1.5-rc.1 || ^0.1.7-rc.1 || ^0.1.7-rc.2`
+未含 0.2.0）。**与本插件无关**，但两个都要各自发布新锚点。
+
+覆盖提交：
+[`4773661`](https://github.com/kovey/dsh-nvim-tui/commit/4773661) ·
+[`cf001b5`](https://github.com/kovey/dsh-nvim-tui/commit/cf001b5)
+
 ## [v0.4.8（2026-09-28）](https://github.com/kovey/dsh-nvim-tui/releases/tag/v0.4.8)
 
 > **升级两步都要做**：本版同时带来**宿主锚点前移**（rc.2）与**一批新功能**。

@@ -33,7 +33,7 @@ import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market
 import { COMMAND_ARGS } from '../lib/kernel/command-args.js'
 import { togglePluginEntry } from '../lib/kernel/plugin-toggle.js'
 import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
-import { quotaAdvice } from '../lib/feed/feed.js'
+import { failureMark, quotaAdvice } from '../lib/feed/feed.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN, installTodoGuard } from '../lib/kernel/todo-guard.js'
@@ -2672,6 +2672,19 @@ description:
     assert.equal(quotaAdvice('ACCOUNT_QUOTA'), quotaAdvice('ACCOUNT_QUOTA'), 'mapping is stable')
     assert.equal(quotaAdvice(undefined), '', 'no code → no advice (never guess)')
     assert.equal(quotaAdvice('SOMETHING_ELSE'), '', 'an unknown code adds nothing')
+  }
+
+  // A tool whose outcome is UNKNOWN must not be shown as a plain failure: the
+  // call may already have taken effect, and `✗` invites a blind retry of work
+  // that already happened. dsh 0.2.0 gives this its own code and its repair docs
+  // prescribe cause-specific retry guidance; our own tail repair emits it too.
+  {
+    assert.equal(failureMark('TOOL_OUTCOME_UNKNOWN'), 'unknown',
+      'an unknown outcome is NOT rendered as a plain failure')
+    assert.equal(failureMark('TOOL_NOT_STARTED'), 'failed',
+      'a call that never started IS a plain failure (safe to retry)')
+    assert.equal(failureMark(undefined), 'failed', 'no code → plain failure')
+    assert.equal(failureMark('SOMETHING_ELSE'), 'failed', 'an unknown code is not special-cased')
   }
 
   // Command argument completion — the Lua side. Pushed through the SAME

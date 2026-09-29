@@ -106,6 +106,16 @@ interface ToolCallRecord {
  * Pure and exported so the mapping is asserted directly: the two codes mean
  * different things and a wrong mapping sends the user to top up the wrong
  * account — which is exactly the mistake the codes exist to prevent. */
+/**
+ * How a FAILED tool result must be presented.
+ *
+ * `unknown` is the case that matters: the call may already have taken effect
+ * (a run, a write, a network side effect), so showing it as a plain `✗` invites
+ * a blind retry of something that already happened. dsh 0.2.0 spells this out in
+ * its repair docs ("cause-specific retry guidance") and the code is emitted by
+ * our own tail repair as well. Pure, so the mapping is asserted directly.
+ */
+export declare const failureMark: (code: string | undefined) => 'unknown' | 'failed';
 export declare const quotaAdvice: (code: string | undefined) => string;
 export declare class FeedRenderer {
     nvim: NeovimClient;
