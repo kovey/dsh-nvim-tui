@@ -119,6 +119,7 @@ export const COMMAND_ARGS: Record<string, CommandArg[]> = {
   ],
 
   // -- free text / paths (hinted, never completed) -------------------------
+  '/changes': free('[路径]', t('不填则列出全部改动过的文件')),
   '/archive': free('[会话id]'),
   '/attach': path(),
   '/btw': free('<问题>'),

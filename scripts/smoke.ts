@@ -33,6 +33,7 @@ import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market
 import { COMMAND_ARGS } from '../lib/kernel/command-args.js'
 import { togglePluginEntry } from '../lib/kernel/plugin-toggle.js'
 import { archiveVisible, nextArchiveMode, parseArchiveMode } from '../lib/sessions/archive-filter.js'
+import { changeStatus, ledgerRows, ledgerTotals, recordChange, summarize } from '../lib/kernel/change-ledger.js'
 import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
 import { failureMark, quotaAdvice } from '../lib/feed/feed.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
@@ -2735,6 +2736,55 @@ description:
     assert.equal(parseArchiveMode('all'), 'all', '`all` selects every conversation')
     assert.equal(parseArchiveMode('ONLY'), 'only', 'parsing is case-insensitive')
     assert.equal(parseArchiveMode('nonsense'), 'hide', 'an unknown word falls back to the default (no error)')
+  }
+
+  // The change LEDGER accumulates; `recentDiffs` overwrites. That difference is
+  // the feature, and it is exactly what a naive implementation gets wrong: a file
+  // edited three times must count three edits and sum its line deltas, not show
+  // the last shape three times over.
+  {
+    let led = new Map<string, ReturnType<typeof ledgerRows>[number]>()
+    const at = 1000
+    // Same path, three diffs.
+    led = recordChange(led, { path: '/a.ts', oldText: 'x', newText: 'x\ny', added: 1, removed: 0, at })
+    led = recordChange(led, { path: '/a.ts', oldText: 'x\ny', newText: 'x\ny\nz', added: 1, removed: 0, at: at + 1 })
+    led = recordChange(led, { path: '/a.ts', oldText: 'x\ny\nz', newText: 'x', added: 0, removed: 2, at: at + 2 })
+    // A different path, created.
+    led = recordChange(led, { path: '/b.ts', oldText: undefined, newText: 'new', added: 1, removed: 0, at: at + 3 })
+
+    const rows = ledgerRows(led)
+    assert.equal(rows.length, 2, 'one ROW per path (three edits to /a.ts are one row)')
+    const a = rows.find((r) => r.path === '/a.ts')
+    assert.equal(a?.edits, 3, 'every touch is counted (recentDiffs would say 1)')
+    assert.equal(a?.added, 2, 'added lines are SUMMED across diffs')
+    assert.equal(a?.removed, 2, 'removed lines are summed too')
+    assert.equal(a?.firstAt, at, 'firstAt is the FIRST touch')
+    assert.equal(a?.lastAt, at + 2, 'lastAt is the LAST touch')
+    assert.equal(a?.status, 'modified', 'an existing file stays `modified`')
+    assert.equal(rows[0]?.path, '/b.ts', 'rows are newest-first (the order a review wants)')
+    assert.equal(rows.find((r) => r.path === '/b.ts')?.status, 'added',
+      'a file that did not exist before is `added`')
+
+    // Summarisation rule, including the case a ternary chain got wrong: created
+    // here and still here MUST read as `added`, not `modified`.
+    assert.equal(summarize('added', 'modified'), 'added', 'created-then-edited is still `added`')
+    assert.equal(summarize('added', 'added'), 'added', 'created once is `added`')
+    assert.equal(summarize('modified', 'deleted'), 'deleted', 'gone now wins over modified')
+    assert.equal(summarize('added', 'deleted'), 'deleted', 'created then removed reads `deleted`')
+    assert.equal(summarize('modified', 'modified'), 'modified', 'plain edit is `modified`')
+
+    // `null` and `undefined` both mean "that side was absent" — a missing key
+    // must not be read as an empty file.
+    assert.equal(changeStatus(undefined, 'x'), 'added', 'a missing old side means added')
+    assert.equal(changeStatus(null, 'x'), 'added', 'a null old side means added too')
+    assert.equal(changeStatus('x', undefined), 'deleted', 'a missing new side means deleted')
+    assert.equal(changeStatus('x', 'y'), 'modified', 'both sides present means modified')
+
+    // Totals.
+    const tot = ledgerTotals(led)
+    assert.equal(tot.files, 2, 'totals count paths, not edits')
+    assert.equal(tot.added, 3, 'totals sum added lines')
+    assert.equal(tot.removed, 2, 'totals sum removed lines')
   }
 
   // Command argument completion — the Lua side. Pushed through the SAME

@@ -11,6 +11,7 @@ import { createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm
 import { FeedRenderer } from '../feed/feed.js'
 import { t, tf } from '../kernel/i18n.js'
 import { diffTexts, fileDiffsFromMeta } from '../feed/diff.js'
+import { recordChange } from '../kernel/change-ledger.js'
 import type { ChatMessage, HarnessSession, MessageContent, SessionEvent } from '../kernel/types.js'
 import type { App, SessionRec } from '../kernel/app.js'
 import { registerHostHandler } from '../kernel/host-events.js'
@@ -225,6 +226,7 @@ export function installTranscript(app: App): void {
     pendingFileSnaps: new Map(),
     renderedDiffCalls: new WeakMap(),
     recentDiffs: new Map(),
+    changeLedger: new WeakMap(),
     pendingEchoes: new Map(),
   })
 
@@ -274,6 +276,18 @@ export function installTranscript(app: App): void {
             newText: d.newText ?? null,
             at: Date.now(),
           })
+          // Accumulate into the session ledger as well. `recentDiffs` keeps only
+          // the latest shape per path; the ledger counts every touch, which is
+          // what "which files did this task change?" needs.
+          const prev = app.slices.ui.changeLedger.get(feed) ?? new Map()
+          app.slices.ui.changeLedger.set(feed, recordChange(prev, {
+            path: d.path,
+            oldText: d.oldText,
+            newText: d.newText,
+            added: block.stats.added,
+            removed: block.stats.removed,
+            at: Date.now(),
+          }))
         }
         const action = d.oldText === undefined
           ? t('新增')

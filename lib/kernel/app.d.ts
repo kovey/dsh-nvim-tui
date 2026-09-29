@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { NeovimClient } from 'neovim';
 import type { FeedRenderer } from '../feed/feed.js';
+import type { FileChange } from './change-ledger.js';
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js';
 import type { RunnerConfig } from './types.js';
 import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspacesService } from './types.js';
@@ -370,6 +371,10 @@ export interface AppSlices {
             newText: string | null;
             at: number;
         }>;
+        /** Session-wide ledger of every touched path (`/changes`), keyed by feed so
+         *  one session's history cannot leak into another's. Metadata only — never
+         *  file contents — so a long session cannot grow it into a second repo. */
+        readonly changeLedger: WeakMap<FeedRenderer, Map<string, FileChange>>;
         readonly pendingEchoes: Map<string, string[]>;
         /** Notices emitted before the first session attached (flushed on attach). */
         readonly pendingNotices: unknown[];

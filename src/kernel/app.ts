@@ -22,6 +22,7 @@ import type { NeovimClient } from 'neovim'
 import type { FeedRenderer } from '../feed/feed.js'
 import { t, tf } from './i18n.js'
 import { COMMAND_ARGS } from './command-args.js'
+import type { FileChange } from './change-ledger.js'
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js'
 import type { RunnerConfig } from './types.js'
 import type {
@@ -313,6 +314,10 @@ export interface AppSlices {
      *  sides; keeping them here is what makes `/diff` possible WITHOUT re-reading
      *  the files, which may have changed since the turn that produced the diff. */
     readonly recentDiffs: Map<string, { oldText: string | null; newText: string | null; at: number }>
+    /** Session-wide ledger of every touched path (`/changes`), keyed by feed so
+     *  one session's history cannot leak into another's. Metadata only — never
+     *  file contents — so a long session cannot grow it into a second repo. */
+    readonly changeLedger: WeakMap<FeedRenderer, Map<string, FileChange>>
     readonly pendingEchoes: Map<string, string[]>
     /** Notices emitted before the first session attached (flushed on attach). */
     readonly pendingNotices: unknown[]
