@@ -2,8 +2,16 @@
 import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
 import { createSession, selectSession, ensureLiveSession } from '../services.js'
+import {
+  archiveModeLabel,
+  archiveVisible,
+  nextArchiveMode,
+  parseArchiveMode,
+  type ArchiveMode,
+} from '../archive-filter.js'
 
-export const sessionsCommand = async (app: App): Promise<void> => {
+export const sessionsCommand = async (app: App, arg?: string): Promise<void> => {
+  let mode: ArchiveMode = parseArchiveMode(arg)
   await app.slices.sessions.refreshHistory()
   app.slices.sessions.refreshList()
   const ws = app.svc('workspaceRegistry')
@@ -11,13 +19,18 @@ export const sessionsCommand = async (app: App): Promise<void> => {
   const archived = new Set(ws?.archivedSessionIds ?? [])
   const rows: Array<{ label: string; value: string }> = [
     { label: t('＋ 新建会话'), value: 'act:new' },
+    // The filter row is only useful once something IS archived — showing it
+    // otherwise promises a view that cannot differ from the current one.
+    ...(archived.size > 0
+      ? [{ label: `🔎 ${archiveModeLabel(mode, t)}（Enter 切换）`, value: 'act:filter' }]
+      : []),
   ]
   const inWs = new Set<string>()
   for (const w of workspaceRows) {
     rows.push({ label: `📁 ${w.title} · ${w.path}`, value: `ws:${w.id}` })
     for (const sid of w.sessionIds) {
       inWs.add(sid)
-      if (archived.has(sid)) continue
+      if (!archiveVisible(archived.has(sid), mode)) continue
       // Project-level sessions only: `session-` prefixed ids; subagent
       // children (bare UUIDs / origin subagent) never appear here.
       if (!/^session-/.test(sid)) continue
@@ -30,12 +43,12 @@ export const sessionsCommand = async (app: App): Promise<void> => {
   }
   rows.push({ label: t('未分组'), value: 'ws:none' })
   for (const s of app.liveSessions.list()) {
-    if (inWs.has(s.id) || archived.has(s.id) || s.header?.origin === 'subagent' || !/^session-/.test(s.id)) continue
+    if (inWs.has(s.id) || !archiveVisible(archived.has(s.id), mode) || s.header?.origin === 'subagent' || !/^session-/.test(s.id)) continue
     const rec = app.slices.sessions.live.get(s.id)
     rows.push({ label: `    ${s.id === app.slices.sessions.activeId ? '▸' : ' '} ${rec?.title ?? ''} · ${s.id}`, value: `sess:${s.id}` })
   }
   for (const h of app.slices.sessions.historyHeaders) {
-    if (inWs.has(h.id) || archived.has(h.id) || app.slices.sessions.live.has(h.id)) continue
+    if (inWs.has(h.id) || !archiveVisible(archived.has(h.id), mode) || app.slices.sessions.live.has(h.id)) continue
     rows.push({ label: tf('    {0} · {1}（历史）', [h.title ?? '', h.id]), value: `sess:${h.id}` })
   }
   // Persisted sessions from OTHER working directories (historyById holds
@@ -43,12 +56,18 @@ export const sessionsCommand = async (app: App): Promise<void> => {
   // own cwd — resume works cross-directory.
   for (const h of app.slices.sessions.historyById.values()) {
     if (h.cwd === undefined || h.cwd === process.cwd()) continue
-    if (inWs.has(h.id) || archived.has(h.id) || app.slices.sessions.live.has(h.id)) continue
+    if (inWs.has(h.id) || !archiveVisible(archived.has(h.id), mode) || app.slices.sessions.live.has(h.id)) continue
     if (app.slices.sessions.historyHeaders.some((x) => x.id === h.id)) continue
     rows.push({ label: tf('    {0} · {1}（其他目录）', [h.title ?? '', h.id]), value: `sess:${h.id}` })
   }
   const sel = await app.openPicker(t('会话（工作区分组 · Enter 打开）'), rows)
   if (sel === null) return
+  if (sel === 'act:filter') {
+    // Cycle the mode and REOPEN the browser, so the user sees the new result
+    // immediately instead of having to re-run the command to find out.
+    await sessionsCommand(app, nextArchiveMode(mode))
+    return
+  }
   if (sel === 'act:new') {
     await createSession(app)
     return
@@ -155,7 +174,7 @@ export const sessionsCommand = async (app: App): Promise<void> => {
       const ungrouped: Array<{ label: string; value: string }> = []
       const seenU = new Set<string>()
       const pushU = (id: string, title: string | undefined, suffix: string): void => {
-        if (seenU.has(id) || grouped.has(id) || archived.has(id)) return
+        if (seenU.has(id) || grouped.has(id) || !archiveVisible(archived.has(id), mode)) return
         if (!/^session-/.test(id)) return
         if (app.liveSessions.get(id)?.header?.origin === 'subagent') return
         seenU.add(id)
@@ -195,5 +214,18 @@ export const sessionsCommand = async (app: App): Promise<void> => {
 }
 
 export function installSessionsCommand(app: App): void {
-  app.registerCommands([{ name: '/sessions', desc: t('会话浏览器（打开/重命名/归档）'), usage: t('会话列表'), group: t('系统'), fn: () => sessionsCommand(app) }])
+  app.registerCommands([{
+      name: '/sessions',
+      desc: t('会话浏览器（打开/重命名/归档）'),
+      usage: t('[all|only]'),
+      group: t('系统'),
+      // dsh 0.2.0's Web UI gained a three-state archive filter; the same three
+      // states are reachable here (`hide` is the historical default) and from
+      // the browser's own filter row.
+      args: [
+        { kind: 'oneof', values: ['all', 'only'], hint: t('归档筛选'),
+          byValue: { all: [], only: [] } },
+      ],
+      fn: (a?: string) => sessionsCommand(app, a),
+    }])
 }

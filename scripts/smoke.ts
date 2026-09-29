@@ -32,6 +32,7 @@ import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLine
 import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market/commands/plugin.js'
 import { COMMAND_ARGS } from '../lib/kernel/command-args.js'
 import { togglePluginEntry } from '../lib/kernel/plugin-toggle.js'
+import { archiveVisible, nextArchiveMode, parseArchiveMode } from '../lib/sessions/archive-filter.js'
 import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
 import { failureMark, quotaAdvice } from '../lib/feed/feed.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
@@ -2685,6 +2686,55 @@ description:
       'a call that never started IS a plain failure (safe to retry)')
     assert.equal(failureMark(undefined), 'failed', 'no code → plain failure')
     assert.equal(failureMark('SOMETHING_ELSE'), 'failed', 'an unknown code is not special-cased')
+  }
+
+  // EVERY archive filter site must go through the predicate. A site left as a
+  // bare `archived.has(…)` skip would still hide sessions in `all` mode — a
+  // silent hole that no behavioural assertion above can see (the pure mapping
+  // is correct either way). Measured: the browser has FIVE such sites.
+  {
+    const src = fs.readFileSync(path.join(process.cwd(), 'src/sessions/commands/sessions.ts'), 'utf8')
+    const routed = (src.match(/archiveVisible\(archived\.has\(/g) ?? []).length
+    // Every remaining `archived.has(` must be the argument of a routed call.
+    const all = (src.match(/archived\.has\(/g) ?? []).length
+    assert.equal(routed, all,
+      'no archive filter site bypasses archiveVisible (a bare skip hides sessions in `all` mode)')
+    assert.equal(routed, 5, 'all five filter sites are routed (update this if sites are added)')
+  }
+
+  // Archive visibility, three states. The subtle one is `only`: expressing it
+  // by REMOVING ids from the archived set would leave live sessions listed, so
+  // an "archived only" view would silently show the wrong thing. The mapping is
+  // asserted for both input states in every mode.
+  {
+    for (const mode of ['hide', 'all', 'only'] as const) {
+      const archivedVisible = archiveVisible(true, mode)
+      const liveVisible = archiveVisible(false, mode)
+      if (mode === 'hide') {
+        assert.equal(archivedVisible, false, 'hide: archived sessions are hidden')
+        assert.equal(liveVisible, true, 'hide: live sessions are shown')
+      } else if (mode === 'all') {
+        assert.equal(archivedVisible, true, 'all: archived sessions are shown')
+        assert.equal(liveVisible, true, 'all: live sessions are shown')
+      } else {
+        assert.equal(archivedVisible, true, 'only: archived sessions are shown')
+        assert.equal(liveVisible, false, 'only: LIVE sessions are hidden (the whole point)')
+      }
+    }
+    // The cycle must visit all three and return home.
+    let m = parseArchiveMode(undefined)
+    assert.equal(m, 'hide', 'no argument keeps the historical default')
+    const seen = new Set<string>([m])
+    for (let i = 0; i < 3; i += 1) {
+      m = nextArchiveMode(m)
+      seen.add(m)
+    }
+    assert.deepEqual([...seen].sort(), ['all', 'hide', 'only'], 'the filter cycles through all three states')
+    assert.equal(m, 'hide', 'the cycle returns to its start after three steps')
+    // Argument parsing: words work, typos must not break the browser.
+    assert.equal(parseArchiveMode('all'), 'all', '`all` selects every conversation')
+    assert.equal(parseArchiveMode('ONLY'), 'only', 'parsing is case-insensitive')
+    assert.equal(parseArchiveMode('nonsense'), 'hide', 'an unknown word falls back to the default (no error)')
   }
 
   // Command argument completion — the Lua side. Pushed through the SAME
