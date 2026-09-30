@@ -35,6 +35,8 @@ import { togglePluginEntry } from '../lib/kernel/plugin-toggle.js'
 import { archiveVisible, nextArchiveMode, parseArchiveMode } from '../lib/sessions/archive-filter.js'
 import { changeStatus, ledgerRows, ledgerTotals, recordChange, summarize } from '../lib/kernel/change-ledger.js'
 import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
+import { installChangesCommand } from '../lib/commands/commands/changes.js'
+import { installDiffCommand } from '../lib/commands/commands/diff.js'
 import { failureMark, quotaAdvice } from '../lib/feed/feed.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
@@ -2785,6 +2787,37 @@ description:
     assert.equal(tot.files, 2, 'totals count paths, not edits')
     assert.equal(tot.added, 3, 'totals sum added lines')
     assert.equal(tot.removed, 2, 'totals sum removed lines')
+  }
+
+  // /changes hands off to /diff, so that command must EXIST under the name the
+  // dispatcher looks up. Asserted through the real registration path, not a
+  // fixture: a rename of either command would otherwise break the hand-off.
+  {
+    const specs: Array<{ name: string }> = []
+    const stub = { registerCommands: (l: unknown[]) => { specs.push(...(l as typeof specs)) } } as never
+    installChangesCommand(stub)
+    installDiffCommand(stub)
+    const names = specs.map((x) => x.name)
+    assert.ok(names.includes('/changes'), '/changes registers its spec')
+    assert.ok(names.includes('/diff'), '/diff registers its spec (the hand-off target)')
+  }
+
+  // Cross-command dispatch must match the REGISTERED name shape. Specs carry a
+  // leading slash (`/diff`), and /changes used to call its dispatcher with a
+  // bare `'diff …'` — the lookup returned undefined and the function returned
+  // silently, so Enter in the changes list did nothing at all. Asserted at the
+  // source level because the failure produced NO output to observe.
+  {
+    const src = fs.readFileSync(path.join(process.cwd(), 'src/commands/commands/changes.ts'), 'utf8')
+    // Every dispatch target must be written WITH the slash.
+    const bare = [...src.matchAll(/runSlash\(app, '([^']*)'/g)].map((m) => m[1] ?? '')
+    assert.ok(bare.length > 0, '/changes dispatches to another command')
+    const missingSlash = bare.filter((l) => !l.startsWith('/'))
+    assert.deepEqual(missingSlash, [],
+      'every dispatched command name starts with `/` (specs are registered that way)')
+    // …and the dispatcher must not swallow a miss.
+    assert.ok(/找不到命令/.test(src) || /no such command/.test(src),
+      'a failed lookup is REPORTED, not silently returned')
   }
 
   // Command argument completion — the Lua side. Pushed through the SAME

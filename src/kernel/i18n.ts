@@ -194,6 +194,7 @@ const EN_DICT: Record<string, string> = {
   '本会话改动（Enter 左右对照审阅）': 'session changes (Enter reviews side by side)',
   '本会话还没有文件改动': 'this session has not changed any file yet',
   '本会话没有改过: {0}': 'this session never changed: {0}',
+  '内部错误：找不到命令 {0}': 'internal error: no such command {0}',
   '插件安装/更新/卸载（市场目录之外）': 'plugin install/update/remove (outside the marketplace catalog)',
   '插件操作': 'plugin operation',
   'npm 包名 · owner/repo · owner/repo#tag · git URL': 'npm package · owner/repo · owner/repo#tag · git URL',

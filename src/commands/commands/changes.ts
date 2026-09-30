@@ -14,8 +14,17 @@ import type { App } from '../../kernel/app.js'
  */
 const runSlash = async (app: App, line: string): Promise<void> => {
   const m = /^(\S+)(?:\s+(.*))?$/.exec(line)
-  const spec = app.commandSpecs.find((s) => s.name === (m?.[1] ?? ''))
-  if (spec === undefined) return
+  const raw = m?.[1] ?? ''
+  // Specs are registered WITH the slash (`/diff`). Accepting a bare name here
+  // cost a silent failure once: this function returned early for `'diff …'`,
+  // so Enter in /changes did nothing at all. Normalise instead of trusting the
+  // caller's spelling, and SAY SO when the target is missing — a silent return
+  // is what made the bug invisible.
+  const spec = app.commandSpecs.find((s) => s.name === (raw.startsWith('/') ? raw : '/' + raw))
+  if (spec === undefined) {
+    app.notice(tf('内部错误：找不到命令 {0}', [raw.startsWith('/') ? raw : '/' + raw]))
+    return
+  }
   try {
     await spec.fn(m?.[2] ?? '')
   } catch (err) {
@@ -59,7 +68,7 @@ export const changesCommand = async (app: App, a: string | undefined) => {
       return
     }
     // Hand off to /diff, which owns the side-by-side view (and its data).
-    await runSlash(app, 'diff ' + hit.path)
+    await runSlash(app, '/diff ' + hit.path)
     return
   }
 
@@ -85,7 +94,7 @@ export const changesCommand = async (app: App, a: string | undefined) => {
     await app.luaCall('require("dsh_tui").show_lines_float(...)', [t('本会话改动'), lines]).catch(() => {})
     return
   }
-  if (sel.startsWith('rev:')) await runSlash(app, 'diff ' + sel.slice(4))
+  if (sel.startsWith('rev:')) await runSlash(app, '/diff ' + sel.slice(4))
 }
 
 export function installChangesCommand(app: App): void {
