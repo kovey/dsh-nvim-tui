@@ -8,6 +8,22 @@
 > **宿主锚点前移**：本版锚定 **dsh 0.2.0-rc.2**（rc.2 已成为 `latest`）。
 > peer 是精确版本，故与 0.2.0-rc.1 宿主**不匹配** —— 请一起升级。
 
+### Added · `/changes` —— 列出本会话改动过的所有文件
+
+现有两个命令都答不了"本次任务改了哪些文件"：`/deliverables` 只覆盖**本回合**产出，
+`/diff` 只覆盖**单文件**的最近形状（且按路径**只留最新** —— 一个文件改三次看起来
+只改过一次，前两次的形状已经没了）。
+
+本版新增**会话级改动账本**（`src/kernel/change-ledger.ts`）：每个路径一行，带
+改动**次数**、跨多次 diff **求和**的增删行、首次/末次时间、以及新建/修改/删除状态。
+**只存元数据、绝不存文件内容** —— 长会话不能让它长成第二份仓库；按
+`WeakMap<FeedRenderer>` 分会话，历史不跨会话泄漏。
+
+`/changes [路径]` 列出汇总并在选中时直接进 `/diff` 的左右对照（看完列表的下一步
+就是看改动，不该再敲一条命令）。状态用三条明确规则汇总（首次/末次两种事实分开记录）：
+在此新建且仍在 → `added`（说成 `modified` 会掩盖"是这个任务把它创建出来的"）；
+现在没了 → `deleted`；其余 → `modified`。
+
 ### Changed · 宿主锚点前移
 
 - **peer 锚点 0.2.0-rc.1 → 0.2.0-rc.2**（peer 3 个 + devDependencies + lock 同步）。
@@ -45,6 +61,10 @@ TUI 正常、`SessionFormatError` = 0、横幅 `dsh-nvim-tui 0.4.10`、
 实测 `dsh-memory@0.2.2`（精确锚 `0.2.0-rc.1`）与
 `dsh-chat-interaction@0.2.0`（`^0.2.0-rc.1` —— **prerelease 的 caret 不跨 rc**，
 故 rc.2 同样不匹配）被 0.2.0-rc.2 跳过。与本插件无关。
+
+覆盖提交：
+[`1d3a266`](https://github.com/kovey/dsh-nvim-tui/commit/1d3a266) ·
+[`eda92b1`](https://github.com/kovey/dsh-nvim-tui/commit/eda92b1)
 
 ## [v0.4.9] — 2026-09-28
 
