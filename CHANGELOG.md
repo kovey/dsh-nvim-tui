@@ -5,6 +5,10 @@
 
 ## [v0.4.10] — 2026-09-28
 
+覆盖提交：
+[`1d3a266`](https://github.com/kovey/dsh-nvim-tui/commit/1d3a266) ·
+[`eda92b1`](https://github.com/kovey/dsh-nvim-tui/commit/eda92b1)
+
 > **宿主锚点前移**：本版锚定 **dsh 0.2.0-rc.2**（rc.2 已成为 `latest`）。
 > peer 是精确版本，故与 0.2.0-rc.1 宿主**不匹配** —— 请一起升级。
 
@@ -62,9 +66,6 @@ TUI 正常、`SessionFormatError` = 0、横幅 `dsh-nvim-tui 0.4.10`、
 `dsh-chat-interaction@0.2.0`（`^0.2.0-rc.1` —— **prerelease 的 caret 不跨 rc**，
 故 rc.2 同样不匹配）被 0.2.0-rc.2 跳过。与本插件无关。
 
-覆盖提交：
-[`1d3a266`](https://github.com/kovey/dsh-nvim-tui/commit/1d3a266) ·
-[`eda92b1`](https://github.com/kovey/dsh-nvim-tui/commit/eda92b1)
 
 ## [v0.4.9] — 2026-09-28
 
@@ -93,12 +94,12 @@ dsh 0.2.0 的 Web/桌面端新增归档三态筛选；本插件的 `/sessions` �
 
 ### Added · 额度不足时区分「账号额度」与「API Key 余额」
 
-rc2 起新增 {B}ACCOUNT_QUOTA{B} 错误码（*可通过第一方计费页补充的账号额度*），与既有的
-{B}QUOTA{B}（**API Key 自己的余额**）是**两个码** —— 目的正是避免用户**充到错误的账号**。
+rc2 起新增 `ACCOUNT_QUOTA` 错误码（*可通过第一方计费页补充的账号额度*），与既有的
+`QUOTA`（**API Key 自己的余额**）是**两个码** —— 目的正是避免用户**充到错误的账号**。
 
-原先的错误渲染只取 {B}failure.message{B}、**丢掉 {B}code{B}**，于是两种额度耗尽提示长得一样。
-现由纯函数 {B}quotaAdvice(code){B} 分流：{B}ACCOUNT_QUOTA{B} → 账号计费页（并**显式排除**
-API Key 余额）；{B}QUOTA{B} → 为该 Key 充值；其它/无码 → **不加建议**（加错建议比不加更糟）。
+原先的错误渲染只取 `failure.message`、**丢掉 `code`**，于是两种额度耗尽提示长得一样。
+现由纯函数 `quotaAdvice(code)` 分流：`ACCOUNT_QUOTA` → 账号计费页（并**显式排除**
+API Key 余额）；`QUOTA` → 为该 Key 充值；其它/无码 → **不加建议**（加错建议比不加更糟）。
 
 ### Added · 工具结果未知时不再伪装成普通失败
 
@@ -147,7 +148,7 @@ TUI 正常启动、`SessionFormatError` = 0、横幅显示 `dsh-nvim-tui 0.4.9`�
 [`0534a19`](https://github.com/kovey/dsh-nvim-tui/commit/0534a19) ·
 [`cf001b5`](https://github.com/kovey/dsh-nvim-tui/commit/cf001b5)
 
-> 注：{B}cf001b5{B} 是 v0.4.8 的发布提交，它落在 {B}v0.4.8{B} tag **之后**（CHANGELOG 段先写、
+> 注：`cf001b5` 是 v0.4.8 的发布提交，它落在 `v0.4.8` tag **之后**（CHANGELOG 段先写、
 > tag 后打），故归入本版。v0.4.7/v0.4.8 两段有同样的历史遗留（各自的发布提交落在自身
 > tag 之后），**已发布版本不改写**。
 
