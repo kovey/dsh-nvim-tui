@@ -56,7 +56,7 @@ export const persistedHeader = (item: { header?: unknown; id?: string } | null |
   return item as { id?: string; [key: string]: unknown }
 }
 
-export const BUILD_VERSION = '0.4.9'
+export const BUILD_VERSION = '0.4.10'
 export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 // ---------------------------------------------------------------------------
