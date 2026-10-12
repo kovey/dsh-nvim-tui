@@ -443,6 +443,10 @@ export interface AppSlices {
         atQuery: (query: string, start?: number) => Promise<void>;
         currentSelection: () => ReturnType<ModelSelection['currentSelection']>;
         commandSpecs: CommandSpec[];
+        /** Set when the catalog push found no active agent and therefore skipped the
+         *  OFFICIAL commands. Cleared once a push with an agent succeeds — the retry
+         *  hook reads it to avoid re-pushing on every session switch. */
+        officialCatalogPending: boolean;
         readonly pendingInput: string[];
         readonly pendingImages: Array<SaveImageAttachment | Extract<MessageContent, {
             type: 'image';
@@ -629,9 +633,18 @@ export interface App {
         args?: CommandArg[];
     }>;
     refreshCommandCatalog: () => Promise<void>;
+    /** Re-push the catalog IF an earlier push had to skip the official commands
+     *  for lack of an active agent. Safe to call on every session switch: it is a
+     *  no-op once the merge has succeeded. */
+    retryOfficialCatalog: () => void;
     /** Registered command specs — the kernel registry's storage (modules
      *  register at install time, so it must live from t=0). */
     commandSpecs: CommandSpec[];
+    /** Set when a catalog push found no active agent and had to skip the OFFICIAL
+     *  commands; cleared once a push with an agent succeeds. MEASURED need: the
+     *  boot-time push runs BEFORE the session exists, so without this flag the
+     *  official commands never reached the completion menu at all. */
+    officialCatalogPending: boolean;
     /** The domain slices (the physical state home). */
     slices: AppSlices;
 }

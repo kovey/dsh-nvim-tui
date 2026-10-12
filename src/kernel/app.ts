@@ -366,6 +366,10 @@ export interface AppSlices {
     atQuery: (query: string, start?: number) => Promise<void>
     currentSelection: () => ReturnType<ModelSelection['currentSelection']>
     commandSpecs: CommandSpec[]
+  /** Set when the catalog push found no active agent and therefore skipped the
+   *  OFFICIAL commands. Cleared once a push with an agent succeeds — the retry
+   *  hook reads it to avoid re-pushing on every session switch. */
+  officialCatalogPending: boolean
     readonly pendingInput: string[]
     readonly pendingImages: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }>>
     readonly pendingRename: { kind: 'workspace'; id: string } | { kind: 'session'; id: string; background?: boolean } | null
@@ -474,9 +478,18 @@ export interface App {
   registerCommands: (specs: CommandSpec[]) => CommandSpec[]
   commandCatalog: () => Array<{ name: string; desc: string; args?: CommandArg[] }>
   refreshCommandCatalog: () => Promise<void>
+  /** Re-push the catalog IF an earlier push had to skip the official commands
+   *  for lack of an active agent. Safe to call on every session switch: it is a
+   *  no-op once the merge has succeeded. */
+  retryOfficialCatalog: () => void
   /** Registered command specs — the kernel registry's storage (modules
    *  register at install time, so it must live from t=0). */
   commandSpecs: CommandSpec[]
+  /** Set when a catalog push found no active agent and had to skip the OFFICIAL
+   *  commands; cleared once a push with an agent succeeds. MEASURED need: the
+   *  boot-time push runs BEFORE the session exists, so without this flag the
+   *  official commands never reached the completion menu at all. */
+  officialCatalogPending: boolean
   /** The domain slices (the physical state home). */
   slices: AppSlices
 }
@@ -621,6 +634,7 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     teardown: async () => {},
     closeNvimWindow: async () => true,
     commandSpecs: [],
+    officialCatalogPending: false,
     // Command registry (kernel bootstrap facility: EVERY module registers
     // its specs at install time, so the mechanism must exist from t=0 —
     // the owner-module pattern does not apply to cross-module facilities).
@@ -656,11 +670,18 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
       if (official === undefined || typeof official.list !== 'function') {
         app.exitDiag('catalog-official', 'service=absent')
       } else if (rec === undefined) {
-        app.exitDiag('catalog-official', 'service=ok agent=none')
+        // MEASURED: the boot-time push runs BEFORE the session exists, so this
+        // branch is the normal first pass — and skipping it silently meant the
+        // official commands never reached the menu at all. Remember that the
+        // merge is still owed, and `retryOfficialCatalog` pays it once a session
+        // is active.
+        app.officialCatalogPending = true
+        app.exitDiag('catalog-official', 'service=ok agent=none (pending)')
       } else {
         try {
           const listed = official.list(rec.handle.agent)
           const added = mergeOfficial(entries, listed)
+          app.officialCatalogPending = false
           app.exitDiag('catalog-official', `service=ok listed=${listed.length} added=${added}`)
         } catch (err) {
           app.exitDiag('catalog-official', `service=ok error=${(err as Error).message}`)
@@ -677,6 +698,12 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
         } catch {}
       }
       await luaCall('require("dsh_tui").set_commands(...)', [entries]).catch(() => {})
+    },
+    retryOfficialCatalog: (): void => {
+      // Only when a previous push actually owed the merge — otherwise every
+      // session switch would re-push an unchanged catalog.
+      if (!app.officialCatalogPending) return
+      void app.refreshCommandCatalog().catch(() => {})
     },
     slices,
   } as unknown as App

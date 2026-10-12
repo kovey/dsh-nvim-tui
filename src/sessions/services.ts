@@ -279,6 +279,10 @@ export const switchTo = async (app: App, id: string) => {
   app.slices.ext.setPendingCardInput(null)
   const previous = app.slices.sessions.activeId
   WSS(app.slices.sessions).activeId = id
+  // The boot-time catalog push runs before any session exists and therefore has
+  // to skip the OFFICIAL commands (measured). Now that an agent IS active, pay
+  // that debt — a no-op once it has been paid.
+  app.retryOfficialCatalog()
   try {
     await app.lua.setActive(id)
   } catch (err) {

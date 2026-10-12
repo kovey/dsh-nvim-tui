@@ -242,6 +242,9 @@ export async function boot(app: App): Promise<void> {
     // 3) boot sequence.
     await resumeOrCreate(app)
     if (app.slices.runtime.disposed) return
+    // Belt-and-braces: if the session came up through a path that did not go
+    // through `switchTo`, the official-command debt is still owed.
+    app.retryOfficialCatalog()
     // First-launch onboarding: missing API key → one-shot guide block.
     await maybeOnboard(app)
     drainPendingInput(app)
