@@ -455,6 +455,45 @@ export interface PlanModeService {
     };
     set: (agent: unknown, on: boolean) => string;
 }
+/**
+ * The OFFICIAL slash-command registry (`@deepseek-ai/dsh-commands`, wired by
+ * `dsh-base`). Plugins register commands here; a command's `name` carries NO
+ * leading slash.
+ *
+ * The TUI keeps its OWN registry for its 60-odd interface commands (pickers,
+ * floats, session browsing) — the official one is an ADDITIONAL source, not a
+ * replacement: it cannot express the TUI's UI, and it holds only a handful of
+ * in-session commands. What it buys is that any plugin using the official API
+ * becomes reachable from the TUI without that plugin knowing about the TUI.
+ */
+export interface CommandsService {
+    /** Effective descriptors for one agent, name-sorted, after scoped shadowing. */
+    list: (agent: unknown) => ReadonlyArray<{
+        /** Lowercase name WITHOUT the leading slash. */
+        readonly name: string;
+        readonly description: string;
+        readonly input?: {
+            readonly hint?: string;
+        } | undefined;
+    }>;
+    /** Find one effective definition, or undefined when the name is unknown. */
+    find?: (agent: unknown, name: string) => unknown;
+    /**
+     * Parse and execute a known command without sending it to the model.
+     *
+     * Returns undefined for an ADMISSION MISS (syntax or unknown name) — that is
+     * not an error, so callers must not treat it as one.
+     */
+    execute: (agent: unknown, line: string, attachments: readonly unknown[], signal: AbortSignal) => Promise<{
+        readonly result: {
+            readonly kind: 'success';
+            readonly text?: string;
+        } | {
+            readonly kind: 'error';
+            readonly text: string;
+        };
+    } | undefined>;
+}
 /** dsh-jobs service (workflow/job registry). */
 export interface JobsService {
     kill: (jobId: string, agent: unknown, reason: string) => string;

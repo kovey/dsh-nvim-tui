@@ -27,7 +27,7 @@ import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types
 import type { RunnerConfig } from './types.js'
 import type {
   AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService,
-  DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService,
+  CommandsService, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService,
   MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService,
   PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore,
   LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService,
@@ -71,6 +71,9 @@ export interface ServiceMap {
   goals: GoalsService
   planMode: PlanModeService
   jobs: JobsService
+  /** The OFFICIAL command registry (dsh-commands, wired by dsh-base). Plugins
+   *  register slash commands here; the TUI can discover and run them. */
+  commands: CommandsService
   skills: SkillsService
   permissionPresets: PermissionPresetsService
   fileReferences: FileReferencesService

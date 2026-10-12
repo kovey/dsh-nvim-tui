@@ -58,6 +58,7 @@ import { installHistoryCommand } from './commands/history.js'
 import { installDeliverablesCommand } from './commands/deliverables.js'
 import { installDiffCommand } from './commands/diff.js'
 import { installChangesCommand } from './commands/changes.js'
+import { installOfficialCommandsCommand } from './commands/official-commands.js'
 import { installSettingsCommand } from './commands/settings.js'
 import { installApprovalsCommand } from './commands/approvals.js'
 import { installDifficultyCommand } from './commands/difficulty.js'
@@ -303,6 +304,7 @@ export function installCommands(app: App): void {
   installDeliverablesCommand(app)
   installDiffCommand(app)
   installChangesCommand(app)
+  installOfficialCommandsCommand(app)
   installSettingsCommand(app)
   installApprovalsCommand(app)
   installDifficultyCommand(app)

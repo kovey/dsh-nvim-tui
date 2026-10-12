@@ -37,6 +37,7 @@ import { changeStatus, ledgerRows, ledgerTotals, recordChange, summarize } from 
 import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
 import { installDiffCommand } from '../lib/commands/commands/diff.js'
+import { officialRows } from '../lib/commands/commands/official-commands.js'
 import { failureMark, quotaAdvice } from '../lib/feed/feed.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
@@ -2818,6 +2819,35 @@ description:
     // …and the dispatcher must not swallow a miss.
     assert.ok(/找不到命令/.test(src) || /no such command/.test(src),
       'a failed lookup is REPORTED, not silently returned')
+  }
+
+  // The OFFICIAL command registry is a second source, and the collision rule is
+  // the whole safety property: a plugin registering `/sessions` must NOT take
+  // over the TUI's own command. Asserted on the pure normaliser, both directions.
+  {
+    const listed = [
+      { name: 'compact', description: 'compact the context' },
+      { name: 'goal', description: 'manage the goal', input: { hint: '<text>' } },
+      { name: 'sessions', description: 'a plugin trying to shadow ours' },
+    ]
+    const own = new Set(['/sessions', '/goal', '/exit'])
+    const rows = officialRows(listed, own)
+    assert.deepEqual(rows.map((r) => r.name), ['compact', 'goal', 'sessions'],
+      'rows are name-sorted')
+    assert.equal(rows.find((r) => r.name === 'sessions')?.shadowed, true,
+      'a name the TUI owns is marked SHADOWED (the TUI keeps it)')
+    assert.equal(rows.find((r) => r.name === 'goal')?.shadowed, true, 'the reverse also holds for a shared name')
+    assert.equal(rows.find((r) => r.name === 'compact')?.shadowed, false,
+      'a name the TUI does not own is NOT shadowed (it is reachable)')
+    // A leading slash in the descriptor is normalised away — the registry
+    // documents bare names, but tolerating the slash costs nothing.
+    assert.equal(officialRows([{ name: '/dashed', description: 'd' }], new Set()).at(0)?.name, 'dashed',
+      'a leading slash in a descriptor is normalised away')
+    // An empty hint must not emit an `hint` key (it would render as a stray gap).
+    assert.equal('hint' in (officialRows([{ name: 'x', description: 'd', input: { hint: '' } }], new Set()).at(0) ?? {}),
+      false, 'an empty hint is omitted, not carried as an empty string')
+    assert.equal(officialRows([{ name: 'y', description: 'd' }], new Set()).length, 1,
+      'a descriptor without input still yields a row')
   }
 
   // Command argument completion — the Lua side. Pushed through the SAME
