@@ -648,10 +648,22 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
       const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
       // OFFICIAL registry commands join the SAME catalog (see mergeOfficial).
       const official = svc('commands')
-      if (rec !== undefined && official !== undefined && typeof official.list === 'function') {
+      // Diagnostic: this merge has three ways to contribute NOTHING (service
+      // absent, no active agent, empty registry) and all three look identical
+      // from the outside — the completion menu simply lacks the commands. Record
+      // WHICH one it was, so "why is /kb missing?" is answerable from the log
+      // instead of guesswork.
+      if (official === undefined || typeof official.list !== 'function') {
+        app.exitDiag('catalog-official', 'service=absent')
+      } else if (rec === undefined) {
+        app.exitDiag('catalog-official', 'service=ok agent=none')
+      } else {
         try {
-          mergeOfficial(entries, official.list(rec.handle.agent))
+          const listed = official.list(rec.handle.agent)
+          const added = mergeOfficial(entries, listed)
+          app.exitDiag('catalog-official', `service=ok listed=${listed.length} added=${added}`)
         } catch (err) {
+          app.exitDiag('catalog-official', `service=ok error=${(err as Error).message}`)
           app.notice(tf('读取官方命令失败: {0}', [(err as Error).message]))
         }
       }
