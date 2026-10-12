@@ -37,7 +37,7 @@ import { changeStatus, ledgerRows, ledgerTotals, recordChange, summarize } from 
 import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
 import { installDiffCommand } from '../lib/commands/commands/diff.js'
-import { officialRows } from '../lib/commands/commands/official-commands.js'
+import { officialRows, runOfficialCommand } from '../lib/commands/commands/official-commands.js'
 import { failureMark, quotaAdvice } from '../lib/feed/feed.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
@@ -2848,6 +2848,38 @@ description:
       false, 'an empty hint is omitted, not carried as an empty string')
     assert.equal(officialRows([{ name: 'y', description: 'd' }], new Set()).length, 1,
       'a descriptor without input still yields a row')
+  }
+
+  // The official runner must pass the line WITH its leading slash: the registry
+  // parses the line itself (`parseCommand(line)`), so a bare name is an
+  // admission miss. That miss is reported as such, never as a failure — and the
+  // submit path must actually ASK the registry before saying "unknown command".
+  {
+    const stubApp = {
+      svc: () => ({
+        execute: (_a: unknown, line: string) => {
+          seen.push(line)
+          return Promise.resolve({ result: { kind: 'success', text: 'ok' } })
+        },
+      }),
+      notice: () => {},
+    } as never
+    const seen: string[] = []
+    assert.equal(await runOfficialCommand(stubApp, {}, '/kb'), true,
+      'a slash-prefixed line is accepted')
+    assert.deepEqual(seen, ['/kb'], 'the registry receives the line WITH its slash')
+    seen.length = 0
+    assert.equal(await runOfficialCommand(stubApp, {}, 'kb'), true,
+      'a bare name is normalised rather than silently missing')
+    assert.deepEqual(seen, ['/kb'], 'the normalised line carries the slash')
+    // An admission miss is NOT a failure: the caller decides what to say.
+    const declining = { svc: () => ({ execute: () => Promise.resolve(undefined) }), notice: () => {} } as never
+    assert.equal(await runOfficialCommand(declining, {}, '/nope'), false,
+      'a declined line reports false (not an error)')
+    // No service → false, so the caller keeps its own "unknown command" notice.
+    const bare = { svc: () => undefined, notice: () => {} } as never
+    assert.equal(await runOfficialCommand(bare, {}, '/kb'), false,
+      'without the registry the caller falls back to its own notice')
   }
 
   // Command argument completion — the Lua side. Pushed through the SAME

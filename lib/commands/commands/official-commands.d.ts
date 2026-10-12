@@ -35,6 +35,23 @@ export declare const officialRows: (listed: ReadonlyArray<{
         hint?: string;
     } | undefined;
 }>, ownNames: ReadonlySet<string>) => OfficialCommand[];
+/**
+ * Run one OFFICIAL command and report its outcome.
+ *
+ * Exported because the dispatcher (`commands/core.ts`) needs it too: discovery
+ * alone was useless — `/commands` could LIST a plugin command while typing it
+ * still said "unknown command", because the submit path only ever consulted the
+ * TUI's own registry.
+ *
+ * The line MUST carry its leading slash: the registry parses the line itself
+ * (`parseCommand(line)`), so a bare name is an admission miss. That miss is not
+ * a failure and is reported as what it is.
+ *
+ * @returns true when the official registry ACCEPTED the line (executed it),
+ *   false when it declined or the service is absent — the caller decides what
+ *   to say, so this never invents an error of its own.
+ */
+export declare const runOfficialCommand: (app: App, agent: unknown, line: string) => Promise<boolean>;
 /** `/commands [名称]` — list the official registry, or run one of its commands. */
 export declare const officialCommandsCommand: (app: App, a: string | undefined) => Promise<void>;
 export declare function installOfficialCommandsCommand(app: App): void;

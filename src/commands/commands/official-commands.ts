@@ -2,6 +2,7 @@
  *  wired by the commands module index). */
 import { t, tf } from '../../kernel/i18n.js'
 import type { App } from '../../kernel/app.js'
+import type { CommandsService } from '../../kernel/types.js'
 
 /**
  * `/commands` — the OFFICIAL command registry, as seen from the TUI.
@@ -51,26 +52,41 @@ export const officialRows = (
     })
     .sort((a, b) => a.name.localeCompare(b.name))
 
-/** Run one official command and render its result into the chat feed. */
-const runOfficial = async (app: App, agent: unknown, line: string): Promise<void> => {
+/**
+ * Run one OFFICIAL command and report its outcome.
+ *
+ * Exported because the dispatcher (`commands/core.ts`) needs it too: discovery
+ * alone was useless — `/commands` could LIST a plugin command while typing it
+ * still said "unknown command", because the submit path only ever consulted the
+ * TUI's own registry.
+ *
+ * The line MUST carry its leading slash: the registry parses the line itself
+ * (`parseCommand(line)`), so a bare name is an admission miss. That miss is not
+ * a failure and is reported as what it is.
+ *
+ * @returns true when the official registry ACCEPTED the line (executed it),
+ *   false when it declined or the service is absent — the caller decides what
+ *   to say, so this never invents an error of its own.
+ */
+export const runOfficialCommand = async (app: App, agent: unknown, line: string): Promise<boolean> => {
   const cmds = app.svc('commands')
-  if (cmds === undefined) {
-    app.notice(t('官方命令注册表未装配（dsh-commands 服务不存在）'))
-    return
+  if (cmds === undefined || typeof cmds.execute !== 'function') return false
+  const withSlash = line.startsWith('/') ? line : '/' + line
+  let exec: Awaited<ReturnType<CommandsService['execute']>>
+  try {
+    exec = await cmds.execute(agent, withSlash, [], new AbortController().signal)
+  } catch (err) {
+    app.notice(tf('命令失败: {0}', [(err as Error).message]))
+    return true
   }
-  // `execute` returns undefined on an ADMISSION MISS (unknown name / bad syntax)
-  // — that is not a failure, it means the registry declined the line.
-  const exec = await cmds.execute(agent, line, [], new AbortController().signal)
-  if (exec === undefined) {
-    app.notice(tf('命令未被执行（注册表拒绝该输入）: /{0}', [line]))
-    return
-  }
+  if (exec === undefined) return false
   const { kind, text } = exec.result
   if (kind === 'error') {
     app.notice(tf('命令失败: {0}', [text]))
-    return
+    return true
   }
-  app.notice(text !== undefined && text !== '' ? text : tf('/{0} 已执行', [line]))
+  app.notice(text !== undefined && text !== '' ? text : tf('{0} 已执行', [withSlash]))
+  return true
 }
 
 /** `/commands [名称]` — list the official registry, or run one of its commands. */
@@ -91,7 +107,7 @@ export const officialCommandsCommand = async (app: App, a: string | undefined) =
   if (wanted !== '') {
     // An explicit name runs directly. The NAME MUST NOT start with a slash here:
     // the registry parses the line itself.
-    await runOfficial(app, rec.handle.agent, wanted)
+    await runOfficialCommand(app, rec.handle.agent, wanted)
     return
   }
   const own = new Set(app.commandSpecs.map((s) => s.name))
@@ -127,7 +143,7 @@ export const officialCommandsCommand = async (app: App, a: string | undefined) =
     await app.luaCall('require("dsh_tui").show_lines_float(...)', [t('官方命令'), lines]).catch(() => {})
     return
   }
-  if (sel.startsWith('run:')) await runOfficial(app, rec.handle.agent, sel.slice(4))
+  if (sel.startsWith('run:')) await runOfficialCommand(app, rec.handle.agent, sel.slice(4))
 }
 
 export function installOfficialCommandsCommand(app: App): void {

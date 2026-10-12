@@ -14,6 +14,7 @@ import { isAbsolute, join } from 'node:path'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { t, tf } from '../kernel/i18n.js'
+import { runOfficialCommand } from './commands/official-commands.js'
 import { matchIntent } from './nlcmd.js'
 import { activeSessionCwd, type ApprovalRecord } from '../kernel/app.js'
 import { appendApproval, APPROVAL_HISTORY_MAX, ensureApprovalHistory } from '../kernel/approval-log.js'
@@ -526,7 +527,24 @@ export const onCommand = (app: App, line: string): void => {
         } catch {}
         app.notice(tf('⚠ {0} 失败: {1}', [name, e?.message ?? String(err)]))
       })
-  } else app.notice(tf('未知命令 {0}（/help 查看可用命令）', [name || line]))
+  } else {
+    // Not one of OURS — but it may be registered in the OFFICIAL registry by a
+    // plugin (`ctx.commands`, e.g. dsh-knowledge-base's `/kb`). Discovery alone
+    // was not enough: `/commands` could list it while typing it still said
+    // "unknown command", because this path never asked the registry.
+    void (async () => {
+      const rec = app.slices.sessions.activeId === null
+        ? undefined
+        : app.slices.sessions.live.get(app.slices.sessions.activeId)
+      if (rec !== undefined) {
+        const accepted = await runOfficialCommand(app, rec.handle.agent, line)
+        if (accepted) return
+      }
+      app.notice(tf('未知命令 {0}（/help 查看可用命令）', [name || line]))
+    })().catch((err: unknown) => {
+      app.notice(tf('⚠ {0} 失败: {1}', [name, (err as Error).message]))
+    })
+  }
 }
 
 export const TUI_COMMAND_WHITELIST = new Set([
