@@ -31,6 +31,7 @@ import { approvalHistoryLines } from '../lib/commands/commands/approvals.js'
 import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLines, APPROVAL_LOG_MAX, ensureApprovalHistory } from '../lib/kernel/approval-log.js'
 import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market/commands/plugin.js'
 import { COMMAND_ARGS } from '../lib/kernel/command-args.js'
+import { mergeOfficial } from '../lib/kernel/app.js'
 import { togglePluginEntry } from '../lib/kernel/plugin-toggle.js'
 import { archiveVisible, nextArchiveMode, parseArchiveMode } from '../lib/sessions/archive-filter.js'
 import { changeStatus, ledgerRows, ledgerTotals, recordChange, summarize } from '../lib/kernel/change-ledger.js'
@@ -2880,6 +2881,41 @@ description:
     const bare = { svc: () => undefined, notice: () => {} } as never
     assert.equal(await runOfficialCommand(bare, {}, '/kb'), false,
       'without the registry the caller falls back to its own notice')
+  }
+
+  // Official commands MERGE into the same completion catalog — that is what makes
+  // them complete on a leading `/`. Listing them in a separate command was not
+  // enough: `/kb` could be listed and still not completed. Three rules are
+  // asserted, because each one is a way this can silently go wrong.
+  {
+    const own = [
+      { name: '/exit', desc: 'quit' },
+      { name: '/sessions', desc: 'ours' },
+    ]
+    const listed = [
+      { name: 'kb', description: 'knowledge base', input: { hint: 'index | search <词> | status' } },
+      { name: 'sessions', description: 'a plugin trying to take over ours' },
+      { name: 'bare', description: 'no hint declared' },
+    ]
+    const added = mergeOfficial(own, listed)
+    assert.equal(added, 2, 'the colliding name is not added')
+    const names = own.map((e) => e.name)
+    assert.ok(names.includes('/kb'), 'an official command joins the catalog (so `/` completes it)')
+    assert.equal(own.find((e) => e.name === '/sessions')?.desc, 'ours',
+      'a name we already own is NOT overwritten — a plugin must not hijack the menu')
+    // The hint becomes a `free` argument: shown, never completed. The official
+    // side has no structured grammar, so fabricating choices would be a lie.
+    const kb = own.find((e) => e.name === '/kb') as { args?: Array<{ kind: string; label?: string }> }
+    assert.equal(kb.args?.at(0)?.kind, 'free', 'the official hint maps to a free-form argument')
+    assert.equal(kb.args?.at(0)?.label, 'index | search <词> | status',
+      'the declared hint becomes the argument label (what to type)')
+    // No hint declared → NO argument invented.
+    const bare = own.find((e) => e.name === '/bare') as { args?: unknown }
+    assert.equal('args' in bare, false, 'a descriptor with no hint contributes no argument')
+    // A leading slash in a descriptor is normalised, not doubled.
+    const dashed: Array<{ name: string; desc: string }> = []
+    mergeOfficial(dashed, [{ name: '/dashed', description: 'd' }])
+    assert.deepEqual(dashed.map((e) => e.name), ['/dashed'], 'a descriptor slash is not doubled')
   }
 
   // Command argument completion — the Lua side. Pushed through the SAME

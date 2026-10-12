@@ -132,18 +132,23 @@ export const officialCommandsCommand = async (app: App, a: string | undefined) =
     '',
     ...rows.map((r) => `${r.shadowed ? '·' : '＋'} /${r.name}${r.hint ? ' ' + r.hint : ''} — ${r.description}`),
   ]
-  const sel = await app.openPicker(t('官方命令注册表（Enter 执行所选项）'), [
+  const sel = await app.openPicker(t('官方命令注册表（Enter 填入命令行）'), [
     { label: t('↩ 关闭'), value: 'act:close' },
     ...rows.map((r) => ({
-      label: `${r.shadowed ? '·' : '＋'} /${r.name} — ${r.description}`,
-      value: `run:${r.name}`,
+      label: `${r.shadowed ? '·' : '＋'} /${r.name}${r.hint ? ' ' + r.hint : ''} — ${r.description}`,
+      value: `fill:${r.name}`,
     })),
   ])
   if (sel === null || sel === 'act:close') {
     await app.luaCall('require("dsh_tui").show_lines_float(...)', [t('官方命令'), lines]).catch(() => {})
     return
   }
-  if (sel.startsWith('run:')) await runOfficialCommand(app, rec.handle.agent, sel.slice(4))
+  // FILL the input box rather than running immediately: an official command may
+  // take arguments (`/kb search 关键词`), and executing on selection made it
+  // impossible to supply any. The next Enter sends it.
+  if (sel.startsWith('fill:')) {
+    await app.luaCall('require("dsh_tui").fill_input(...)', ['/' + sel.slice(5) + ' ']).catch(() => {})
+  }
 }
 
 export function installOfficialCommandsCommand(app: App): void {

@@ -639,4 +639,31 @@ export interface App {
  *  functions start as no-ops and are installed afterwards. `ctx` is the
  *  cordis plugin context (inject/effect); `runtimeCtx` is the injected
  *  runtime with the agent/session services. */
+/**
+ * Merge OFFICIAL registry descriptors into the completion catalog, in place.
+ *
+ * WHY MERGING (and not a separate list): the input box completes from ONE
+ * catalog. Offering official commands through a separate `/commands` command
+ * meant you could LIST `/kb` and still not complete it on a leading `/`.
+ *
+ * Three rules, each asserted:
+ *   · a name WE already own is never overwritten — a plugin must not be able to
+ *     take over `/sessions` in the menu;
+ *   · a descriptor with no `input.hint` contributes NO argument — inventing one
+ *     would put a placeholder on screen that nobody declared;
+ *   · the official side advertises free-form input as a HINT only, so it maps to
+ *     a `free` argument (hinted, never completed) rather than a fabricated
+ *     choice list.
+ */
+export declare const mergeOfficial: (entries: Array<{
+    name: string;
+    desc: string;
+    args?: CommandArg[];
+}>, listed: ReadonlyArray<{
+    name: string;
+    description: string;
+    input?: {
+        hint?: string;
+    } | undefined;
+}>) => number;
 export declare function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerConfig): App;
