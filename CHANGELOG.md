@@ -3,6 +3,65 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.11] — 2026-10-12
+
+### Added · 接入官方命令注册表（命令行里也能用了）
+
+`@deepseek-ai/dsh-commands` 提供 **`ctx.commands`**（`CommandRuntime`）：插件用它注册斜杠
+命令，由 `dsh-base` 无条件装配（故**无需改动 profile**）。本插件此前**从不看这张表** ——
+别的插件注册的命令，TUI 里既补全不出也执行不了。
+
+现在官方命令与 TUI 自己的命令**共用一套体验**：
+
+- **并进同一个补全目录**：输入 `/` 就能补全到官方命令（`/kb` 等）。放进单独的 `/commands`
+  命令里是不够的 —— 那样"能列出、却补全不出"。
+- **提交路径会问这张表**：TUI 注册表未命中时先问官方注册表，被接受即执行；`/commands <名称>`
+  也可直接执行。（`execute` 返回 `undefined` 表示**准入未通过**，不是失败 —— 两者分别提示。）
+- **`/commands`** 列出官方注册表（`＋` = TUI 之外、`·` = 与 TUI 同名），选中**填入命令行**
+  而非立即执行 —— 否则参数永远填不进去。
+
+三条边界（每条都防一种静默出错）：
+
+1. **同名不覆盖**：插件不得在菜单里劫持 `/sessions`；
+2. **没声明 `input.hint` 就不编造参数**（凭空冒出占位符是撒谎）；
+3. 官方侧**只有自由文本 hint**（无结构化文法），故映射为 `free` 参数：**显示该填什么，
+   但不假装能枚举**它从未声明的选项。
+
+### Fixed · 启动时无 agent，官方合并不再被永久跳过
+
+真机取证（代码正确却完全不生效）：
+
+```
+catalog-official service=ok agent=none       ← 只推了一次，且那时没有会话
+```
+
+boot 的目录推送跑在 `resumeOrCreate()` **之前**，于是官方合并被跳过**且再不重试**。
+现由 `App.officialCatalogPending` 记住"这笔债"，`retryOfficialCatalog()` 在 `switchTo`
+（`activeId` 设置之后）与 `resumeOrCreate()` 之后**仅欠着时**偿还。修复后同一处打出
+`listed=6 added=2` —— 逐一核对：官方 6 条 = `compact`/`goal`/`feedback`/`kb` + 2 条基础
+记录，其中 `/compact` `/goal` 因同名被保护跳过，**新增的正是 `/feedback` 与 `/kb`**。
+
+### Fixed · `/changes` 选中按 Enter 没有反应
+
+跨命令派发时少了前导斜杠：spec 注册名是 `/diff` 而派发传了裸名 `diff`，查找失配后**静默
+return**（零输出，故从外部看就是"按了没反应"）。已归一化名称、**失配时明确报错**，并加
+源码级守门（派发目标必须以 `/` 开头、失配必须被报告、目标必须真的注册）。
+
+### 验证
+
+真机闭环（真实 PTY，宿主 0.2.0-rc.2）：诊断两次推送（`agent=none (pending)` →
+`listed=6 added=2`）；门禁 check（含 arch-check / app-ops-check）/ smoke / i18n 全绿。
+官方合并的三条规则与 `runOfficialCommand` 的格式约定均有断言，并各做了**能编译的**变异
+验证（`if (false)` 之类触发 TS7027 的变异无意义，已弃用）。
+
+覆盖提交：
+[`848be4a`](https://github.com/kovey/dsh-nvim-tui/commit/848be4a) ·
+[`a6e15d0`](https://github.com/kovey/dsh-nvim-tui/commit/a6e15d0) ·
+[`64a969b`](https://github.com/kovey/dsh-nvim-tui/commit/64a969b) ·
+[`af044f4`](https://github.com/kovey/dsh-nvim-tui/commit/af044f4) ·
+[`8a6194e`](https://github.com/kovey/dsh-nvim-tui/commit/8a6194e) ·
+[`8012ecf`](https://github.com/kovey/dsh-nvim-tui/commit/8012ecf)
+
 ## [v0.4.10] — 2026-09-28
 
 覆盖提交：
