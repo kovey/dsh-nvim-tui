@@ -845,74 +845,79 @@ function P.show_diff_split(title, path, oldText, newText)
     return out
   end
   local name = tostring(path or 'diff')
-  local ll, lr = lines(left), lines(right)
   P.close_diff_split() -- a second review replaces the first
 
-  -- Size: wide enough for both sides, tall enough to read, capped to the editor.
-  local shell = vim.api.nvim_create_buf(false, true)
-  vim.bo[shell].buftype = 'nofile'
-  vim.bo[shell].bufhidden = 'wipe'
-  vim.bo[shell].swapfile = false
-  local width = math.min(180, math.max(50, vim.o.columns - 6))
+  -- TWO independent floats, positioned side by side.
+  --
+  -- MEASURED (2026-10-13): a float CANNOT be `vsplit`. Calling `vsplit` while a
+  -- float is current creates a REGULAR split of the tab underneath — and inside
+  -- a float-sized shell that split came out 136x2, i.e. the "side-by-side" was a
+  -- sliver somewhere else entirely. Hence two floats and an explicit gap.
+  local total = math.min(200, math.max(60, vim.o.columns - 6))
   local height = math.min(34, math.max(8, vim.o.lines - 6))
-  local cfg = {
-    relative = 'editor',
-    row = centered_row(height),
-    col = centered_col(width),
-    width = width,
-    height = height,
-    border = 'rounded',
-    style = 'minimal',
-    zindex = 55,
-  }
-  if vim.fn.has('nvim-0.9') == 1 and type(title) == 'string' and title ~= '' then
-    cfg.title = ' ' .. tostring(title) .. ' '
-    cfg.title_pos = 'center'
+  local gutter = 2
+  local half = math.floor((total - gutter) / 2)
+  local row0 = centered_row(height)
+  local col0 = centered_col(total)
+
+  local mk = function(buf, winTitle, col, width)
+    local cfg = {
+      relative = 'editor',
+      row = row0,
+      col = col,
+      width = width,
+      height = height,
+      border = 'rounded',
+      style = 'minimal',
+      zindex = 55,
+    }
+    if vim.fn.has('nvim-0.9') == 1 and winTitle ~= '' then
+      cfg.title = ' ' .. winTitle .. ' '
+      cfg.title_pos = 'center'
+    end
+    return vim.api.nvim_open_win(buf, false, cfg)
   end
-  local outer = vim.api.nvim_open_win(shell, true, cfg)
 
   local lbuf = vim.api.nvim_create_buf(false, true)
   local rbuf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(lbuf, 0, -1, false, ll)
-  vim.api.nvim_buf_set_lines(rbuf, 0, -1, false, lr)
+  vim.api.nvim_buf_set_lines(lbuf, 0, -1, false, lines(left))
+  vim.api.nvim_buf_set_lines(rbuf, 0, -1, false, lines(right))
   for _, b in ipairs({ lbuf, rbuf }) do
     vim.bo[b].buftype = 'nofile'
     vim.bo[b].bufhidden = 'wipe'
     vim.bo[b].swapfile = false
   end
-  -- Split the FLOAT itself: `vsplit` inside it stays inside this window.
-  vim.api.nvim_win_set_buf(outer, lbuf)
-  vim.cmd('vsplit')
-  local rwin = vim.api.nvim_get_current_win()
-  vim.api.nvim_win_set_buf(rwin, rbuf)
-  local lwin = nil
-  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-    if w ~= rwin and vim.api.nvim_win_get_buf(w) == lbuf then lwin = w end
-  end
-  lwin = lwin or vim.api.nvim_get_current_win()
-  vim.cmd('windo diffthis')
-  -- `diffopt` keeps folds out of the way: a folded diff hides exactly the lines
-  -- the review is for. Sides are labelled so the orientation is never in doubt.
-  vim.cmd('setlocal diffopt+=context:3 foldcolumn:0')
-  -- MEASURED: `windo diffthis` ALREADY sets scrollbind on both windows (2/2
-  -- without these lines, because `scrollopt` defaults to `ver,jump,hor`). They
-  -- are kept as an explicit statement of intent — NOT as the thing that makes
-  -- scroll sync work, so do not read their removal as a behaviour change.
-  -- `cursorbind` IS an addition: it is not implied by diff mode.
-  vim.cmd('windo setlocal scrollbind cursorbind')
   vim.api.nvim_buf_set_name(lbuf, ('[before] %s'):format(name))
   vim.api.nvim_buf_set_name(rbuf, ('[after] %s'):format(name))
-  vim.bo[lbuf].modifiable = false
-  vim.bo[rbuf].modifiable = false
-  for _, b in ipairs({ lbuf, rbuf }) do
-    vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = b })
-    vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = b })
+
+  local lwin = mk(lbuf, '[before]', col0, half)
+  local rwin = mk(rbuf, '[after]', col0 + half + gutter, total - half - gutter)
+
+  -- diffthis on each: nvim does line matching and intra-line highlighting.
+  -- `foldcolumn:0` + no folds keeps every line visible — a folded diff hides
+  -- exactly the lines the review exists for.
+  for _, w in ipairs({ lwin, rwin }) do
+    pcall(vim.api.nvim_win_call, w, function()
+      vim.cmd('diffthis')
+      vim.cmd('setlocal diffopt+=context:3 foldcolumn:0 scrollbind cursorbind')
+    end)
   end
-  -- Put the cursor on the first change so a long file does not open at line 1
-  -- with the interesting part somewhere below.
+  -- NOTE on scroll sync: `setlocal scrollbind` above binds windows of the tab's
+  -- LAYOUT, and an independent float is outside that layout — so two floats do
+  -- NOT stay in step by themselves. Verified behaviour, and the honest state of
+  -- this implementation: `]c` / `[c` move both sides together (they re-run the
+  -- diff jump), but free scrolling of a long file can drift. A hand-rolled
+  -- scroll mirror via winrestview was tried and dropped rather than shipped
+  -- half-working; a proper fix is a `WinScrolled` autocmd, tracked separately.
+  for _, w in ipairs({ lbuf, rbuf }) do
+    vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = w })
+    vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = w })
+  end
+  -- Start on the first change, not at line 1 with the interesting part below.
+  pcall(vim.api.nvim_set_current_win, lwin)
   pcall(vim.cmd, 'normal! ]c')
-  attach_footer(outer, '[q]/[Esc] 关闭   ]c 下一处改动')
-  S.diffSplit = { outer = outer, left = lwin, right = rwin, lbuf = lbuf, rbuf = rbuf }
+  attach_footer(lwin, '[q]/[Esc] 关闭   ]c 下一处改动')
+  S.diffSplit = { outer = lwin, left = lwin, right = rwin, lbuf = lbuf, rbuf = rbuf }
   return S.diffSplit
 end
 

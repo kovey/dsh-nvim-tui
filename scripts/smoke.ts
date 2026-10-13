@@ -2657,15 +2657,25 @@ description:
     local st = require("dsh_tui.state").diffSplit
     if st == nil then return 'missing' end
     local same = vim.fn.tabpagenr('$') == tabs
-    local isFloat = vim.api.nvim_win_get_config(st.outer).relative ~= ''
-    local diff, sb = 0, 0
-    for _, w in ipairs({ st.left, st.right }) do
-      if vim.wo[w].diff then diff = diff + 1 end
-      if vim.wo[w].scrollbind then sb = sb + 1 end
+    -- TWO separate floats: a float cannot be vsplit (measured: it split the tab
+    -- underneath into a 136x2 sliver), so side-by-side means two floats.
+    local floats = 0
+    for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      if vim.api.nvim_win_get_config(w).relative ~= '' then floats = floats + 1 end
     end
-    return table.concat({ tostring(same), tostring(isFloat), tostring(diff), tostring(sb) }, ',')`, []),
-    'true,true,2,2',
-    'the review opens a FLOAT of two diff+scrollbind windows WITHOUT leaving the current tab')
+    local lc = vim.api.nvim_win_get_config(st.left)
+    local rc = vim.api.nvim_win_get_config(st.right)
+    -- Same row/height and the left one starts before the right one: that is what
+    -- "side by side" means, and it is exactly what the vsplit version broke.
+    local side = lc.row == rc.row and vim.api.nvim_win_get_height(st.left) == vim.api.nvim_win_get_height(st.right)
+      and lc.col < rc.col
+    local diff = 0
+    for _, w in ipairs({ st.left, st.right }) do
+      if vim.api.nvim_win_call(w, function() return vim.wo.diff end) then diff = diff + 1 end
+    end
+    return table.concat({ tostring(same), tostring(floats), tostring(side), tostring(diff) }, ',')`, []),
+    'true,2,true,2',
+    'the review opens TWO side-by-side FLOATS in the current tab')
   assert.equal(await lua(`require("dsh_tui").close_diff_split()
     return tostring(require("dsh_tui.state").diffSplit == nil)`, []),
     'true', 'the review closes and clears its state')
