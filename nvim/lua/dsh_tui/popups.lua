@@ -909,9 +909,15 @@ function P.show_diff_split(title, path, oldText, newText)
   -- diff jump), but free scrolling of a long file can drift. A hand-rolled
   -- scroll mirror via winrestview was tried and dropped rather than shipped
   -- half-working; a proper fix is a `WinScrolled` autocmd, tracked separately.
-  for _, w in ipairs({ lbuf, rbuf }) do
-    vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = w })
-    vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = w })
+  -- Read-only, the same way every other popup is: `lock_popup_buffer` sets
+  -- 'nomodifiable' AND Nops the edit keys (i/a/o/x/dd/… plus the in-place
+  -- editors) and the jumplist keys, so an accidental keystroke can neither edit
+  -- the side nor raise a raw E21. Applied BEFORE the close keys below, because
+  -- it Nops `q`'s neighbours wholesale and must not clobber our own mappings.
+  for _, b in ipairs({ lbuf, rbuf }) do
+    lock_popup_buffer(b) -- includes 'nomodifiable'
+    vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = b })
+    vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = b })
   end
   -- Start on the first change, not at line 1 with the interesting part below.
   pcall(vim.api.nvim_set_current_win, lwin)

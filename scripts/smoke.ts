@@ -2679,6 +2679,32 @@ description:
   assert.equal(await lua(`require("dsh_tui").close_diff_split()
     return tostring(require("dsh_tui.state").diffSplit == nil)`, []),
     'true', 'the review closes and clears its state')
+  // The review is READ-ONLY, like every other popup: `lock_popup_buffer` sets
+  // 'nomodifiable' and Nops the edit + jumplist keys. Asserted by BEHAVIOUR, not
+  // by reading the source — a diff side the user can type into would silently
+  // turn a review into an edit.
+  assert.equal(await lua(`require("dsh_tui").show_diff_split('t', '/tmp/z.lua', 'a\\nb', 'a\\nB')
+    local st = require("dsh_tui.state").diffSplit
+    local function nop(buf, k)
+      for _, x in ipairs(vim.api.nvim_buf_get_keymap(buf, 'n')) do
+        if x.lhs == k then return (x.rhs == nil or x.rhs == '') and 'nop' or (x.rhs or 'fn') end
+      end
+      return 'none'
+    end
+    local out = {
+      nomod = (not vim.bo[st.lbuf].modifiable) and (not vim.bo[st.rbuf].modifiable),
+      i = nop(st.lbuf, 'i') == 'nop',
+      x = nop(st.lbuf, 'x') == 'nop',
+      p = nop(st.rbuf, 'p') == 'nop',
+      q = nop(st.lbuf, 'q') ~= 'nop',
+    }
+    -- A direct write must be refused outright.
+    local ok = pcall(vim.api.nvim_buf_set_lines, st.lbuf, 0, 0, false, { 'X' })
+    out.writeRefused = not ok
+    require("dsh_tui").close_diff_split()
+    return table.concat({ tostring(out.nomod), tostring(out.i), tostring(out.x), tostring(out.p), tostring(out.q), tostring(out.writeRefused) }, ',')`, []),
+    'true,true,true,true,true,true',
+    'both panes are read-only (nomodifiable + edit keys Nop) while close keys survive')
   // A deleted / brand-new side still yields both panes (nil is meaningful).
   assert.equal(await lua(`require("dsh_tui").show_diff_split('t', '/tmp/y', nil, 'new')
     local st = require("dsh_tui.state").diffSplit
