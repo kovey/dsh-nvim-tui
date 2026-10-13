@@ -818,6 +818,18 @@ end
 
 
 -- ---------------------------------------------------------------------------
+-- CHECKLIST for a NEW popup/float (learned the hard way, 2026-10-13 — I shipped a
+-- float missing the first two and the user hit both, one after the other):
+--   1. lock_popup_buffer(buf)      -- nomodifiable + Nop edit & jumplist keys
+--   2. leave insert mode           -- vim.cmd('stopinsert'), and after a FOCUS
+--                                     SWITCH use a real <Esc> instead (see
+--                                     buffer.lua: stopinsert silently no-ops there)
+--   3. hand focus explicitly       -- nvim_set_current_win, don't assume
+--   4. attach_footer(win, hint)    -- how the user learns the keys
+--   5. centered_row / centered_col -- never place by hand
+-- All five live in popup_core / popups already; grep before writing new ones.
+--
+-- ---------------------------------------------------------------------------
 -- Side-by-side diff review (/diff): a FLOAT holding two `diff` windows bound
 -- together. nvim already does line matching, intra-line highlight and scroll
 -- sync — re-implementing any of that by hand would be strictly worse.
