@@ -2679,6 +2679,22 @@ description:
   assert.equal(await lua(`require("dsh_tui").close_diff_split()
     return tostring(require("dsh_tui.state").diffSplit == nil)`, []),
     'true', 'the review closes and clears its state')
+  // Opening the review must hand over in NORMAL mode with focus on the left
+  // side. It is reached from the input box, which is in insert mode, and a new
+  // float inherits it — so h/j/k/l were typed as text instead of moving (and the
+  // edit keys are Nop'd, so the pane looked broken). The repo already documents
+  // that `:stopinsert` can silently no-op after a focus switch, hence a real
+  // <Esc>; this asserts the OBSERVABLE end state, which is what matters.
+  assert.equal(await lua(`require("dsh_tui").show_diff_split('t', '/tmp/m.lua', 'a\\nb', 'a\\nB')
+    local st = require("dsh_tui.state").diffSplit
+    local out = {
+      mode = vim.api.nvim_get_mode().mode,
+      focusLeft = vim.api.nvim_get_current_win() == st.left,
+    }
+    require("dsh_tui").close_diff_split()
+    return out.mode .. ',' .. tostring(out.focusLeft)`, []),
+    'n,true', 'the review opens in NORMAL mode with focus on the left pane')
+
   // The review is READ-ONLY, like every other popup: `lock_popup_buffer` sets
   // 'nomodifiable' and Nops the edit + jumplist keys. Asserted by BEHAVIOUR, not
   // by reading the source — a diff side the user can type into would silently

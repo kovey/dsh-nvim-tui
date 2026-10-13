@@ -919,8 +919,16 @@ function P.show_diff_split(title, path, oldText, newText)
     vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = b })
     vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = b })
   end
-  -- Start on the first change, not at line 1 with the interesting part below.
+  -- Hand focus to the LEFT side and LEAVE INSERT MODE. `/diff` is entered from
+  -- the input box, which is in insert mode, and the new float inherits it — so
+  -- h/j/k/l were being INSERTED as text instead of moving around (and the edit
+  -- keys are Nop'd, so the pane looked broken).
+  --
+  -- A real <Esc> keypress rather than `:stopinsert`: the repo already documents
+  -- that `:stopinsert` can silently no-op right after a focus switch (same class
+  -- as the restore's startinsert) — and this is exactly a focus switch.
   pcall(vim.api.nvim_set_current_win, lwin)
+  vim.api.nvim_input('<Esc>')
   pcall(vim.cmd, 'normal! ]c')
   attach_footer(lwin, '[q]/[Esc] 关闭   ]c 下一处改动')
   S.diffSplit = { outer = lwin, left = lwin, right = rwin, lbuf = lbuf, rbuf = rbuf }
