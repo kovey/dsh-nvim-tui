@@ -55,7 +55,7 @@ export const configuredModels = (app: App, providerId: string, settingsNs?: stri
  *  current header (`act:current`), provider group rows (`prov:<id>`),
  *  switchable model rows (`switch:{provider,model}`). null = llm service
  *  absent; [] = no providers registered. */
-export const modelCatalogRows = (app: App): Array<{ label: string; value: string; active?: boolean }> | null => {
+export const modelCatalogRows = async (app: App): Promise<Array<{ label: string; value: string; active?: boolean }> | null> => {
   const sel = app.slices.agent.currentSelection()
   const llm = app.runtimeCtx.get('llm') as LlmService | undefined
   if (llm === undefined) return null
@@ -76,8 +76,15 @@ export const modelCatalogRows = (app: App): Array<{ label: string; value: string
       rows.push({ label: `● ${id} · ${String(p.name ?? '')}`, value: `prov:${id}` })
       for (const m of models) {
         const isCur = sel.provider === id && sel.model === m
+        // Show what the HOST believes about image input. "My config says it
+        // supports images but the runtime disagrees" is otherwise unfalsifiable
+        // from the TUI: the switch silently falls through to a text model and the
+        // user only sees the adapter's refusal.
+        const info = await app.svc('llm')?.resolveModelInfo(id, m).catch(() => undefined)
+        const mods = (info as { inputModalities?: readonly string[] } | undefined)?.inputModalities
+        const cap = mods === undefined ? ' ?' : mods.includes('image') ? ' 🖼' : ''
         rows.push({
-          label: `    ${isCur ? '▸ ' : ' '}${m}${isCur ? '（当前）' : ''}`,
+          label: `    ${isCur ? '▸ ' : ' '}${m}${isCur ? '（当前）' : ''}${cap}`,
           value: `switch:${JSON.stringify({ provider: id, model: m })}`,
         })
       }
@@ -102,7 +109,7 @@ export const modelCatalogRows = (app: App): Array<{ label: string; value: string
  *  settings section. */
 export const modelsCommand = async (app: App): Promise<void> => {
   const sel = app.slices.agent.currentSelection()
-  const rows = modelCatalogRows(app)
+  const rows = await modelCatalogRows(app)
   if (rows === null) {
     app.notice(t('（llm 服务未装配）'))
     return
@@ -111,7 +118,7 @@ export const modelsCommand = async (app: App): Promise<void> => {
     app.notice(t('（没有已注册的 provider；用 /settings 查看模型配置）'))
     return
   }
-  const picked = await app.openPicker(t('模型目录（Enter 切换 · 复用 /model 语义）'), rows)
+  const picked = await app.openPicker(t('模型目录（Enter 切换 · 🖼 = 宿主认为支持图像）'), rows)
   if (picked === null) return
   if (picked === 'act:current') {
     app.notice(t('已是当前模型'))

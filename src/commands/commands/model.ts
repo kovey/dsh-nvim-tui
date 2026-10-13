@@ -52,7 +52,7 @@ export const pickModel = async (app: App, arg: string | undefined): Promise<void
     }
     return
   }
-  const rows = modelCatalogRows(app)
+  const rows = await modelCatalogRows(app)
   if (rows === null) {
     app.notice(t('（llm 服务未装配）'))
     return

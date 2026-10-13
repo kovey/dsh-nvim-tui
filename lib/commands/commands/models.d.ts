@@ -13,11 +13,11 @@ export declare const configuredModels: (app: App, providerId: string, settingsNs
  *  current header (`act:current`), provider group rows (`prov:<id>`),
  *  switchable model rows (`switch:{provider,model}`). null = llm service
  *  absent; [] = no providers registered. */
-export declare const modelCatalogRows: (app: App) => Array<{
+export declare const modelCatalogRows: (app: App) => Promise<Array<{
     label: string;
     value: string;
     active?: boolean;
-}> | null;
+}> | null>;
 /** /models — provider/model catalog popup (sessions-style browse + act):
  *  current selection, live providers with their configured models
  *  (Enter switches), and not-yet-assembled providers pointing at their
