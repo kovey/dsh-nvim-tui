@@ -3,6 +3,56 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.12] — 2026-10-13
+
+### Added · `/models` 显示宿主的图像能力判定
+
+每个模型行末尾加能力标记：**`🖼`** = 宿主报告支持图像；**`?`** = 宿主**没有**该模型的模态
+信息；无标记 = 宿主明确报告**仅文本**。
+
+**为什么是三态而不是布尔**：`?` 与"仅文本"是**两种不同的失败** —— 前者是没查到（配置 key /
+命名空间不对、模型 id 不匹配），后者是查到了但宿主认为不支持。混为一谈会让排查方向彻底
+跑偏。（动机见下条。）
+
+### Fixed · 改动对照（`/diff`）：四连修
+
+`/diff` 选中文件后"按 Enter 没反应"，逐步定位并修掉了**四个各自独立**的问题：
+
+1. **对照开在标签页里，而插件强制 `showtabline=0`** —— 于是"打开了"但**没有任何视觉提示**，
+   看起来就是没反应。真机 trace 证明命令、picker 回值、Map 查找、调用**全部成功**，
+   问题纯粹在可见性。现改为**浮动窗**。
+2. **浮窗不能被 `vsplit`**（实测：在浮窗里 `vsplit` 分割的是**它下面的标签页布局**，
+   得到一个 136×2 的细缝）。现改为**两个并排的独立浮窗**。
+3. **两栏可以编辑**，与插件里其它只读弹窗不一致。现复用既有的 `lock_popup_buffer`
+   （`nomodifiable` + Nop 全部编辑键与 jumplist 键）。
+4. **默认进了插入模式**（`/diff` 从输入框触发，浮窗继承了它），于是 `h/j/k/l` 是在插入字符。
+   现在交出焦点后按一次**真实 `<Esc>`** —— 不用 `:stopinsert`，因为本仓已文档化它在
+   **焦点切换后会静默失效**，而这里正是一次焦点切换。
+
+另：本仓 `popups.lua` 顶部补了**「新增浮窗的 5 项约定」清单**（只读锁 / 退出插入模式 /
+显式交出焦点 / footer / 居中 helper），并记录这四条是怎么被逐个踩出来的。
+
+### 已知限制（未解决，如实标注）
+
+**两个独立浮窗之间无法用 `scrollbind` 联动** —— `scrollbind` 绑定的是同一标签页**布局内**的
+窗口，浮窗不在该布局里。因此 `]c`/`[c` 跳改动时两侧同步，但**自由滚动长文件时可能错位**。
+手写的 `winrestview` 镜像试过并放弃（无 `WinScrolled` 守卫会抖），未发半成品。
+
+### 验证
+
+门禁 check（含 arch-check / app-ops-check）/ smoke / i18n 全绿。
+本轮新增/改写的断言都做了**变异验证**，其中两次反过来证明了 bug 真实存在：
+移除浮窗的 `<Esc>` 后断言的**实际值就是 `'i,true'`**（模式确实为插入）；
+移除 `lock_popup_buffer` 后实际值 `false,false,false,false,true,false`。
+
+覆盖提交：
+[`6a74438`](https://github.com/kovey/dsh-nvim-tui/commit/6a74438) ·
+[`7da5ca4`](https://github.com/kovey/dsh-nvim-tui/commit/7da5ca4) ·
+[`8a8b383`](https://github.com/kovey/dsh-nvim-tui/commit/8a8b383) ·
+[`8051e97`](https://github.com/kovey/dsh-nvim-tui/commit/8051e97) ·
+[`76bfb7f`](https://github.com/kovey/dsh-nvim-tui/commit/76bfb7f) ·
+[`35ca5ad`](https://github.com/kovey/dsh-nvim-tui/commit/35ca5ad)
+
 ## [v0.4.11] — 2026-10-12
 
 ### Added · 接入官方命令注册表（命令行里也能用了）
