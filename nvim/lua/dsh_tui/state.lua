@@ -123,6 +123,8 @@ S.sessIdx = 1
 S.float = { win = nil, buf = nil, kind = nil, state = nil } -- approval/questions/picker
 
 S.skillWin = nil
+-- Side-by-side diff review (/diff): the outer float plus its two diff windows.
+S.diffSplit = nil
 S.linesWin = nil
 S.histWin = nil    -- /history 输入历史浮窗
 S.histBuf = nil

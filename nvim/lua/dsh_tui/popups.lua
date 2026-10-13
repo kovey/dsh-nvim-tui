@@ -818,11 +818,17 @@ end
 
 
 -- ---------------------------------------------------------------------------
--- Side-by-side diff review (/diff): a NEW TAB with two `diff` windows bound
--- together. nvim already does line matching, intra-line highlight, folding and
--- scroll sync — re-implementing any of that in a float would be strictly worse.
+-- Side-by-side diff review (/diff): a FLOAT holding two `diff` windows bound
+-- together. nvim already does line matching, intra-line highlight and scroll
+-- sync — re-implementing any of that by hand would be strictly worse.
 --
---- @param title string shown as the tab's label line
+-- WHY A FLOAT AND NOT A TAB (measured, 2026-10-13): the TUI pins
+-- `showtabline=0`, so a tab opened the review with NO visible cue that anything
+-- had happened — the user pressed Enter and reported "no response" while the
+-- diff sat in an invisible tab. A float is unmistakable and leaves the TUI's own
+-- windows untouched underneath.
+--
+--- @param title string shown as the float's title
 --- @param path string the reviewed path (used for the buffer names)
 --- @param oldText string|nil left side; nil means "did not exist"
 --- @param newText string|nil right side; nil means "was deleted"
@@ -839,22 +845,51 @@ function P.show_diff_split(title, path, oldText, newText)
     return out
   end
   local name = tostring(path or 'diff')
-  -- A dedicated tab keeps the TUI's own windows untouched: the plugin's
-  -- takeover logic keeps working in its tab while the review lives here.
-  vim.cmd('tabnew')
-  local tab = vim.api.nvim_get_current_tabpage()
+  local ll, lr = lines(left), lines(right)
+  P.close_diff_split() -- a second review replaces the first
+
+  -- Size: wide enough for both sides, tall enough to read, capped to the editor.
+  local shell = vim.api.nvim_create_buf(false, true)
+  vim.bo[shell].buftype = 'nofile'
+  vim.bo[shell].bufhidden = 'wipe'
+  vim.bo[shell].swapfile = false
+  local width = math.min(180, math.max(50, vim.o.columns - 6))
+  local height = math.min(34, math.max(8, vim.o.lines - 6))
+  local cfg = {
+    relative = 'editor',
+    row = centered_row(height),
+    col = centered_col(width),
+    width = width,
+    height = height,
+    border = 'rounded',
+    style = 'minimal',
+    zindex = 55,
+  }
+  if vim.fn.has('nvim-0.9') == 1 and type(title) == 'string' and title ~= '' then
+    cfg.title = ' ' .. tostring(title) .. ' '
+    cfg.title_pos = 'center'
+  end
+  local outer = vim.api.nvim_open_win(shell, true, cfg)
+
   local lbuf = vim.api.nvim_create_buf(false, true)
   local rbuf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(lbuf, 0, -1, false, lines(left))
-  vim.api.nvim_buf_set_lines(rbuf, 0, -1, false, lines(right))
+  vim.api.nvim_buf_set_lines(lbuf, 0, -1, false, ll)
+  vim.api.nvim_buf_set_lines(rbuf, 0, -1, false, lr)
   for _, b in ipairs({ lbuf, rbuf }) do
     vim.bo[b].buftype = 'nofile'
     vim.bo[b].bufhidden = 'wipe'
     vim.bo[b].swapfile = false
   end
-  vim.api.nvim_win_set_buf(0, lbuf)
+  -- Split the FLOAT itself: `vsplit` inside it stays inside this window.
+  vim.api.nvim_win_set_buf(outer, lbuf)
   vim.cmd('vsplit')
-  vim.api.nvim_win_set_buf(0, rbuf)
+  local rwin = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(rwin, rbuf)
+  local lwin = nil
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if w ~= rwin and vim.api.nvim_win_get_buf(w) == lbuf then lwin = w end
+  end
+  lwin = lwin or vim.api.nvim_get_current_win()
   vim.cmd('windo diffthis')
   -- `diffopt` keeps folds out of the way: a folded diff hides exactly the lines
   -- the review is for. Sides are labelled so the orientation is never in doubt.
@@ -869,15 +904,34 @@ function P.show_diff_split(title, path, oldText, newText)
   vim.api.nvim_buf_set_name(rbuf, ('[after] %s'):format(name))
   vim.bo[lbuf].modifiable = false
   vim.bo[rbuf].modifiable = false
-  vim.keymap.set('n', 'q', '<Cmd>tabclose<CR>', { buffer = lbuf })
-  vim.keymap.set('n', 'q', '<Cmd>tabclose<CR>', { buffer = rbuf })
-  vim.keymap.set('n', '<Esc>', '<Cmd>tabclose<CR>', { buffer = lbuf })
-  vim.keymap.set('n', '<Esc>', '<Cmd>tabclose<CR>', { buffer = rbuf })
+  for _, b in ipairs({ lbuf, rbuf }) do
+    vim.keymap.set('n', 'q', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = b })
+    vim.keymap.set('n', '<Esc>', '<Cmd>lua require("dsh_tui").close_diff_split()<CR>', { buffer = b })
+  end
   -- Put the cursor on the first change so a long file does not open at line 1
   -- with the interesting part somewhere below.
   pcall(vim.cmd, 'normal! ]c')
-  pcall(vim.api.nvim_set_current_tabpage, tab)
-  return { tab = tab, left = lbuf, right = rbuf }
+  attach_footer(outer, '[q]/[Esc] 关闭   ]c 下一处改动')
+  S.diffSplit = { outer = outer, left = lwin, right = rwin, lbuf = lbuf, rbuf = rbuf }
+  return S.diffSplit
+end
+
+--- Close the side-by-side review (idempotent).
+function P.close_diff_split()
+  local st = S.diffSplit
+  S.diffSplit = nil
+  if st == nil then return end
+  detach_footer()
+  -- Close the OUTER float: it takes the split's windows with it.
+  if st.outer ~= nil and vim.api.nvim_win_is_valid(st.outer) then
+    pcall(vim.api.nvim_win_close, st.outer, true)
+  end
+  for _, w in ipairs({ st.left, st.right }) do
+    if w ~= nil and vim.api.nvim_win_is_valid(w) then pcall(vim.api.nvim_win_close, w, true) end
+  end
+  for _, b in ipairs({ st.lbuf, st.rbuf }) do
+    if b ~= nil and vim.api.nvim_buf_is_valid(b) then pcall(vim.api.nvim_buf_delete, b, { force = true }) end
+  end
 end
 
 return P

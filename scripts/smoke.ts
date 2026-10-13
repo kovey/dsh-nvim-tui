@@ -2646,24 +2646,37 @@ description:
   // bound. A shape-only assertion would pass even if the split never opened.
   assert.equal(await lua('return type(require("dsh_tui").show_diff_split)', []), 'function',
     'the side-by-side viewer is exported')
-  assert.equal(await lua(`local before = vim.fn.tabpagenr()
+  // The review must open as a FLOAT in the CURRENT tab. Measured why: the TUI
+  // pins `showtabline=0`, so a tab-based review opened with no visible cue — the
+  // user pressed Enter and reported "no response" while the diff sat in an
+  // invisible tab. Asserted on the real window tree, not on a return value.
+  // Field-by-field rather than comparing an `inspect` string: the values are the
+  // contract, the Lua pretty-printer is not.
+  assert.equal(await lua(`local tabs = vim.fn.tabpagenr('$')
     require("dsh_tui").show_diff_split('t', '/tmp/x.lua', 'a\\nb\\nc', 'a\\nB\\nc')
-    local tab = vim.api.nvim_get_current_tabpage()
-    local wins = vim.api.nvim_tabpage_list_wins(tab)
-    local both = 0
-    for _, w in ipairs(wins) do
-      if vim.wo[w].diff and vim.wo[w].scrollbind then both = both + 1 end
+    local st = require("dsh_tui.state").diffSplit
+    if st == nil then return 'missing' end
+    local same = vim.fn.tabpagenr('$') == tabs
+    local isFloat = vim.api.nvim_win_get_config(st.outer).relative ~= ''
+    local diff, sb = 0, 0
+    for _, w in ipairs({ st.left, st.right }) do
+      if vim.wo[w].diff then diff = diff + 1 end
+      if vim.wo[w].scrollbind then sb = sb + 1 end
     end
-    local n = #wins
-    vim.cmd('tabclose')
-    return tostring(both) .. '/' .. tostring(n) .. '/' .. tostring(vim.fn.tabpagenr() == before)`, []),
-    '2/2/true', 'the review opens two diff+scrollbind windows and closes back')
+    return table.concat({ tostring(same), tostring(isFloat), tostring(diff), tostring(sb) }, ',')`, []),
+    'true,true,2,2',
+    'the review opens a FLOAT of two diff+scrollbind windows WITHOUT leaving the current tab')
+  assert.equal(await lua(`require("dsh_tui").close_diff_split()
+    return tostring(require("dsh_tui.state").diffSplit == nil)`, []),
+    'true', 'the review closes and clears its state')
+  // A deleted / brand-new side still yields both panes (nil is meaningful).
   assert.equal(await lua(`require("dsh_tui").show_diff_split('t', '/tmp/y', nil, 'new')
-    local w = vim.api.nvim_tabpage_list_wins(vim.api.nvim_get_current_tabpage())
-    local n = #w
-    vim.cmd('tabclose')
+    local st = require("dsh_tui.state").diffSplit
+    local n = 0
+    for _, w in ipairs({ st.left, st.right }) do if vim.api.nvim_win_is_valid(w) then n = n + 1 end end
+    require("dsh_tui").close_diff_split()
     return n`, []),
-    2, 'a brand-new file (nil old side) still opens both sides')
+    2, 'a brand-new file (nil old side) still opens both panes')
 
   // Quota advice: the two codes mean DIFFERENT things, and a wrong mapping sends
   // the user to top up the wrong account — the exact mistake these codes exist to
