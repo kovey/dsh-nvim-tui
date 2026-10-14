@@ -113,7 +113,20 @@ dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.12"
 | [Neovim](https://neovim.io) | **0.9**（推荐 **0.10+**） | 0.10+ 完整体验（输入框四边边框、弹窗提示嵌入边框）；0.9 可运行但降级（`❯` 提示列与左边框以虚拟文本呈现、弹窗提示为分离提示条） |
 | Node.js | 23.6+ | 由 dsh 提供（`engines` 声明），一般无需单独安装 |
 
-> 开发与 CI 实测：dsh **0.1.7-rc.1** / nvim 0.12.5。
+**Neovim 版本支持面**：0.9 / 0.10 / 0.11 / 0.12 全系列。代码里只有 `has('nvim-0.9')` 与
+`has('nvim-0.10')` 两档闸门，**0.11 与 0.12 自动走 0.10+ 的完整分支** —— 因此新版本
+**无需改动即可支持**，不会出现"新 nvim 反而降级"。
+
+> 已对 **nvim 0.12.6** 逐项核对官方 `news.txt` 的 **BREAKING CHANGES**：
+> `nvim_get_commands()` 的 `complete`、`ui-messages` 事件变化（`msg_show.bufwrite`/
+> `msg_show.completion` → `msg_show.progress`、`msg_show.return_prompt`/`msg_history_clear`
+> 移除）、`vim.diagnostic.disable()/is_disabled()` 移除与 `enable()` 旧签名移除 ——
+> **本插件一处都未使用**。
+>
+> 0.12 的 `'diffopt' inline:`（行内 diff 高亮，且 `inline:word` 会自动合并邻近块）在
+> **0.12 上默认开启**，`/diff` 的左右对照**因此自动获得行内高亮**，无需我们做版本分支。
+
+> 开发与 CI 实测：dsh **0.2.0-rc.2** / nvim **0.12.6**（本机 0.12.5 上完成实证）。
 > - 类型面门禁（`check` / `smoke` / `i18n`）对着 0.1.7-rc.1 的真实类型面全绿；
 > - **真机 e2e 已在隔离 `DSH_HOME` + 0.1.7-rc.1 宿主上跑通**（headless dump 正常，
 >   版本横幅 / history replay / turn 开合 / 状态栏渲染均正确）。

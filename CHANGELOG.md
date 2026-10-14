@@ -3,6 +3,37 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [未发布]
+
+### Docs · 核实 nvim 0.12.6 支持面（代码零改动）
+
+对 **nvim 0.12.6** 逐项核对了官方 `news.txt` 的 **BREAKING CHANGES**：
+
+| 0.12 破坏性变更 | 本插件 |
+|---|---|
+| `nvim_get_commands()` 的 `complete` 返回函数 | 未使用 |
+| `ui-messages`：`msg_show.bufwrite`/`msg_show.completion` → `msg_show.progress`；移除 `msg_show.return_prompt`/`msg_history_clear` | 未使用（不消费 ui-messages） |
+| `vim.diagnostic.disable()`/`is_disabled()` 移除、`enable()` 旧签名移除、诊断 signs 不再用 `sign_define` | 未使用 |
+
+⇒ **无需任何代码改动**。原因是版本闸门只有 `has('nvim-0.9')` 与 `has('nvim-0.10')` 两档，
+**0.11/0.12 自动落到 0.10+ 的完整分支**（不会"新 nvim 反而降级"）。
+
+**0.12 顺带白拿的能力**：`'diffopt'` 在 0.12 上**默认含 `inline:char`**（且支持 `inline:word`
+自动合并邻近块），所以 `/diff` 的左右对照**自动获得行内高亮** —— 我们不必写版本分支。
+
+### 验证
+
+- 全部 12 个 Lua 模块在 **nvim 0.12.5** 上 `require` 成功，拦截 `vim.notify`/`vim.deprecate`
+  后**告警数 0**。
+- 真机 e2e（nvim 0.12.5）：横幅 `0.4.12`、`did not activate` = 0、TUI 正常、宿主 stderr 0 字节、
+  日志零 warning/deprecation。
+- API 审计：`vim.uv or vim.loop` **已有回退**（0.10 起推荐 `vim.uv`）；`vim.treesitter.get_parser`/
+  `query.get` 用法未弃用。
+
+**未验证的部分（如实标注）**：低版本回退分支（0.9 的 `virt_text`、0.10 的 `footer_pos`）**本机
+无法实测** —— 只装了 nvim 0.12.5，没有 0.9/0.10/0.11 二进制。这些分支按代码存在且带 `pcall`
+保护，但**未在真机跑过**。
+
 ## [v0.4.12] — 2026-10-13
 
 ### Added · `/models` 显示宿主的图像能力判定
