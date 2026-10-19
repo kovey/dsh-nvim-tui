@@ -1,3 +1,20 @@
+/**
+ * dsh_tui App: the shared runner state + service surface on the Node side —
+ * the analogue of nvim/lua/dsh_tui/state.lua. EVERY behavior module reads
+ * state and services through this ONE object; modules never reach into each
+ * other's closures. index.ts composes the modules over it (the analogue of
+ * nvim/lua/dsh_tui/init.lua's facade).
+ *
+ * Composition contract:
+ *  - `createApp(ctx, config)` builds the state + core services + no-op slots.
+ *  - Each module's `install(app)` fills the slots it owns and registers its
+ *    slash commands via `app.registerCommands([...])` (late binding: install
+ *    order never matters, runtime calls always see the real implementations).
+ *  - `boot(app)` (boot.ts) runs the main body LAST, after every install.
+ *
+ * @module dsh-nvim-tui/app
+ */
+import type { WorkingDirectoryService } from './types.js';
 import type { Context } from '@deepseek-ai/cordis';
 import type { NeovimClient } from 'neovim';
 import type { FeedRenderer } from '../feed/feed.js';
@@ -20,7 +37,7 @@ export declare const persistedHeader: (item: {
     id?: string;
     [key: string]: unknown;
 } | null;
-export declare const BUILD_VERSION = "0.4.13";
+export declare const BUILD_VERSION = "0.4.14";
 export declare const BUILD_STAMP: string;
 export interface ServiceMap {
     appExit: (code?: number) => void;
@@ -57,6 +74,9 @@ export interface ServiceMap {
             value?: unknown;
         } | undefined>;
     };
+    /** Per-Session working directory (dsh 0.2.1+; assembled by dsh-base). Absent
+     *  on older hosts, so every use is optional-chained. */
+    workingDirectory: WorkingDirectoryService;
 }
 /**
  * Positional-argument grammar of a slash command, for completion + hints.

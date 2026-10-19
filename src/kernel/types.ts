@@ -236,6 +236,14 @@ export interface CompactionService {
   ) => Promise<{ shadowedSeqs: unknown[]; shadowedTokenCount: number } | null>
 }
 
+/** dsh-working-directory service (0.2.1+): per-Session working directory.
+ *  `get` reads the committed dir without filesystem I/O; `set` changes it. */
+export interface WorkingDirectoryService {
+  get: (session: unknown) => string
+  ensure?: (agent: unknown, signal?: AbortSignal) => Promise<string>
+  set: (agent: unknown, path: string, signal?: AbortSignal) => Promise<string>
+}
+
 /** dsh-goal service. */
 export interface GoalState {
   id: string

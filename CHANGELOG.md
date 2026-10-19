@@ -3,6 +3,54 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.4.14] — 2026-10-19
+
+### Added · `/cwd` 会话工作目录（查看 / 切换）
+
+dsh **0.2.1** 新增 `working_directory`（工具 + SDK seam）：`workingDirectory.set(agent, path)`
+可改变**单个会话**的目录，而**不影响已有进程或权限** —— 正是 TUI 用户想要的"保留这轮对话，
+换到别处继续"。此前目录在会话创建时固定，想换地方只能新开会话。
+
+- `/cwd` → 显示当前目录；`/cwd <路径>` → 切换（相对路径按 `cd` 语义相对**当前**目录解析）
+- 目录**每次从服务重读**，不缓存 `session.header.cwd` —— 后者是**原始**目录，`set` 之后会过期
+- 宿主拒绝的路径（不存在等）**原样转述宿主的原因**，不自己编（ENOENT / ENOTDIR / 权限是三种修法）
+- **没有该服务时明确说"不支持"而不是"失败"** —— 免得让人去找不存在的 bug
+
+实测（0.2.1-rc.2 真机）：运行时 `workingDirectory` 存在且 `get`/`set` 均为函数。
+
+### Changed · 兼容判定改用 `engines.dsh`（本次最要紧的一条）
+
+0.2.1 起宿主判定第三方插件兼容性时**优先看 `engines.dsh`，声明了它 `peerDependencies` 就被
+完全忽略**（源码：`dsh-app-boot` 的 `unmetRequirements`）。注释还写明 **prereleases 参与范围匹配**。
+
+于是把精确 peer 换成范围 `>=0.2.0-rc.2 <0.2.2`，用宿主自己的
+`evaluatePluginCompatibility()` 实测：
+
+| 宿主 | 精确 peer（改前） | `engines.dsh` 范围（改后） |
+|---|---|---|
+| 0.2.0-rc.2 | ❌ 不兼容 | ✅ 兼容 |
+| 0.2.1-rc.1 | ❌ 不兼容 | ✅ 兼容 |
+| 0.2.1-rc.2 | ✅ 兼容 | ✅ 兼容 |
+| **0.2.2** | ❌ | ❌ **（未验证，故意不收）** |
+
+**上界取 `<0.2.2` 而非 `<0.3.0`**：只声明**实际验证过**的范围。0.2.0→0.2.1 就改过安装机制，
+声称 0.2.x 全兼容是没有依据的。
+
+### 未接入（如实说明）
+
+- **DeepSeek Search & Fetch**：插件可达的类型面里**没有对应导出**（宿主/适配器层能力）。
+- **极简模式的 `/compact`**：本插件早有 `/compact`（走 `compaction` 服务），无需动。
+- **`PluginRecord`/`appendPluginRecord`**（会话日志插件记录）、**`LlmCallControls`**
+  （按次 temperature/maxTokens/stop）：均为可选能力，不接入不影响正确性。
+- **`conversation.input.model.label` Slot**：Web 端概念，TUI 无 slot 机制。
+
+### 验证
+
+- `tsc` 对着 0.2.1-rc.2 真实 `.d.ts` 通过；全量门禁 check / smoke / i18n 全绿。
+- 真机 e2e（宿主 0.2.1-rc.2）：横幅 `0.4.14`、`did not activate` = 0、本插件未被跳过。
+- `/cwd` 的断言做了**可编译的变异验证**：把 `installCwdCommand(app)` 改成 `void installCwdCommand`
+  后断言精确失败（首次用删除调用的变异触发 `TS6133` 编译失败，属**无效变异**，已换掉）。
+
 ## [v0.4.13] — 2026-10-13
 
 ### Changed · 宿主锚点前移（0.2.0-rc.2 → 0.2.1-rc.2）

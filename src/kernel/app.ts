@@ -14,6 +14,7 @@
  *
  * @module dsh-nvim-tui/app
  */
+import type { WorkingDirectoryService } from './types.js'
 import { appendFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -56,7 +57,7 @@ export const persistedHeader = (item: { header?: unknown; id?: string } | null |
   return item as { id?: string; [key: string]: unknown }
 }
 
-export const BUILD_VERSION = '0.4.13'
+export const BUILD_VERSION = '0.4.14'
 export const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 // ---------------------------------------------------------------------------
@@ -94,6 +95,9 @@ export interface ServiceMap {
   /** Credential-reference seam: resolve(envRefName) → { value } | undefined
    *  (provider-owned key storage; the official Models page writes it). */
   credentials: { resolve?: (ref: string) => Promise<{ value?: unknown } | undefined> }
+  /** Per-Session working directory (dsh 0.2.1+; assembled by dsh-base). Absent
+   *  on older hosts, so every use is optional-chained. */
+  workingDirectory: WorkingDirectoryService
 }
 
 /**

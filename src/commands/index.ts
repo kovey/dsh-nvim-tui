@@ -39,6 +39,7 @@ import { installRememberCommand } from './commands/remember.js'
 import { installMemoryCommand } from './commands/memory.js'
 import { installImageCommand } from './commands/image.js'
 import { installCompactCommand } from './commands/compact.js'
+import { installCwdCommand } from './commands/cwd.js'
 import { installGoalCommand } from './commands/goal.js'
 import { installTodoCommand } from './commands/todo.js'
 import { installPlanCommand } from './commands/plan.js'
@@ -280,6 +281,7 @@ export function installCommands(app: App): void {
   installStatusCommand(app)
   installContextCommand(app)
   installModelsCommand(app)
+  installCwdCommand(app)
   installDoctorCommand(app)
   installRememberCommand(app)
   installMemoryCommand(app)

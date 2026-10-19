@@ -124,6 +124,8 @@ export const COMMAND_ARGS: Record<string, CommandArg[]> = {
   '/archive': free('[会话id]'),
   '/attach': path(),
   '/btw': free('<问题>'),
+  // A path argument: free text (a directory cannot be enumerated meaningfully).
+  '/cwd': [{ kind: 'free', label: t('[路径]') }],
   '/dir': path(),
   '/fork': free('[directive]', t('分支指令（可选）')),
   '/image': [{ kind: 'file', label: '<路径>' }, ...free('[提示]')],

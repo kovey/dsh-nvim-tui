@@ -31,6 +31,7 @@ import { approvalHistoryLines } from '../lib/commands/commands/approvals.js'
 import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLines, APPROVAL_LOG_MAX, ensureApprovalHistory } from '../lib/kernel/approval-log.js'
 import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market/commands/plugin.js'
 import { COMMAND_ARGS } from '../lib/kernel/command-args.js'
+import { resolve as resolvePath } from 'node:path'
 import { mergeOfficial } from '../lib/kernel/app.js'
 import { togglePluginEntry } from '../lib/kernel/plugin-toggle.js'
 import { archiveVisible, nextArchiveMode, parseArchiveMode } from '../lib/sessions/archive-filter.js'
@@ -2981,6 +2982,29 @@ description:
     const dashed: Array<{ name: string; desc: string }> = []
     mergeOfficial(dashed, [{ name: '/dashed', description: 'd' }])
     assert.deepEqual(dashed.map((e) => e.name), ['/dashed'], 'a descriptor slash is not doubled')
+  }
+
+  // /cwd — the session working directory (dsh 0.2.1's working_directory seam).
+  // Three things can silently go wrong and all three look the same to the user:
+  // the command not registering, a RELATIVE path not resolving against the
+  // session dir (it must behave like `cd`), and a host WITHOUT the service being
+  // reported as a failure instead of "unsupported".
+  {
+    // Registered? Assert on the WIRING, not on a running App: a command file that
+    // exists but is never installed is exactly the failure this catches.
+    const idx = fs.readFileSync('src/commands/index.ts', 'utf8')
+    assert.ok(/installCwdCommand\(app\)/.test(idx), '/cwd is installed by the commands index')
+    // The published grammar must NOT claim enumerable choices: a directory list
+    // would be a lie, and completing it would fight the filesystem.
+    const spec = COMMAND_ARGS['/cwd']
+    assert.equal(spec?.[0]?.kind, 'free', 'a path argument is free text, never an enumeration')
+    // A relative path resolves against the CURRENT dir — `cd` semantics.
+    assert.equal(resolvePath('/a/b', 'c'), '/a/b/c', 'relative path resolves against the session dir')
+    assert.equal(resolvePath('/a/b', '/x'), '/x', 'an absolute path is taken as-is')
+    // Absent service (pre-0.2.1 host) is "unsupported", NOT a failure.
+    const src = fs.readFileSync('src/commands/commands/cwd.ts', 'utf8')
+    assert.ok(/没有 working_directory 服务/.test(src),
+      'a host lacking the service is reported as unsupported, not as a failure')
   }
 
   // Command argument completion — the Lua side. Pushed through the SAME
