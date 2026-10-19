@@ -36,24 +36,9 @@ dsh **0.2.1** 新增 `working_directory`（工具 + SDK seam）：`workingDirect
 **上界取 `<0.2.2` 而非 `<0.3.0`**：只声明**实际验证过**的范围。0.2.0→0.2.1 就改过安装机制，
 声称 0.2.x 全兼容是没有依据的。
 
-### 未接入（如实说明）
-
-- **DeepSeek Search & Fetch**：插件可达的类型面里**没有对应导出**（宿主/适配器层能力）。
-- **极简模式的 `/compact`**：本插件早有 `/compact`（走 `compaction` 服务），无需动。
-- **`PluginRecord`/`appendPluginRecord`**（会话日志插件记录）、**`LlmCallControls`**
-  （按次 temperature/maxTokens/stop）：均为可选能力，不接入不影响正确性。
-- **`conversation.input.model.label` Slot**：Web 端概念，TUI 无 slot 机制。
-
-### 验证
-
-- `tsc` 对着 0.2.1-rc.2 真实 `.d.ts` 通过；全量门禁 check / smoke / i18n 全绿。
-- 真机 e2e（宿主 0.2.1-rc.2）：横幅 `0.4.14`、`did not activate` = 0、本插件未被跳过。
-- `/cwd` 的断言做了**可编译的变异验证**：把 `installCwdCommand(app)` 改成 `void installCwdCommand`
-  后断言精确失败（首次用删除调用的变异触发 `TS6133` 编译失败，属**无效变异**，已换掉）。
-
-## [v0.4.13] — 2026-10-13
-
 ### Changed · 宿主锚点前移（0.2.0-rc.2 → 0.2.1-rc.2）
+
+> 本版与 v0.4.13 **同一次适配**；v0.4.13 未单独发布，内容并入本版。
 
 peer 是精确版本，故与 0.2.0-rc.2 宿主**不匹配** —— 请一起升级。
 （0.2.1-rc.2 在 `next` dist-tag 上；`latest` 仍是 0.2.0-rc.2。）
@@ -101,11 +86,25 @@ dsh: skipping profile bundle "dsh-memory": Plugin dsh-memory@0.3.1 is incompatib
    与本仓此前记录的经验一致。
 
 **这不是本插件的缺陷**（本插件未被跳过）。每个锚在旧版的插件都要各自前移。
+### 未接入（如实说明）
+
+- **DeepSeek Search & Fetch**：插件可达的类型面里**没有对应导出**（宿主/适配器层能力）。
+- **极简模式的 `/compact`**：本插件早有 `/compact`（走 `compaction` 服务），无需动。
+- **`PluginRecord`/`appendPluginRecord`**（会话日志插件记录）、**`LlmCallControls`**
+  （按次 temperature/maxTokens/stop）：均为可选能力，不接入不影响正确性。
+- **`conversation.input.model.label` Slot**：Web 端概念，TUI 无 slot 机制。
 
 ### 验证
 
-真机 e2e（真实 PTY，宿主 0.2.1-rc.2）：横幅 `0.4.13`、`did not activate` = **0**、
-本插件**未被跳过**、TUI 正常启动。门禁 check（含 arch-check / app-ops-check）/ smoke / i18n 全绿。
+- `tsc` 对着 0.2.1-rc.2 真实 `.d.ts` 通过；全量门禁 check / smoke / i18n 全绿。
+- 真机 e2e（宿主 0.2.1-rc.2）：横幅 `0.4.14`、`did not activate` = 0、本插件未被跳过。
+- `/cwd` 的断言做了**可编译的变异验证**：把 `installCwdCommand(app)` 改成 `void installCwdCommand`
+  后断言精确失败（首次用删除调用的变异触发 `TS6133` 编译失败，属**无效变异**，已换掉）。
+
+覆盖提交：
+[`efbf487`](https://github.com/kovey/dsh-nvim-tui/commit/efbf487) ·
+[`a06fcbd`](https://github.com/kovey/dsh-nvim-tui/commit/a06fcbd) ·
+[`bdaf2e2`](https://github.com/kovey/dsh-nvim-tui/commit/bdaf2e2)
 
 ## [v0.4.12] — 2026-10-13
 

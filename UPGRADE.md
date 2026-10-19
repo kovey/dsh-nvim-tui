@@ -20,8 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
-| nvim-tui v0.4.13（宿主 0.2.1-rc.2） | [v0.4.13 → v0.4.14（新增 /cwd；兼容判定改 engines.dsh，**一个版本跨多宿主**）](#v0413--v0414宿主不变新增-cwd--兼容判定改-enginesdsh) |
-| nvim-tui v0.4.12（宿主 0.2.0-rc.2） | [v0.4.12 → v0.4.13（**宿主 0.2.0-rc.2 → 0.2.1-rc.2**，锚点前移）](#v0412--v0413宿主-020-rc2--021-rc2) |
+| nvim-tui v0.4.12（宿主 0.2.0-rc.2） | [v0.4.12 → v0.4.14（**宿主 0.2.0-rc.2 → 0.2.1-rc.2**；新增 /cwd；兼容判定改 engines.dsh）](#v0412--v0414宿主-020-rc2--021-rc2新增-cwd兼容判定改-enginesdsh) |
 | nvim-tui v0.4.11（宿主 0.2.0-rc.2） | [v0.4.11 → v0.4.12（功能与修复，**宿主不变**；零破坏）](#v0411--v0412功能与修复宿主不变零破坏) |
 | nvim-tui v0.4.10（宿主 0.2.0-rc.2） | [v0.4.10 → v0.4.11（功能新增，**宿主不变**；零破坏）](#v0410--v0411功能新增宿主不変零破坏) |
 | nvim-tui v0.4.9（宿主 0.2.0-rc.1） | [v0.4.9 → v0.4.10（**宿主 0.2.0-rc.1 → 0.2.0-rc.2**，锚点前移）](#v049--v0410宿主-020-rc1--020-rc2) |
@@ -41,9 +40,10 @@
 
 ---
 
-## v0.4.13 → v0.4.14（宿主不变；新增 /cwd + 兼容判定改 engines.dsh）
+## v0.4.12 → v0.4.14（宿主 0.2.0-rc.2 → 0.2.1-rc.2；新增 /cwd；兼容判定改 engines.dsh）
 
-> **结论先行**：宿主仍是 0.2.1-rc.2。本版把兼容判定从精确 peer 换成范围，**一个版本可跨多个宿主**。
+> **结论先行**：宿主需升到 **0.2.1-rc.2**。本版把兼容判定从精确 peer 换成范围，
+> **一个插件版本可跨多个宿主**（v0.4.13 未单独发布，内容并入本版）。
 
 ```bash
 dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.4.14"
@@ -67,15 +67,15 @@ dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.4.14"
 `DeepSeek Search & Fetch`（宿主/适配器层，插件类型面无导出）、`/compact`（本插件早有）、
 `PluginRecord` / `LlmCallControls`（可选能力，不接入不影响正确性）。
 
-## v0.4.12 → v0.4.13（宿主 0.2.0-rc.2 → 0.2.1-rc.2）
-
-> **结论先行**：**代码零改动**，只是锚点前移。0.2.1-rc.2 在 `next` 上，`latest` 仍是 0.2.0-rc.2。
+### 升级步骤
 
 ```bash
 npm i -g @deepseek-ai/dsh@0.2.1-rc.2
-dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.4.13"
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.4.14"
 dsh --profile <name>
 ```
+
+（0.2.1-rc.2 在 `next` 上，`latest` 仍是 0.2.0-rc.2。）
 
 ### 为什么是零破坏
 
