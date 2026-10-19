@@ -3,36 +3,61 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [未发布]
+## [v0.4.13] — 2026-10-13
 
-### Docs · 核实 nvim 0.12.6 支持面（代码零改动）
+### Changed · 宿主锚点前移（0.2.0-rc.2 → 0.2.1-rc.2）
 
-对 **nvim 0.12.6** 逐项核对了官方 `news.txt` 的 **BREAKING CHANGES**：
+peer 是精确版本，故与 0.2.0-rc.2 宿主**不匹配** —— 请一起升级。
+（0.2.1-rc.2 在 `next` dist-tag 上；`latest` 仍是 0.2.0-rc.2。）
 
-| 0.12 破坏性变更 | 本插件 |
+### 适配结论：**代码零改动**
+
+官方 release notes 只有两条（DeepSeek-V4.1-Flash-1017 上线、DeepSeek Search 与 Fetch API 可在
+网页搜索设置中开启），但**类型面有 38 个文件变化**，所以以代码 diff 为准：
+
+| 检查项 | 结果 |
 |---|---|
-| `nvim_get_commands()` 的 `complete` 返回函数 | 未使用 |
-| `ui-messages`：`msg_show.bufwrite`/`msg_show.completion` → `msg_show.progress`；移除 `msg_show.return_prompt`/`msg_history_clear` | 未使用（不消费 ui-messages） |
-| `vim.diagnostic.disable()`/`is_disabled()` 移除、`enable()` 旧签名移除、诊断 signs 不再用 `sign_define` | 未使用 |
+| `dsh-llm` peer 键集合 | **无变化** |
+| `dsh-agent` peer | 去掉 `@deepseek-ai/dsh-invariants`（本插件不引用） |
+| `dsh-tools` peer | 去掉 `invariants`，**新增 `@deepseek-ai/dsh-working-directory`**（随宿主安装） |
+| `MessageSourceMap`（`content.d.ts`） | **哈希完全相同** ⇒ `/todo` 守卫的 `source.kind` 不受影响 |
+| 我们导入的全部符号 | 均仍在（`createUserMessage`/`createToolResultMessage`/`defineTool`/`installModelSelection`/`BlockAssembler`/`StreamChunk`/`ContextFormed`） |
+| **`tsc` 对着 0.2.1-rc.2 真实 `.d.ts`** | **通过** |
 
-⇒ **无需任何代码改动**。原因是版本闸门只有 `has('nvim-0.9')` 与 `has('nvim-0.10')` 两档，
-**0.11/0.12 自动落到 0.10+ 的完整分支**（不会"新 nvim 反而降级"）。
+新增导出均为**可选能力**，不接入不影响正确性：`PluginRecord`/`appendPluginRecord`/
+`PluginRecordMap`（会话日志的插件记录）、`PtcCalls`（PTC 调用串行化）、
+`LlmCallControls`/`ConfigureCall`/`LlmNativeAuth`（按次生成参数）。
 
-**0.12 顺带白拿的能力**：`'diffopt'` 在 0.12 上**默认含 `inline:char`**（且支持 `inline:word`
-自动合并邻近块），所以 `/diff` 的左右对照**自动获得行内高亮** —— 我们不必写版本分支。
+**未接入的新功能（如实说明）**：本条 release 的两项都是**宿主/适配器层**能力 ——
+`DeepSeek Search & Fetch` 在插件可达的类型面里**没有对应导出**，`V4.1-Flash-1017` 是模型 id
+（我们的价格表有 `/flash/i` 兜底匹配，无需硬编码）。故 TUI 侧**没有可接的钩子**，
+不虚构"已支持"。
+
+### ⚠️ 升级宿主会连带跳过锚在旧版的插件
+
+升级到 0.2.1-rc.2 后，本机 profile 里 **9 个插件被跳过**：
+
+```
+dsh: skipping profile bundle "dsh-memory": Plugin dsh-memory@0.3.1 is incompatible
+    with dsh 0.2.1-rc.2: requirements {"@deepseek-ai/dsh-agent":"0.2.0-rc.2", …}
+```
+
+（`dsh-audit-trail` · `dsh-evidence-gate` · `dsh-knowledge-base` · `dsh-memory` ·
+`dsh-orchestrator` · `dsh-quality-gate` · `dsh-role-guard` · `dsh-spec-gate` ·
+`dsh-test-design-gate`）
+
+**两处容易误判的细节**：
+
+1. 报错字段从 `peerDependencies` 变成了 **`requirements`** —— 用旧字样 grep 会漏。
+2. 即使写成范围（如 `>=0.2.0-rc…`）**也仍会被跳过** —— prerelease 的范围**不跨 rc**，
+   与本仓此前记录的经验一致。
+
+**这不是本插件的缺陷**（本插件未被跳过）。每个锚在旧版的插件都要各自前移。
 
 ### 验证
 
-- 全部 12 个 Lua 模块在 **nvim 0.12.5** 上 `require` 成功，拦截 `vim.notify`/`vim.deprecate`
-  后**告警数 0**。
-- 真机 e2e（nvim 0.12.5）：横幅 `0.4.12`、`did not activate` = 0、TUI 正常、宿主 stderr 0 字节、
-  日志零 warning/deprecation。
-- API 审计：`vim.uv or vim.loop` **已有回退**（0.10 起推荐 `vim.uv`）；`vim.treesitter.get_parser`/
-  `query.get` 用法未弃用。
-
-**未验证的部分（如实标注）**：低版本回退分支（0.9 的 `virt_text`、0.10 的 `footer_pos`）**本机
-无法实测** —— 只装了 nvim 0.12.5，没有 0.9/0.10/0.11 二进制。这些分支按代码存在且带 `pcall`
-保护，但**未在真机跑过**。
+真机 e2e（真实 PTY，宿主 0.2.1-rc.2）：横幅 `0.4.13`、`did not activate` = **0**、
+本插件**未被跳过**、TUI 正常启动。门禁 check（含 arch-check / app-ops-check）/ smoke / i18n 全绿。
 
 ## [v0.4.12] — 2026-10-13
 

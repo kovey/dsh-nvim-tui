@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.4.12（宿主 0.2.0-rc.2） | [v0.4.12 → v0.4.13（**宿主 0.2.0-rc.2 → 0.2.1-rc.2**，锚点前移）](#v0412--v0413宿主-020-rc2--021-rc2) |
 | nvim-tui v0.4.11（宿主 0.2.0-rc.2） | [v0.4.11 → v0.4.12（功能与修复，**宿主不变**；零破坏）](#v0411--v0412功能与修复宿主不变零破坏) |
 | nvim-tui v0.4.10（宿主 0.2.0-rc.2） | [v0.4.10 → v0.4.11（功能新增，**宿主不变**；零破坏）](#v0410--v0411功能新增宿主不変零破坏) |
 | nvim-tui v0.4.9（宿主 0.2.0-rc.1） | [v0.4.9 → v0.4.10（**宿主 0.2.0-rc.1 → 0.2.0-rc.2**，锚点前移）](#v049--v0410宿主-020-rc1--020-rc2) |
@@ -38,6 +39,38 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.4.12 → v0.4.13（宿主 0.2.0-rc.2 → 0.2.1-rc.2）
+
+> **结论先行**：**代码零改动**，只是锚点前移。0.2.1-rc.2 在 `next` 上，`latest` 仍是 0.2.0-rc.2。
+
+```bash
+npm i -g @deepseek-ai/dsh@0.2.1-rc.2
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.4.13"
+dsh --profile <name>
+```
+
+### 为什么是零破坏
+
+官方 notes 只有两条（V4.1-Flash-1017、Search/Fetch），但类型面有 38 个文件变化，故以代码 diff
+为准：`dsh-llm` peer **无变化**；`dsh-agent` 去掉 `invariants`；`dsh-tools` 新增
+`dsh-working-directory`（随宿主安装）。**`content.d.ts`（`MessageSourceMap`）哈希完全相同**，
+`/todo` 守卫的 `source.kind` 不受影响；我们导入的全部符号均仍在；`tsc` 对着 0.2.1-rc.2 的
+真实 `.d.ts` **通过**。
+
+### 未接入的新功能
+
+`DeepSeek Search & Fetch` 在插件可达的类型面里**没有对应导出**（宿主/适配器层能力）；
+`V4.1-Flash-1017` 是模型 id，价格表有 `/flash/i` 兜底匹配。**TUI 侧没有可接的钩子。**
+
+### ⚠️ 升级后会连带跳过锚在旧版的插件
+
+本机实测 **9 个插件被跳过**（`dsh-memory` / `dsh-knowledge-base` / `dsh-audit-trail` /
+`dsh-evidence-gate` / `dsh-orchestrator` / `dsh-quality-gate` / `dsh-role-guard` /
+`dsh-spec-gate` / `dsh-test-design-gate`）。两处易误判：
+
+1. 报错字段是 **`requirements`**（不再是 `peerDependencies`）—— 用旧字样 grep 会漏；
+2. 即使写范围（`>=0.2.0-rc…`）**也仍被跳过** —— prerelease 的范围**不跨 rc**。
 
 ## v0.4.11 → v0.4.12（功能与修复，宿主不变；零破坏）
 
