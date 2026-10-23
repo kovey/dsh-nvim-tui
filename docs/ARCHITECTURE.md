@@ -1,5 +1,8 @@
 # 架构优化方案：模块化 + 插件化（待评审）
 
+> 当前目录结构与模块职责见 [STRUCTURE.md](./STRUCTURE.md)；本文件保留 2026-09
+> 的架构演进提案与实施记录。
+>
 > 2026-09 提案。目标：解决 app.ts 平铺字段膨胀（116 字段、0 方法、无边界）与
 > 模块高耦合问题；并利用已稳定的 EXT-API 把可独立的功能迁出核心（dogfooding）。
 > 本方案只描述结构，不绑定任何行为变化——每个阶段独立提交、smoke 全绿推进。
@@ -240,7 +243,7 @@ src/
 ├── kernel/           # 内核：公共接口与功能（契约/总线/进程设施/工具）
 ├── feed/             # 渲染公共层（feed/table/diff/stats/images/whale）
 ├── boot/             # 运行期组合层（boot.ts + session-events.ts，编排豁免）
-├── commands/         # 消息 + 输入 + 命令（index/core/nlcmd + commands/ 40 命令文件）
+├── commands/         # 消息 + 输入 + 命令（index/core/nlcmd + commands/ 45 命令文件）
 ├── sessions/         # 会话域（index/services + commands/ 10）
 ├── subagents/  transcript/  statusline/  ext-api/  deps/  market/
 └── …各域 index.ts + services/shared + commands/ 一命令一文件
@@ -256,6 +259,6 @@ src/
 ### 7.3 命令系统：一命令一文件 + 自注册
 
 - 每个命令一个文件：实现 + `installXxxCommand(app)` 自注册（与模块
-  install 同构）；模块 index 逐个调用（61 命令全量文件化，含 4 组别名）
+  install 同构）；模块 index 逐个调用（67 命令全量文件化，含别名）
 - 命令文件禁止互相 import；共享实现下沉模块 shared/services
-- 命令目录断言：catalog 数（61）+ smoke 全量回归护航拆分等价性
+- 命令目录断言：catalog 数（67）+ smoke 全量回归护航拆分等价性

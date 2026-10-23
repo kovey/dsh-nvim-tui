@@ -1,584 +1,181 @@
 # dsh-nvim-tui
 
-给 [DeepSeek Harness (dsh)](https://www.npmjs.com/package/@deepseek-ai/dsh) 用的
-**Neovim 风格 TUI**：以 Neovim 作为终端渲染壳（内置 TUI 提供分屏、模态编辑、
-extmark 等全部能力），一个 Node runner 作为 DSH 桥，把 agent 的事件流渲染进
-nvim 缓冲区、把 nvim 的输入回传给 agent。
+用 **Neovim 当渲染壳** 的 [DeepSeek Harness (dsh)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+TUI：聊天区就是普通 nvim buffer——搜索、复制、可视模式、你的 colorscheme / statusline /
+LSP 全部生效。Node runner 通过 msgpack-RPC 把 agent 事件流渲染进去，把输入回传给 agent。
 
 ```
+dsh --profile tui
+└─ nvim-tui-runner（Node / Cordis 插件）
+    ├─ 订阅 session/event，注入 agents / agentDefaultModel
+    └─ spawn nvim --listen <socket>（内置 TUI 渲染终端）
+         └─ msgpack-RPC 双向：事件 → buffer，输入 → agent.followup
+```
+
+## 快速开始
+
+```bash
+# 安装到 dsh 官方 tui profile
+dsh plugin --profile tui add kovey/dsh-nvim-tui
+dsh --profile tui
+```
+
+也可以装进任意自定义 profile（如 `nvim-tui`），两者等价：
+
+```bash
+dsh plugin --profile nvim-tui add kovey/dsh-nvim-tui
 dsh --profile nvim-tui
-└─ DSH host 组合 (dsh-base + nvim-tui-runner)
-    └─ nvim-tui-runner (Node, Cordis 插件行)
-        ├─ inject: agents / agentDefaultModel，订阅 session/event
-        └─ spawn: nvim --listen <unix-socket>
-             ├─ nvim 内置 TUI 渲染你的终端
-             ├─ Lua UI (nvim/lua/dsh_tui)：chat buffer + prompt 输入窗 + 键位
-             └─ msgpack-RPC 双向通信
-                  Node → nvim: buf_set_lines 流式渲染 DSH 事件
-                  nvim → Node: rpcnotify（输入、退出）→ agent.followup
 ```
 
-## 特性速览
+`dsh plugin add` 会把声明了 `dsh.bundle` 的依赖并入该 profile 的 bundles 层栈，
+无需手改 `package.json`。启动后输入 `/help` 查看命令，输入 `/` 弹出补全。
 
-- **Neovim 原生体验**：聊天区就是普通 nvim buffer——搜索、复制、可视模式选择、
-  你自己的 colorscheme / statusline / LSP 全部生效；```lang 代码块与 diff
-  内容直接用你的 nvim 配置（treesitter + 配色方案）做语法高亮
-- **流式渲染**：`·· thinking · 12.3s` 浮动活动指示 + `<C-o>` 思考与工具面板
-  （紧贴右缘的浮动弹窗，聊天区保持全宽）；工具卡片、subagent/workflow
-  卡片、GFM 表格框线渲染；markdown 代码块按 Claude 风格渲染
-  （隐藏 ``` 围栏、语言小标 + 语法高亮）；子代理思考链回放**边思考边实时输出**
-- **子代理对话窗**：`/subagents` 对 continuable 子代理打开对话窗口——上方是
-  子代理实时转录（思考/回复/工具卡边跑边流），下方输入行像跟主代理聊天一样
-  发消息（Enter 发送 · Esc 关闭）；消息经官方子代理续聊队列（host prompt
-  queue）排队为
-  子代理的下一回合（运行中等待当前回合收敛，已结束自动冷恢复），主聊天同步
-  `➤ 已发给子代理 X` 提示
-- **状态栏**：权限模式 · 模型 · effort · 缓存命中% · 上下文占用 · Σ token ·
-  TTFT/吞吐 · 时长 · 预估成本 · provider 路由 · ⏳ 排队 / ⚙ jobs / 📋 待办 ·
-  `⇢` 子代理寻址
-- **转录增强**（对齐官方客户端）：📋 待办条与 **⚙ 任务板钉在聊天区底部**
-  （与 thinking 指示同区、永不遮挡——进行中实时更新，全部完成才提交为
-  聊天内容）、⋯ 压缩检查点、↻ 重试状态行、workflow 转录内嵌套回放、
-  结构化工具结果逐条渲染
-- **会话管理**：`/sessions` 工作区分组浏览器（📁 分组 + 未分组 + 归档隐藏，
-  会话可**移入工作区 / 移出分组**）、
-  `/fork` 分叉、启动自动续上次活跃会话（claude --continue 式）、`/rewind` 回退、
-  `/search` 跨会话搜索、`/archive` 归档、`/queue` 消息队列
-- **插件开放接口（EXT-API）**：其他 dsh 插件经 `ctx.get('nvim-tui')`、
-  TUI 内的 nvim 插件经 `require('dsh_tui').api` 渲染 UI / 使用 nvim 窗口 /
-  订阅会话事件——含卡片交互（1-9 / Enter 触发动作，支持确认型与输入型）、
-  多面板列栈、**四边停靠槽 region**（仅浮动窗口、无分屏、聊天/输入布局
-  不变）、dsh-ext 双向 RPC（30s 有界应答）、晚加载快照对齐（见
-  [docs/EXT-API.md](docs/EXT-API.md)）
-- **引用与补全**：`@` 文件引用 + **@session 会话引用**（官方规范 mention）；
-  `/` 补全菜单含全部命令 + 技能条目
-- **多模态识图**：原生 image 直发；模型不支持 image 时**自动临时切换官方识图模型**（deepseek-flash / deepseek-v4-flash-vision-exp 等），回合结束切回；`<C-v>` 剪贴板读图、`/image <路径>`、粘贴 data URL
-- **文件变更 diff**：每个改动文件的工具调用（write/edit/replace/patch/fs 等）
-  自动对比改动前后内容，`✎ 新增/修改/删除 路径 (+N −M)` 高亮块渲染进聊天流
-  （绿色 `+` / 红色 `-` / 上下文行，大文件自动截断）——每轮改了什么都一目了然
-- **i18n**：runner 侧界面字典化，`/locale zh|en` 即时切换
-- **自然语言命令**：斜杠命令、精确短语即时路由；模糊语句交给**大模型**
-  判断（注册 `tui_command` 工具，agent 决定执行命令还是正常聊天）
-- **斜杠命令**：62 个内置命令，`/` 自动弹出补全菜单（命令名 + 说明实时过滤）
-
-## 安装 / 运行
-
-**方式一：官方 tui profile**（dsh 官方安装 TUI 的方式）：
+### 更新
 
 ```bash
-dsh plugin --profile tui add kovey/dsh-nvim-tui   # 安装 + 自动加入 bundles
-dsh --profile tui                                 # 启动（真实终端里）
+# git 依赖用 #tag 重写 ref；update / --latest 推不动 git ref
+dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"
 ```
 
-**方式二：自定义 profile（nvim-tui）**：
-
-```bash
-dsh plugin --profile nvim-tui add kovey/dsh-nvim-tui   # 安装 + 自动加入 bundles
-dsh --profile nvim-tui                                  # 启动（真实终端里）
-```
-
-两种方式等价：`dsh plugin add` 会把声明了 `dsh.bundle` 的依赖调和进该
-profile 的 bundles 层栈（无需手改 package.json）；profile 首次使用时自动
-初始化（bundle 层为 `@deepseek-ai/dsh-base`，从 dsh 安装锚点解析）。
-
-## 更新
-
-对应安装方式执行（git 依赖必须带 `--latest`，否则 pnpm 认为固定提交
-"已是最新"不会重新解析）：
-
-```bash
-# 更新/切换版本（git 依赖用 #tag 重写 ref；update/--latest 推不动 git ref）
-dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"      # 官方 tui profile
-dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#<tag>" # 自定义 profile
-
-# ⚠️ 若你装的是 v0.4.2 / v0.4.3，请尽快升级：那两版的终端通知会泄漏转义序列、
-#    摧毁终端显示（v0.4.4 修了非 TTY 场景；v0.4.5 起该功能已整体移除）。
-
-# 固定到指定版本（git 依赖的版本语法是 #ref，不是 @version）
-dsh plugin --profile nvim-tui add "kovey/dsh-nvim-tui#v0.4.14"
-```
-
-> **宿主 dsh 升级与适配**见 [UPGRADE.md](./UPGRADE.md)。
-> 版本轴：v0.4.1 起 `^0.1.5-rc.2` → **v0.4.7 起精确锚定 `0.1.7-rc.x`（v0.4.8 = rc.2，v0.4.9 = 0.2.0-rc.1，v0.4.10 = 0.2.0-rc.2，v0.4.11 / v0.4.12 = 0.2.0-rc.2，v0.4.13 / v0.4.14 = 0.2.1-rc.2）**。
->
-> ⚠️ **锚点语义变了**：0.1.7 的 peer 声明是**精确版本**（`"@deepseek-ai/dsh-agent": "0.1.7-rc.1"`，
-> 无 `^`），所以本插件也改为精确锚定 —— 宿主与插件必须同版本族，不能再跨 rc 混用。
-> 这与 0.1.5 时期「rc.1 与 rc.2 可互换」的口径**不同**。
+宿主与插件版本的对应关系、逐版本升级步骤见 [UPGRADE.md](./UPGRADE.md)。
 
 ## 运行依赖
 
-| 依赖 | 最低版本 | 说明 |
+| 依赖 | 要求 | 说明 |
 |---|---|---|
-| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | **0.1.7-rc.1**（`next` dist-tag） | peer 依赖 `@deepseek-ai/dsh-agent` / `dsh-llm` / `dsh-tools` **精确** `0.1.7-rc.1`（0.1.7 的 peer 不再用 `^` 区间），由 profile 的 dsh 安装锚点提供 |
-| [Neovim](https://neovim.io) | **0.9**（推荐 **0.10+**） | 0.10+ 完整体验（输入框四边边框、弹窗提示嵌入边框）；0.9 可运行但降级（`❯` 提示列与左边框以虚拟文本呈现、弹窗提示为分离提示条） |
-| Node.js | 23.6+ | 由 dsh 提供（`engines` 声明），一般无需单独安装 |
+| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | `>=0.2.0-rc.2 <0.2.2` | 已实测 0.2.0-rc.2 / 0.2.1-rc.1 / 0.2.1-rc.2；0.2.2 与 0.3.0 未验证，故意不声明兼容 |
+| [Neovim](https://neovim.io) | 0.9+（推荐 0.10+） | 0.10+ 完整体验（输入框四边框、弹窗提示嵌入边框）；0.9 可运行但降级 |
+| Node.js | 23.6+ | 跟随 dsh 的 `engines` 要求，通常无需单独安装 |
 
-**Neovim 版本支持面**：0.9 / 0.10 / 0.11 / 0.12 全系列。代码里只有 `has('nvim-0.9')` 与
-`has('nvim-0.10')` 两档闸门，**0.11 与 0.12 自动走 0.10+ 的完整分支** —— 因此新版本
-**无需改动即可支持**，不会出现"新 nvim 反而降级"。
+- **Neovim 0.9–0.12 全系列支持**：代码里只有 `nvim-0.9` / `nvim-0.10` 两档闸门，
+  0.11 / 0.12 自动走完整分支；已逐项核对 0.12.6 的 breaking changes，均未使用。
+- **注意预发布版**：dsh 的 `next` dist-tag 是 release candidate，`latest` 可能更旧；
+  安装时显式带版本或 `@next`，别让 `npm i -g @deepseek-ai/dsh` 装回旧版。
 
-> 已对 **nvim 0.12.6** 逐项核对官方 `news.txt` 的 **BREAKING CHANGES**：
-> `nvim_get_commands()` 的 `complete`、`ui-messages` 事件变化（`msg_show.bufwrite`/
-> `msg_show.completion` → `msg_show.progress`、`msg_show.return_prompt`/`msg_history_clear`
-> 移除）、`vim.diagnostic.disable()/is_disabled()` 移除与 `enable()` 旧签名移除 ——
-> **本插件一处都未使用**。
->
-> 0.12 的 `'diffopt' inline:`（行内 diff 高亮，且 `inline:word` 会自动合并邻近块）在
-> **0.12 上默认开启**，`/diff` 的左右对照**因此自动获得行内高亮**，无需我们做版本分支。
+## 主要特性
 
-> 开发与 CI 实测：dsh **0.2.0-rc.2** / nvim **0.12.6**（本机 0.12.5 上完成实证）。
-> - 类型面门禁（`check` / `smoke` / `i18n`）对着 0.1.7-rc.1 的真实类型面全绿；
-> - **真机 e2e 已在隔离 `DSH_HOME` + 0.1.7-rc.1 宿主上跑通**（headless dump 正常，
->   版本横幅 / history replay / turn 开合 / 状态栏渲染均正确）。
-> - 更早的 0.1.5-rc.2 仍是 v0.4.6 及以前的锚点。
+- **Neovim 原生体验**：聊天区 / 输入窗都是普通 buffer；围栏代码块与 diff 用你的
+  treesitter + 配色方案高亮。
+- **流式渲染**：`·· thinking · 12.3s` 浮动活动指示；思考与工具记录收进 `<C-o>`
+  右侧面板，聊天区保持全宽。工具卡、GFM 框线表格（按显示宽度对齐、超宽自动折行）、
+  Claude 风格代码块。
+- **转录增强**：📋 待办条与 ⚙ 任务板钉在聊天区底部（实时更新，全部完成才写入转录）、
+  ⋯ 压缩检查点、↻ 重试状态行、workflow 嵌套回放、子代理思考链边跑边输出；待办
+  逐项更新由守卫强制（[说明](./docs/CONFIG.md#待办清单守卫)）。
+- **文件改动**：write / edit 等工具调用自动渲染 `✎ 路径 (+N −M)` 统一 diff；
+  `/changes` 汇总本会话改动，`/diff` 左右对照审阅。
+- **会话管理**：`/sessions` 工作区分组浏览器、`/fork` 分叉、`/btw` 侧问、
+  `/queue` 消息队列、`/search` 跨会话搜索、`/cwd` 切换工作目录；启动自动续上次
+  活跃会话（类似 `claude --continue`）。
+- **子代理与工作流**：`/subagents` 目录 + 对话窗（边跑边看，可续聊 continuable
+  子代理）；`/workflow` 查看阶段树。
+- **多模态识图**：原生 image 直发；当前模型不支持图像时自动临时切到官方识图模型，
+  回合结束切回。`<C-v>` 读剪贴板图片、`/image` 指定文件。
+- **输入效率**：`@` 文件 / `@session` 引用；`/` 命令补全（含宿主与插件注册的命令）；
+  精确短语走自然语言命令，模糊语句交给模型判断是否执行（`tui_command` 工具）。
+- **模型与状态栏**：模型 · effort · 缓存命中 · 上下文占用 · TTFT / tok/s · 成本 ·
+  权限模式 · 排队 / jobs / 待办；`/difficulty` 按任务难度自动选模型。
+- **扩展与生态**：`/market` 插件市场（安装 / 更新 / 热启停）、`/plugin` 直装；
+  [EXT-API](./docs/EXT-API.md) 允许其他 dsh 插件和 nvim 插件在 TUI 内渲染 UI、
+  订阅会话事件。
+- **可定制**：`/theme` 预设或自定义高亮组、`/density`、`/layout`、`/whale`、
+  `/glance`；`/locale zh|en` 切换界面语言。
 
-> 升级宿主：`npm i -g @deepseek-ai/dsh@next`（当前 next dist-tag 即
-> 0.1.5-rc.2；v0.4.1 起 peer 依赖锚定 `^0.1.5-rc.2` —— 该区间**仍接受
-> 0.1.5-rc.1**，两版可互换；与旧宿主 0.1.2-rc.1 及更早版本不混用；
-> 会话日志随宿主迁移到 V3 格式）。
+## 键位
 
-> ⚠️ **`0.1.5-rc.2` 是预发布版（release candidate），不是稳定版**：官方
-> `next` dist-tag 指向它，npm 的 `latest` 仍停在 `0.1.0-rc.6`。安装时务必
-> 显式带 `@next`（或写死 `@deepseek-ai/dsh@0.1.5-rc.2`），
-> 直接 `npm i -g @deepseek-ai/dsh` 会装到旧的 `latest`。
+聊天区 normal 模式下 `j` / `k`、`/` 搜索、`n` / `N`、`gg` / `G`、`y` 等原生操作
+都可用。运行中发送的消息会排队到当前回合结束（状态栏 ⏳ 计数，`/queue` 管理）。
 
-## 开发安装（本地仓库直链）
+| 键 | 作用 |
+|---|---|
+| `Enter` | 发送消息（输入窗聚焦时自动处于 insert 模式） |
+| `<C-CR>` | 输入换行（窗口高度 1–6 行自适应） |
+| `<C-e>` | 全屏输入：`Enter` 换行，`Esc` 进命令模式；命令模式下回车发送、`q` 丢弃 |
+| `↑` / `↓` | 行尾循环输入历史（可恢复草稿） |
+| `/` | 命令补全浮窗（`Tab` / `<C-n>` 切换，`Enter` 补全或执行） |
+| `@` | 文件 / 会话引用补全 |
+| `<C-v>` | 剪贴板读图（macOS），随消息发送 |
+| `<C-c>` | 停止当前回合（同 `/stop`） |
+| `<C-o>` | 展开 / 收起活动面板 |
+| 审批浮窗 `y` / `a` / `n` | 允许一次 / 总是允许 / 拒绝 |
+| 提问浮窗 `j` `k` / `Space` / `Enter` | 移动 / 多选 / 确认 |
+| `<C-q>` / `:qa` | 退出（`:qa` 直接退 nvim，runner 随之退出整个 dsh） |
+| `<Esc>` / `j` `k` | 回到 normal 模式 / 滚动聊天区 |
+| 扩展卡片 `1-9` / `Enter` | 触发卡片动作 / 弹出动作菜单 |
 
-```bash
-mkdir -p ~/.dsh/profiles/nvim-tui
-#   package.json 依赖 "dsh-nvim-tui": "link:<本仓库绝对路径>"，
-#   dsh.profile.bundles = ["@deepseek-ai/dsh-base", "dsh-nvim-tui"]
-#   cordis.yml = []，cordis.patch.yml = []，pnpm-workspace.yaml（见仓库内模板）
-dsh plugin --profile nvim-tui install
-dsh --profile nvim-tui
-```
+## 斜杠命令
 
-> 本仓库根目录就是 bundle 本身：`cordis.patch.yml` 挂载 `nvim-tui-runner` 行，
-> package.json 的 `dsh.bundle.patch` 声明了它。
+输入 `/` 弹出补全，`/help` 查看全部。常用命令：
 
-启动后聊天区会显示版本横幅：`dsh-nvim-tui 0.4.14 (build YYYY-MM-DD HH:mm) · channel N`。
-输入 `/help` 随时查看全部命令。
+| 分组 | 命令 |
+|---|---|
+| 会话 | `/sessions` `/new` `/fork` `/btw` `/queue` `/compact` `/cwd` `/search` |
+| 模型 | `/model` `/models` `/effort` `/difficulty` |
+| 视图 | `/panel` `/theme` `/density` `/layout` `/whale` `/locale` |
+| 运维 | `/settings` `/deps` `/doctor` `/plugins` `/market` `/plugin` `/mcp` |
+| 信息 | `/help` `/status` `/context` `/cost` `/changes` `/diff` `/export` |
+
+完整命令表（67 个内置命令，按分组）见 [docs/COMMANDS.md](./docs/COMMANDS.md)。
+宿主与其他插件注册的命令也会进入补全目录，可用 `/commands` 查看。
 
 ## 配置
 
-runner 行的 config（profile 的 `cordis.patch.yml`，环境变量兜底）：
-
-| 配置项 | 默认 | 说明 |
-|---|---|---|
-| `config.loadUserConfig` | `true` | `false` → `-u NONE` 不加载用户 nvim 配置；环境变量 `DSH_NVIM_TUI_LOAD_USER_CONFIG=0` 等效 |
-| `config.theme` | 无 | 高亮组覆盖表，见下 |
-| `config.headless` | `false` | `true` 或 `DSH_NVIM_TUI_HEADLESS=1` → nvim `--headless`（无 TTY 测试模式） |
-| `config.watchdogMs` / `config.dumpPath` | 120000 / `/tmp/dsh-nvim-tui-e2e-<pid>.txt` | headless 模式的兜底超时与聊天转储路径（env：`DSH_NVIM_TUI_WATCHDOG_MS` / `DSH_NVIM_TUI_DUMP`） |
-| `config.resumeLatest` | `true` | 启动自动续上次活跃会话；`DSH_NVIM_TUI_RESUME_LATEST=0` 关闭，`DSH_NVIM_TUI_RESUME=<id>` / `config.resumeSessionId` 显式指定 |
-| `config.prompt` | 无 | headless 模式下自动发送的首条消息（env：`DSH_NVIM_TUI_PROMPT`），用于 e2e 无人值守跑一轮 |
-| `config.locale` | `zh` | 界面语言 `zh`/`en`；环境变量 `DSH_NVIM_TUI_LOCALE` 等效，运行时 `/locale` 切换 |
-
-**主题**：`config.theme` 是一个 `高亮组 → 属性` 映射，每组可给
-`{ fg, bg, bold, italic, underline }`（颜色 `#rrggbb`）或 `{ link: '内置组' }`。
-不覆盖的组保持默认（自动适配你的 colorscheme）。正文类内容默认跟随主题的
-`Comment` 组（暗色观感），角色内容跟随对应组；亮色主题下自动回退为
-Normal 混合的暗灰，不刺眼。
+runner 行的 `config:` 写在 profile 的 `cordis.patch.yml`：
 
 ```yaml
-# ~/.dsh/profiles/nvim-tui/cordis.patch.yml
 - insert:
     - id: nvim-tui-runner
       name: 'dsh-nvim-tui'
       config:
         theme:
           DshTuiUser: { fg: '#7aa2f7', bold: true }
-          DshTuiTool: { fg: '#e0af68' }
-          DshTuiReasoning: { fg: '#565f89', italic: true }
-          DshTuiError: { link: 'ErrorMsg' }
 ```
 
-可用组：`DshTuiUser`（用户消息）· `DshTuiAssistant`（模型输出）·
-`DshTuiNotice`（提示）· `DshTuiDivider`（分隔线）· `DshTuiDim`（列表等
-未高亮文本）· `DshTuiError` · `DshTuiTool` · `DshTuiSubagent` ·
-`DshTuiWorkflow` · `DshTuiCode`（行内代码/代码块）· `DshTuiBold` ·
-`DshTuiReasoning`（思考）· `DshTuiExt`（扩展卡片）· `DshTuiPrompt`（输入行 `❯`）·
-`DshTuiStatus`（状态栏）· `DshTuiActiveSession`。
-也可用内置预设 `/theme default|dim|vivid|contrast|mono` 即时切换。
-
-## 布局与键位
-
-双窗布局：`对话区 / 输入窗`（会话列表是 `/sessions` 浮窗）。输入窗每行行首有
-REPL 风格的 `❯` 提示符——它渲染在窗口的 status column 里，**不属于输入内容**：
-不会被提交、也删不掉。运行中发送的消息会排队在当前回合结束后处理（对话区有
-"已排队"提示 + 状态栏 ⏳ 计数，`/queue` 可查看/编辑/删除排队消息；想不排队
-可用 `/btw` 侧问）。
-
-| 键 | 作用 |
-|---|---|
-| 输入框直接输入 + `Enter` | 发送消息到当前会话（输入窗聚焦时自动处于 insert 模式） |
-| 输入框 `<C-cr>` | 插入换行（多行输入，窗口高度自动 1..6 行跟随） |
-| 输入框 `<C-e>` | **全屏输入**：近全屏浮窗编辑草稿（Enter 换行像编辑普通文件；Esc 进入命令模式；命令模式下回车发送并回到常规输入框，`q` 丢弃） |
-| 输入框 `<Up>` / `<Down>` | 行尾处循环输入历史（可恢复草稿） |
-| 输入框 `/` | 自动弹出**命令补全菜单**（浮动窗：全部命令 + 说明，随输入实时过滤） |
-| 补全菜单 `<Tab>` / `<C-n>` / `<S-Tab>` / `<C-p>` | 下/上一个候选项（循环，超出 10 行自动滚动） |
-| 补全菜单 `Enter` | 前缀时补全选中命令（再次 Enter 执行）；命令名已完整时直接执行 |
-| 补全菜单 `<Esc>` | 关闭菜单并留在 insert 模式（再次 Esc 才退出 insert）；菜单未开时 `<C-p>`/`<C-n>` 同 `<Up>`/`<Down>` 循环历史 |
-| 输入框 `<C-v>` | **剪贴板读图**（macOS）：把复制的图片（截图/拷贝的图片）排入待发送队列，回车随消息一起发送；`/image clear` 清空队列 |
-| 输入框 `<C-c>` | **停止当前回合**（运行中中止、空闲时提示；等效 `/stop`） |
-| `<C-o>` | 展开/收起活动面板（思考 + 工具记录，右侧约 45% 屏宽 30–52 列，可滚动；扩展面板与它组成面板列栈，reasoning 面板排在最底） |
-| `/sessions` 浏览器：`j/k` 移动、`Enter` 打开会话 / 进入行操作（打开 / 重命名 / 归档 / **移入工作区·移出分组**）、工作区行操作（新建会话于此 / 重命名）、`Esc` 取消 | 工作区分组的会话浏览器（完整会话 id，归档隐藏） |
-| 审批浮窗：`y` 允许一次 / `a` 总是（自动模式）/ `n` 或 `Esc` 拒绝 | 权限请求 |
-| 提问浮窗：`j/k` 移动、`Space` 多选、`Enter` 确认/下一题、`Esc` 取消 | 用户提问 |
-| `<Esc>` / `j` `k` | 回到 normal 模式、滚动 chat 窗口 |
-| 聊天窗 normal 模式：`/` 搜索、`n/N` 下一个、`G` 跳到底部、`gg` 顶部、`y` 复制（可视模式选择）、`<C-o>` 面板、**光标停在扩展卡片上按 `1-9` 触发动作 / `Enter` 弹动作菜单** | 聊天区是普通 nvim buffer，搜索/复制/滚动原生可用 |
-| `<C-q>` | 退出（通知 runner 销毁 agent 并退出 dsh） |
-| `:qa` | 直接退出 nvim（runner 会跟着退出整个 dsh） |
-| 终端标题栏 | 跟随活跃会话标题（`dsh · <会话标题>`，OSC 2，由 nvim 写回终端） |
-
-## 斜杠命令
-
-输入 `/` 即弹出补全菜单（命令名 + 说明，随输入过滤）；命令目录由 runner 启动时
-推送给 nvim，与 `/help`、命令分发表共用同一份注册表，不会漂移。
-
-| 分组 | 命令 | 作用 |
+| 配置项 | 默认 | 说明 |
 |---|---|---|
-| 系统 | `/exit` `/quit` `/restart` | 退出（teardown 2.5s 上限 + 硬兜底 5s；restart 9s）/ 重启 dsh 进程 |
-| 系统 | `/help` `/sessions` `/panel` | 分组列出全部命令 / 工作区分组会话浏览器（含移入工作区·移出分组）/ 活动面板 |
-| 系统 | `/settings [edit \| set <ns> <key.path> <value>]` | 设置总览（官方 descriptor 形状渲染 + 用户覆盖星标，i/o 直接打开 settings.yaml 编辑）/ 类型化写入 |
-| 系统 | `/deps [install]` | 依赖体检（缺什么 / 一键装配） |
-| 会话 | `/new [目录]` `/clear` | 新建会话（可指定 cwd，含目录选择器浮窗）/ 清屏 |
-| 会话 | `/fork [directive]` `/branch` | 分叉当前会话（继承历史 + 血缘），directive 作为首条消息 |
-| 会话 | `/btw <问题>` | 侧问：分叉新会话发送该问题，不打断当前对话 |
-| 会话 | `/stop` | 中止当前回合（agent.cancel，清空排队与引导；等效 `<C-c>`） |
-| 会话 | `/steer <directive>` | 引导注入：把指令排队给最近一步（空闲时会直接开一轮） |
-| 会话 | `/compact` | 手动压缩上下文（compaction 引擎；返回压缩条数与 token 数） |
-| 会话 | `/goal [new <目标>\|pause\|resume\|complete\|clear]` | 查看/管理目标（状态栏同步显示 🎯 进度） |
-| 会话 | `/plan [on\|off\|status]` | 计划模式开关（状态栏显示 📋） |
-| 会话 | `/rewind [第N条]` | 回退到某条用户消息（`session.truncate`；dsh 0.1.5-rc.1 起已移除该能力，rc.2 同样没有 → 该宿主上仅提示降级） |
-| 会话 | `/rename <新标题>` | 钉住会话标题 |
-| 会话 | `/search <关键词>` | 跨会话全文搜索（`session-query-sqlite`，**默认 `openAt: never` 未启用**——先 `/deps install` 建索引），命中可一键恢复 |
-| 会话 | `/tasks [kill <job-id>]` | 任务列表**弹窗**（打开期间**实时刷新**，选中即取消）+ 聊天区**钉底任务板**（⚙ 块实时更新，全部结束才提交进聊天流） |
-| 会话 | `/todo [任务内容]` | 添加/查看待办任务（**弹窗实时同步** + 钉底待办板，todo/write 事件，状态栏 📋 计数） |
-| 会话 | `/skills [技能名]` | 技能目录浏览（浮窗查看详情） |
-| 会话 | `/fb up\|down [备注]` | 对最后一条助手消息点赞/点踩（message-feedback） |
-| 会话 | `/subagents` | 子代理目录（思考链只读回放 + **对话窗口** + continuable 续聊） |
-| 会话 | `/workflow` | 工作流运行视图（阶段树 + agent 序列 + 日志；转录内嵌套回放） |
-| 会话 | `/history` | 输入历史浏览（最新在前，Enter 回填输入框，多行条目原样恢复） |
-| 会话 | `/queue` | 消息队列：查看/编辑/删除排队消息、清空（agent inbox 投影，状态栏 ⏳ 计数） |
-| 会话 | `/workspace [add <目录> [标题] \| delete <id>]` | 工作区管理（dsh-workspace：分组/排序/归档） |
-| 会话 | `/archive [会话id]` | 归档会话（从所有列表隐藏，非破坏性） |
-| 会话 | `/locale [zh\|en]` | 界面语言切换（runner 侧字典化；Lua 按键提示保持中文） |
-| 信息 | `/context` | 上下文组成分解（≈used/capacity · system/tools/messages · claim 窗口，读 sessionProjections） |
-| 信息 | `/dir [路径]` | 目录浏览浮窗（Enter 目录进入 / 文件在新标签页打开，gt/gT 切换） |
-| 信息 | `/lines [路径]` | 文件行视图（只读浮窗，`i` 打开编辑；无参时弹目录选择器） |
-| 信息 | `/plugins` | 宿主插件清单（loader 条目只读投影） |
-| 信息 | `/market [关键词 \| refresh \| update-all]` | **插件市场**：awesome-dsh-plugin 精选目录（2140+ 插件）按 GitHub ★ 倒序，安装/更新/卸载（`dsh plugin` CLI，重启生效）+ **热启停**（cordis.patch.yml + HMR 免重启）+ `↑` 更新标记 + update-all，磁盘缓存 + 离线可用 |
-| 信息 | `/plugin [install\|update\|remove <spec> \| list]` | **市场目录之外的直装入口**：`spec` 可为 npm 包名 / `owner/repo` / git URL，直接交给官方 CLI，小众或私有插件在 `/market` 里搜不到时用它；装/更/卸后重启 dsh 生效。**更新 git/tag 依赖必须带新 ref**（`/plugin update owner/repo#vX.Y.Z`）—— `update --latest` 只重写 npm semver 范围、推不动 git ref（实测）。`/market` 负责目录浏览（含 `update-all`），两者互补 |
-| 模型 | `/models` | 模型/供应商目录（活路由 + 可配置 provider 清单 + 当前选择） |
-| 会话 | `/attach [路径]` | 附加文件/目录（图片 = durable attachment，其余 = @ 路径引用）；`@` 输入即文件引用补全 |
-| 会话 | `/image <路径> [提示]` | **多模态识图**：本地图片（png/jpg/webp/gif，支持 `~/`）随提示发送；macOS 无参数时读剪贴板图片；`/image clear` 清空 `<C-v>` 队列 |
-| 模型 | `/model [provider/model]` | 无参浮窗选择，带参直接切换；热切 + 持久化默认 |
-| 模型 | `/effort off\|high\|max\|auto` | 推理等级 |
-| 模型 | `/difficulty [easy\|medium\|hard\|auto\|off]` | **按难度自动选模型**：规则评估（计划模式/目标/工具失败/关键词/长度）→ 临时切换档位模型，回合结束自动切回；可开 LLM 分类器与子代理模型闸门（见 §难度路由） |
-| 模型 | `/preset [id]` | agent 预设（需 agent-presets 行；官方空白规则：仅未开始回合的会话可切换） |
-| 审批 | `/yolo on\|off` | 审批策略全放行/逐项询问 |
-| 审批 | `/permission [name]` | 权限预设（沙箱模式 + 审批策略组合）；危险全访问预设先弹确认 |
-| 显示 | `/density` | 紧凑模式（工具卡片仅标题行） |
-| 显示 | `/glance <cache\|context\|tokens\|cost\|elapsed\|total>` | 状态栏段显隐 |
-| 显示 | `/theme default\|dim\|vivid\|contrast\|mono` | 内置高亮预设（不覆盖则跟随 colorscheme） |
-| 显示 | `/whale on\|off` | 蓝鲸背景壁纸/水印开关。鲸鱼由**官方 logo 矢量路径**离线光栅化而来（`scripts/whale-gen.ts` → `src/feed/whale-art.ts`），按窗口宽度分 24/32/48 列三档自动选最宽的一档，空态时做呼吸浮动 + 喷气动效 |
-| 显示 | `/layout default\|panel` | 布局预设（无参循环切换） |
-| 信息 | `/cost` `/export` `/config` `/status` `/doctor` `/approvals` | 用量成本 / 导出转录 md / 配置摘要 / 会话快照 / **终端 + 会话日志诊断**（点名曾有日志故障的会话并给修复出路） / **本会话审批历史**（批准·拒绝，按会话落盘、重启后仍在） |
-| 信息 | `/mcp` | MCP server 工具统计（按 server 分组） |
-| 信息 | `/deliverables` | 本回合交付物（nvim 新标签页打开产物文件） |
-| 信息 | `/trajectory` | 回合步骤轨迹 |
-| 记忆 | `/remember <text>` `/memory [delete <id>]` | 项目记忆写入/浏览/删除（.dsh/memory/） |
+| `loadUserConfig` | `true` | 加载你的 nvim 配置；`false` 等价 `-u NONE` |
+| `theme` | — | 高亮组覆盖 |
+| `headless` | `false` | 无 TTY 测试模式 |
+| `resumeLatest` | `true` | 启动自动续上次活跃会话 |
+| `locale` | `zh` | 界面语言 `zh` / `en` |
+| `todoGuard` | `true` | 待办清单逐项更新守卫 |
+| `difficultyRouting` | — | 难度路由配置 |
 
-依赖的宿主服务未装配时，对应命令会给出明确提示。
-
-## 多模态识图
-
-图片经 harness 的 durable attachment 管线发送——TUI 读字节 →
-`attachments.saveImage()` 校验并落库 → 用户消息携带稳定 `image` 块 →
-LLM 适配器在请求时解析为 data URL。能力路径：
-
-1. **原生识图**：当前模型声明 `inputModalities: [text, image]` 且网关透传
-   `image_url` → 直接发送；
-2. **官方识图模型自动切换**：当前模型不含 image 模态时，TUI 临时切换到
-   目录中声明的官方识图模型（优先 `deepseek-flash` /
-   `deepseek-v4-flash-vision-exp` / `deepseek-vl2` / `deepseek-vl`，随后
-   扫描目录里任意声明 image 模态的模型），**回合结束自动切回**原模型
-   （连续图片消息会延长切换窗口）。目录中没有任何带 image 模态的模型
-   时发送前 fail fast，明确报错而不是让回合死在适配器里
-   （`UNSUPPORTED_CONTENT`）。
-
-> 注：早期版本的 `dsh-vision-bridge` OCR 桥路径已移除（v0.3.2），识别统一走
-> 官方识图模型。旧会话遗留的带图失败消息仍可用 `/rewind` 回退修复。
-
-## 难度路由（按任务难度选模型）
-
-`/difficulty` 在发送前按难度临时切换会话模型，**回合结束自动切回**全局默认
-（与识图临时切换同一套机制，`agentDefaultModel` 持久化默认永不被污染）：
-
-- **定档来源**：手动钉住 `/difficulty easy|medium|hard` → 规则评估
-  （计划模式 / 活跃目标 / 本回合工具失败、关键词、消息长度）→ 可选 **LLM
-  分类器**（`classifier.enabled`，用便宜模型在发送前打分，任何失败回退规则）。
-- **配置**（runner 行的 `config:` 块，HMR 免重启）：
-
-```yaml
-- insert:
-    - id: nvim-tui-runner
-      name: 'dsh-nvim-tui'
-      config:
-        difficultyRouting:
-          mode: auto            # auto | off
-          tiers:
-            easy:   { model: <快模型>, effort: off }
-            medium: { model: <默认模型> }   # 可省略 = 不切换
-            hard:   { model: <强模型>, effort: max }
-          classifier: { enabled: true, model: <打分模型>, timeoutMs: 8000 }
-          subagentPolicy: true  # 同步官方 subagent-model-selection 闸门
-```
-
-- **状态栏徽标**：`🟢/🟡/🔴` 前缀显示当前回合生效的档位；`/difficulty` 无参查看
-  档位配置与当前状态；`/difficulty off` 关闭，手动 `/model` 也会暂停本会话
-  自动路由（`/difficulty auto` 恢复）。
-- **子代理联动**（`subagentPolicy: true`）：子代理默认继承主会话模型，官方
-  `subagent-model-selection` 闸门同步为档位模型集，模型可在其中自选。
-
-## 待办清单纪律（逐项更新硬约束）
-
-`todo_write` 是"整表重写"语义、由模型决定调用时机，客户端只能按事件实时渲染
-（面板 / 状态栏 / `/todo` 弹窗在每条 `todo/write` 到达的瞬间刷新）。为了让
-"逐项更新"成为**代码层面的硬性要求**而不是依赖模型自觉，TUI 在**每个 agent
-作用域**注入两道确定性约束（`src/kernel/todo-guard.ts`）：
-
-1. **常驻 system-prompt 段落**（`nvim-tui-todo-discipline`）：开始一项 → 立即标
-   `in_progress`；完成一项 → 立即 `todo_write` 标 `completed`；禁止攒到最后一次性
-   更新；回合结束前不得留下与事实不符的 `in_progress` 项；
-2. **逐步提醒**（`agent/pre-step` 瀑布）：某一步执行了工具调用却没写清单、而
-   清单仍有未完成项时，向**下一次请求**注入一条列出未完成项的具体提醒（每回合
-   上限 3 条，避免刷屏与死循环）。
-
-关闭：runner 行 `config.todoGuard: false`，或环境变量
-`DSH_NVIM_TUI_TODO_GUARD=0`。
-
-## 会话管理
-
-- 每个会话独立的 chat buffer 与事件流；`/sessions` 是**工作区分组浏览器**
-  （对齐官方侧栏）：`📁 工作区` 头 + 缩进会话 + 未分组区 + 持久化历史
-  （标记 `历史`），标题 + **完整会话 id** 展示
-- **工作区**（需 `dsh-workspace` 行；TUI 直接消费 `workspaceRegistry` 服务）：
-  `/workspace add|delete` 管理，工作区行内可新建会话于此 / 重命名；
-  会话行操作含**移入工作区 / 移出分组**（官方语义：仅能移入 cwd 与工作区
-  路径一致的会话，无自动分组——新会话默认落在未分组区，需显式移入）；
-  `/archive [id]` 归档会话（非破坏性，从所有分组隐藏）
-- 子代理/派发会话（裸 UUID id，无 `session-` 前缀）不出现在列表，经
-  `/subagents` 目录进入
-- 退出时 flush 全部活跃会话（jsonl.zstd 持久化）；下次启动历史会话出现在列表，
-  `Enter` 选中即通过 `agents.resume` 恢复并重放转录
-- **自动续会话（claude --continue 式）**：启动时默认恢复本项目的"上次活跃会话"
-  （状态记录在 `$DSH_HOME/dsh-nvim-tui-state.json`，无记录则回退到最新的
-  持久化会话）；`/new` 随时开新。关闭：环境变量 `DSH_NVIM_TUI_RESUME_LATEST=0`
-  或 `config.resumeLatest: false`；显式 `DSH_NVIM_TUI_RESUME=<id>` 优先
-- 回合失败（缺凭据、网关错误等）以 `⚠` 行显式渲染在对话区，不再静默消失
-
-## 状态栏与活动面板
-
-- **状态行左侧**：动态权限模式（`sandbox/mode` → read-only / normal /
-  full-access + `approval/policy` → ask / never）+ 快捷键提示
-  （`/ 命令 · ctrl+o 面板 · ctrl+p 历史`）
-- **状态行右侧**：模型 · effort（`◎max`）· 缓存命中%（会话累计）·
-  上下文占用% + `◧ 已用/窗口`（最近一步的 billed 输入）· `Σ` 会话累计 token ·
-  **TTFT / tok/s**（读官方 sessionStats 投影）· 会话时长 · 预估成本
-  （内置公开定价表，未知模型诚实降级不显示）· provider 路由 · ⏳ 排队计数 ·
-  ⚙ 运行中 jobs · 📋 待办计数 · `⇢` 子代理寻址；running 时带旋转动画 +
-  运行时长，450ms 刷新；idle 30s 低频刷新
-- **活动面板（`<C-o>`）**：思考过程 + 工具使用记录收进右侧面板，聊天区只显示
-  浮动活动指示（`·· thinking · 12.3s` / `🔧 bash · 2.1s`），**钉在聊天框最底部**
-  （内容始终在其上方流入，不会被流式输出顶到中间），活动结束即消失、
-  不写入聊天记录。面板按回合组织：思考块（全文 + `── thinking end · Ns ──`
-  页脚）与工具卡片（🔧 调用 / ✓✗ 结果 · 耗时）按时间线累积，新回合自动清空，
-  历史重放保留全量；turn 开始 800ms 仍无内容时显示跳动的 `·· thinking… Ns`
-- **渲染层**：extmark 角色着色（用户/提示/工具/错误/子代理/工作流各自颜色，
-  `default link` 自动适配你的 colorscheme）；`**粗体**`、`` `行内代码` ``、
-  ```围栏代码块``` 剥离标记后以高亮 span 渲染；流式更新对上次视图做 diff
-  后增量 `set_lines`
-- **Markdown 表格**（Claude-TUI 风格）：GFM 表格渲染为对齐的框线表格
-  （`┌┬┐ ├┼┤ └┴┘`），**每个数据行都带自己的 `├─┼─┤` 分割线**（流式期间末尾
-  分割线作"还有行"提示，流结束替换为底框）——**整表统一加粗**（单元格/`│`/`─`/
-  转角同 weight，消除字体渲染造成的粗细不一）、数字列右对齐、显式 `:--:` 居中；
-  列宽按**显示宽度**计算（中文/emoji 占 2 列）；**超宽表格自动折行**：列宽按
-  视口收缩（最宽列优先，下限 3 列）、单元格内容折进续行且**每条续行都带
-  完整边框**（表格不再被 nvim 软折行破坏框线）
-- **官方客户端对齐的转录元素**：`todo/write` → 📋 待办条（✓/…/· 标记）；
-  `compaction/summary` → ⋯ 压缩检查点（条数 + ≈tokens + 摘要块）；
-  `llm/retry` → ↻ 重试状态行（次数/上限/倒计时/失败原因）；
-  `tool-workflow/*` → ◈ workflow 嵌套成员行；JSON 结构化工具结果逐条 itemize
-
-聊天记录缓冲区禁用了 undo（`undolevels=-1`），在对话区按 `u` 不会撤销内容。
-
-## 用户配置与插件
-
-默认加载你自己的 nvim 配置和插件（colorscheme / statusline / LSP 等全部生效）：
-dsh_tui 在 `VimEnter`（用户配置加载完成后）接管窗口布局；布局保护是**事件驱动**的
-（启动守卫窗口期关闭外来窗、WinClosed 重建输入窗、窗口归属守卫；300ms/1.2s 的
-defer_fn 用于禁用外部补全插件干扰）。
-如需纯净启动（不加载用户配置），给 runner 行加 `config: { loadUserConfig: false }`；
-沙箱/CI 的 headless 测试模式会自动隔离 XDG 目录。
-
-## 插件开放接口
-
-dsh-nvim-tui 对外开放**稳定接口**，其他 dsh 插件与 nvim 插件可以在 TUI 内渲染
-UI、使用 nvim 窗口、读写输入、订阅会话事件：
-
-- Node 面（dsh 插件）：`ctx.get('nvim-tui')` → `TuiExtApi` —— nvim 执行层 /
-  ui 原语（**交互卡片** card 1-9/Enter 动作、float/picker、**多面板列栈与
-  四边停靠槽 region（slot 多块并发）**）/ 命令注册 / 会话事件（一次性
-  事件晚订阅补发）/ dsh-ext 双向总线（**30s 有界应答**，`luaExt.on` 可
-  per-handler 调超时）
-- Lua 面（TUI 实例内的 nvim 插件）：`require('dsh_tui').api` —— 登记制窗口
-  原语（守卫放行）、面板列栈与四边停靠槽（region_claim/release）、
-  before_submit 钩子、Lua 命令、双向 RPC；晚加载插件（lazy.nvim VeryLazy）
-  用 `api.snapshot()` + register 的 `on_ready`/`on_active_session` 对齐
-  初始态（User 事件不重放）
-
-完整文档：[docs/EXT-API.md](docs/EXT-API.md)，示例见 `examples/`。
+完整配置项、环境变量、主题组、难度路由与 headless / CI 用法见
+[docs/CONFIG.md](./docs/CONFIG.md)。
 
 ## 开发
 
 ```bash
-npm install                      # neovim 客户端（+ dsh peer 依赖用于本地解析）
-npm run build                    # TypeScript (src/) → lib/（strict，tsc，含 .d.ts）
-npm run dev                      # tsc --watch（改动即重编，dsh hmr 随即热载）
-npm run check                    # src + scripts 双 tsconfig 全量类型检查 + 架构/域操作门禁
-npm run smoke                    # 无头冒烟：RPC 往返 + Lua 插件 + 事件渲染
-npm run i18n:report              # i18n 漂移报告（死键 / 未翻译 / 未包装字面量）
-                                 # （scripts/*.ts 经 Node ≥23.6 原生 type-stripping 直跑）
-
-# TypeScript 严格性（v0.4.0 起拉满）：strict + noUnusedLocals/Parameters +
-# noUncheckedIndexedAccess + noPropertyAccessFromIndexSignature +
-# exactOptionalPropertyTypes + verbatimModuleSyntax + noImplicitOverride +
-# noFallthroughCasesInSwitch + noImplicitReturns + allowUnreachableCode:false。
-# 宿主边界（如 ModelSelection.reasoningEffort）用条件展开表达"缺省 ≠ 显式 undefined"。
-# 有意保留的索引签名（宿主载荷向前兼容、RunnerConfig 用户 YAML）在类型处有注释说明。
+npm install
+npm run build    # src/（TypeScript strict）→ lib/
+npm run check    # 双 tsconfig 类型检查 + 架构 / 域操作门禁
+npm run smoke    # 无头冒烟：RPC 往返 + Lua 插件 + 事件渲染
+npm run e2e -- "你好，请只回复：收到"   # 真模型回归（需 dsh 凭据）
 ```
 
-**端到端无头验证**（不需要真实终端，走完整 host→agent→渲染链路）：
+发布用 `npm publish`；`prepublishOnly` 会依次跑 `check` → `build` → `smoke`。
 
-```bash
-DSH_HOME=$PWD/.dsh-test \
-DSH_NVIM_TUI_HEADLESS=1 \
-DSH_NVIM_TUI_PROMPT='请只回复两个字：好的' \
-DSH_NVIM_TUI_DUMP=/tmp/e2e-dump.txt \
-dsh --profile nvim-tui
-# 首个 turn 结束后 chat buffer 全量落盘到 /tmp/e2e-dump.txt 并退出
-```
+本地仓库直链安装：在 profile 的 `package.json` 里把依赖写成
+`"dsh-nvim-tui": "link:<仓库绝对路径>"`，`dsh.profile.bundles` 包含
+`"dsh-nvim-tui"`，然后运行 `dsh plugin --profile nvim-tui install`，再用
+`dsh --profile nvim-tui` 启动。
 
-**真模型回归**（需要 dsh 凭据）：
+目录结构、模块分层与关键设计决策见 [docs/STRUCTURE.md](./docs/STRUCTURE.md)；
+架构演进与领域划分见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。
 
-```bash
-npm run e2e -- "你好，请只回复：收到"   # headless 跑一轮真回合并校验 dump
-```
+## 文档
 
-> `.dsh-test/` 是工作区内的 DSH_HOME 测试副本（profiles 的共享 node_modules
-> 以符号链接复用 `~/.dsh/profiles/node_modules`），用于在沙箱/CI 里 boot。
-
-## 发布
-
-```bash
-npm publish        # prepublishOnly 门禁：check（双 tsconfig）→ build → smoke
-```
-
-`files` 白名单已裁剪（lib / nvim / docs / examples / cordis.patch.yml /
-README / UPGRADE）；peer 依赖
-（`@deepseek-ai/dsh-agent`、`dsh-llm`）由 profile 内的 dsh-base 提供。
-
-## 目录结构
-
-```
-src/                          TypeScript 源码（strict，唯一手写源；根目录只留 index.ts）
-  index.ts    组合根：build App → install 各模块 → boot（对应 init.lua 门面）
-  kernel/     内核：公共接口与功能（业务模块唯一外联面之一）
-    app.ts       kernel 原语 + 六域 slices（runtime/sessions/ui/ext/trans/agent；对应 state.lua 的角色）
-    types.ts     共享类型层：SessionEvent 判别联合 + 宿主服务结构接口
-    ext-types.ts 扩展 API 公共类型契约（ext-api 实现 + 反出口）
-    rpc.ts       nvim 通知注册表（dsh-* 方法：owner 模块 install 期注册，boot 查表分发）
-    host-events.ts 宿主事件注册表（agent/status、subagent/*、workflow/*、approval/questions）
-    lifecycle.ts 退出四件套（exitDiag/closeNvimWindow/teardown/quit）
-    headless.ts  headless e2e（dump 看门狗 / kick）
-    bridge.ts    nvim spawn / socket 连接（自建 socket + error 处理）
-    i18n.ts      界面字典（zh 字面量 → en 查表 + tf() 占位符模板 + 反向索引；未知键回退中文）
-    difficulty.ts 难度路由（规则/可选 LLM 定档、档位切换与恢复、子代理模型闸门）
-    vision.ts    识图模型选型（deepseek-flash 优先 + 目录扫描兜底 + effort 兼容判定）
-    todo-guard.ts 待办清单纪律守卫（system-prompt 段落 + pre-step 逐步提醒）
-    theme-presets.ts /theme 预设表（命令与 boot 恢复共用；空 spec = 重置）
-    profile.ts   运行 profile 解析（loader include 条目 → argv 回退）
-    apikey.ts    凭据探测（credentials 服务，2s 上限）
-    subagent-clean.ts 子代理链清理（TTL 过期 + 会话日志编码）
-  feed/       渲染公共层（只依赖 kernel；feed/table/diff/stats/images/whale）
-  boot/       运行期组合层：boot.ts（spawn/连接 + 三条薄循环 + boot 序列，无行为分支）
-    session-events.ts session/event 管线（扩展镜像 → 子代理路由 → MAIN_EVENT_HOOKS 按类型表）
-  commands/   消息发送 + 输入路由 + 斜杠命令
-    index.ts    installCommands：agent 域 ops/默认值 + 核心服务槽位 + 62 命令 install 清单
-    core.ts     核心链路：followup/send/onInput/onCommand/@ 补全/模型切换 + 13 个 dsh-* 通知 + 审批/提问宿主事件 + tui_command 工具
-    nlcmd.ts    自然语言命令路由（精确短语 → 命令）
-    commands/   ★ 41 个命令文件，一命令一文件（自注册 installXxxCommand(app)）；
-                sessions/ transcript/ statusline/ subagents/ market/ deps 各域另有 21 个
-  sessions/   会话域：index.ts + services.ts（生命周期 + fork 共享实现）+ prefs.ts（UI 偏好持久化，
-              经域操作暴露）+ commands/ 10 命令文件
-  subagents/  子代理域：index.ts + commands/subagents.ts
-  transcript/ 转录域：index.ts（修复/事件访问 + workflow 宿主事件）+ commands/ 4 命令文件
-  statusline/ 状态栏域：index.ts（渲染/折叠统计 + agent/status 宿主事件）+ commands/ 4 命令文件
-  ext-api/    扩展 API 域：install + handleDshExtRequest + announceReady + 4 个 dsh-ext 通知
-  deps/       依赖体检：index.ts + services.ts（体检机制）+ commands/deps.ts
-  market/     插件市场：index.ts + progress.ts（数据层 + 安装进度 UI）+ commands/market.ts + commands/plugin.ts（目录外直装）
-lib/                          tsc 编译产物（.js + .d.ts；dsh 加载入口 main → lib/index.js）
-nvim/lua/dsh_tui/             nvim 侧 UI（按职责拆分的 Lua 模块）
-  init.lua      公共门面：完整的 M.* API 转发 + 跨模块意图编排（submit/菜单路由）+ start()
-  state.lua     共享可变状态（窗口/buffer 句柄的唯一来源，M._* 兼容字段的惰性别名）
-  api.lua       扩展 API 稳定面：登记制 register、浮窗/面板列栈、dsh-ext 总线、钩子、快照
-  layout.lua    窗口布局：输入窗构建（边框家具）、布局挂载、启动接管、布局预设
-  input.lua     输入 buffer：文本读写、动态高度、边框右缘、历史、fill/append、焦点恢复
-  cmd_menu.lua  / 命令补全浮窗（合并扩展命令目录）
-  at_menu.lua   @ 提及补全浮窗（复用 cmd_menu 几何）
-  session.lua   会话 buffer：chat/reasoning 创建、思考面板、set_active、ids
-  autocmds.lua  自愈 + 窗口归属 + 插件隔离 + 启动守卫的 autocmd 层
-  keymaps.lua   输入 buffer 键位（自愈层可重复安装）
-  rpc.lua       runner 通道操作（attach/quit/theme/…）
-  statusline.lua 聊天状态栏 + 终端标题（OSC 2）
-  highlight.lua DshTui* 高亮组 + 调色板 + treesitter 代码块着色
-  buffer.lua    buffer 原语（展示 buffer 选项、输入文本、补全插件屏蔽）
-  popup_core.lua 通用浮窗族（审批 / 提问 / 选择器）+ 底部提示栏
-  popups.lua    专用浮窗（技能详情、子代理视图、目录选择、进度、会话列表）
-  subagent_chat.lua 子代理对话窗（转录浮窗 + 内嵌输入行，Enter 发送 / 历史 / 动态高度）
-  full_input.lua <C-e> 全屏输入编辑器（草稿进出、Enter 换行、回车发送）
-docs/                         文档（EXT-API.md 插件开放接口参考 + ARCHITECTURE.md 架构说明）
-examples/                     示例插件（examples/nvim/git-panel.lua + examples/dsh-plugin/）
-scripts/smoke.ts              无头冒烟测试（Node ≥23.6 直跑）
-scripts/check-arch.mjs        架构边界守卫（并入 npm run check：App kernel-only / slice 域名白名单 / 跨域状态写零容忍）
-scripts/app-ops-check.mjs      域操作注入运行时守卫（并入 npm run check：从 AppSlices d.ts 动态派生，全部域 op 注入断言）
-scripts/e2e.ts                真模型端到端回归
-scripts/i18n-check.mjs        i18n 漂移报告（npm run i18n:report）
-docs/REVIEW-2026-09.md        全代码库审计报告（9 批修复清单 + 待办）
-docs/audit-2026-09/           14 个审计单元的完整报告（含复现探针）
-tsconfig.json / tsconfig.scripts.json   主构建 / scripts 检查配置
-cordis.patch.yml              bundle patch：insert nvim-tui-runner 行
-```
-
-## 关键设计决策
-
-- **不用 `nvim --embed`**：它会隐式 headless，网格渲染就得自己做。
-  这里正常启动 nvim，用 `--listen` socket 驱动，内置 TUI 渲染终端。
-- **默认加载用户配置**（`-u NONE` 仅是开关）：dsh_tui 在 VimEnter 后接管
-  布局；headless/沙箱模式通过 XDG 隔离实现干净环境。
-- **runner 行的 effect disposer 只拆 UI 不退出进程**：hmr 重载该行时
-  dsh 继续运行，下一次 apply 会 spawn 新的 nvim。只有用户主动退出、
-  nvim 退出、致命错误、信号才会走 `appExit`。
-- **消息只从 `session/event` 渲染**（不本地回显），避免与转录重复。
-- **TypeScript 源码 → 编译产物**：`src/*.ts` 经 tsc（strict）输出 `lib/`，
-  dsh 按 npm 包入口加载编译产物；`.ts` 不能直接作入口（Node 对 node_modules
-  内 `.ts` 拒绝 type-stripping，发布形态必挂）。scripts 用 Node ≥23.6 原生
-  type-stripping 直跑，不进发布包。
+| 文档 | 内容 |
+|---|---|
+| [docs/COMMANDS.md](./docs/COMMANDS.md) | 斜杠命令完整参考 |
+| [docs/CONFIG.md](./docs/CONFIG.md) | 配置项、环境变量、主题、难度路由、headless |
+| [docs/EXT-API.md](./docs/EXT-API.md) | 插件开放接口（Node / Lua 两面） |
+| [docs/STRUCTURE.md](./docs/STRUCTURE.md) | 目录结构与设计决策 |
+| [UPGRADE.md](./UPGRADE.md) | 宿主与插件版本升级指南 |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本变更记录 |
+| [REQUIREMENTS.md](./REQUIREMENTS.md) | 需求基线（M0–M7 验收状态） |
 
 ## License
 
 MIT
-
-> 需求基线见 [REQUIREMENTS.md](./REQUIREMENTS.md)（由本仓库早期 README 转化，
-> 按里程碑 M0–M7 记录需求与验收状态）。
