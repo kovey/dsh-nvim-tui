@@ -4,7 +4,7 @@
 `Enter` 补全或执行）。命令目录由 runner 启动时推给 nvim，与 `/help`、命令分发
 表共用同一份注册表，不会漂移。
 
-本页是 **67 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
+本页是 **68 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
 他插件经 `ctx.commands` 注册的命令也会进补全目录，用 `/commands` 查看；依赖的
 宿主服务未装配时，命令会给出明确提示，而不是静默失败。
 
@@ -42,7 +42,7 @@
 | `/tasks [kill <job-id>]` | 任务列表弹窗（打开期间实时刷新，选中即取消）+ 钉底任务板 |
 | `/todo [任务内容]` | 添加 / 查看待办（弹窗实时同步 + 钉底待办板 + 状态栏计数） |
 | `/skills [技能名]` | 技能目录浏览（浮窗看详情） |
-| `/fb up\|down [备注]` | 对最后一条助手消息点赞 / 点踩 |
+| `/fb up\|down [备注] \| clear` | 对最后一条助手消息点赞 / 点踩 / 清除反馈 |
 | `/subagents` | 子代理目录：思考链回放 + 对话窗（continuable 子代理可续聊） |
 | `/workflow` | 工作流运行视图（阶段树 + agent 序列 + 日志） |
 | `/history` | 输入历史浏览（`Enter` 回填输入框，多行条目原样恢复） |
@@ -100,6 +100,7 @@
 | `/mcp` | MCP server 工具统计（按 server 分组） |
 | `/plugin [install\|update\|remove <spec> \| list]` | 市场目录之外的直装入口（npm 包名 / `owner/repo` / git URL）。更新 git/tag 依赖必须带新 ref，`--latest` 推不动 git ref |
 | `/plugins` | 宿主插件清单（loader 条目只读投影） |
+| `/plugins:set` | 启停本 profile `cordis.patch.yml` 里声明的插件条目（自动备份 `.bak`，重启生效） |
 | `/status` | 会话快照 |
 | `/trajectory` | 回合步骤轨迹 |
 

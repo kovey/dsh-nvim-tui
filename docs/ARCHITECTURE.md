@@ -259,6 +259,6 @@ src/
 ### 7.3 命令系统：一命令一文件 + 自注册
 
 - 每个命令一个文件：实现 + `installXxxCommand(app)` 自注册（与模块
-  install 同构）；模块 index 逐个调用（67 命令全量文件化，含别名）
+  install 同构）；模块 index 逐个调用（68 命令全量文件化，含别名）
 - 命令文件禁止互相 import；共享实现下沉模块 shared/services
-- 命令目录断言：catalog 数（67）+ smoke 全量回归护航拆分等价性
+- 命令目录断言：catalog 数（68）+ smoke 全量回归护航拆分等价性
