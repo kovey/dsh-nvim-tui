@@ -44,6 +44,21 @@ runner 行的 `config:` 写在 profile 的 `cordis.patch.yml` 里：
 状态与日志都在 `$DSH_HOME`（默认 `~/.dsh`）：`dsh-nvim-tui-state.json` 记录上次
 活跃会话与界面偏好，`nvim-tui-errors.log` 是错误日志。
 
+## 可选宿主行
+
+TUI profile 只保证 `dsh-base` 的核心行。以下能力依赖可选 host 行，用 `/deps`
+体检并一键装配（写入当前 profile 的 `cordis.patch.yml`，HMR/重启生效）：
+
+| 能力 | 需要的行 |
+|---|---|
+| `/schedule` 定时提醒 | `dsh-schedule` |
+| `/terminal` 持久终端 | `dsh-terminal` + `dsh-terminal-bash` |
+| `/changes` 宿主快照 | `dsh-workspace-changes` |
+| `/preset`、Cordis 检查 | `dsh-agent-presets`、`dsh-cordis-host-runner` |
+| `/workspace`、`/archive` | `dsh-workspace` |
+| `/fb`、`@session`、TTFT | `dsh-message-feedback`、`dsh-session-reference`、`dsh-session-stats` |
+| `/plugins` | `dsh-host-plugin-inventory` |
+
 ## 命令行参数
 
 TUI profile 不挂 `dsh-cmdline`，但启动器之后的参数会被解析（等价于

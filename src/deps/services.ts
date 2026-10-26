@@ -341,6 +341,20 @@ export async function checkAll(app: App, s: AppSlices['agent'], patchPath: strin
   host('workspace-changes', 'workspace-changes', '/changes 宿主改动快照（git + 整文件）', 'workspaceChanges')
   host('schedule', 'schedule', '/schedule 定时提醒', 'schedule')
   host('terminal', 'terminal', '/terminal 持久终端', 'terminals')
+  const terminalBackends = app.svc('terminals')?.listBackends?.() ?? []
+  const terminalBashConfigured = patchIds.has('terminal-bash')
+  reports.push({
+    id: 'terminal-bash',
+    label: 'terminal-bash',
+    group: t('主机插件'),
+    status: terminalBackends.length > 0 ? 'ok' : terminalBashConfigured ? 'warn' : 'missing',
+    detail: terminalBackends.length > 0
+      ? `/terminal 后端: ${terminalBackends.join(', ')}`
+      : terminalBashConfigured
+        ? '已装配但后端服务未就绪（重启后重试 /deps）'
+        : '未装配 — 影响: /terminal 没有 PTY 后端',
+    fixId: terminalBackends.length > 0 || terminalBashConfigured ? undefined : 'terminal-bash',
+  })
   host('plugin-inventory', 'plugin-inventory', '/plugins 插件清单', 'pluginInventory')
   host('message-feedback', 'message-feedback', '/fb 消息反馈', 'messageFeedback')
   host('session-reference', 'session-reference', '💬 跨会话引用补全', 'sessionReferenceResolver')
