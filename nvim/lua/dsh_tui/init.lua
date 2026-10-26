@@ -176,6 +176,7 @@ M.redraw_questions = PC.redraw_questions
 M.question_move = PC.question_move
 M.question_toggle = PC.question_toggle
 M.question_advance = PC.question_advance
+M.question_custom = PC.question_custom
 M.questions_confirm = PC.questions_confirm
 M.questions_cancel = PC.questions_cancel
 M.show_picker = PC.show_picker

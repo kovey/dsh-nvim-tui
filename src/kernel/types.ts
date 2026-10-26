@@ -131,6 +131,13 @@ export interface SubagentInfo {
 export interface ApprovalRequest {
   toolName?: string
   reason?: string
+  /** Exact tool call being decided, when the asker has one. The feed records
+   *  its arguments under this id, so the approval float can show WHAT the
+   *  user is approving instead of a one-line reason. */
+  callId?: string
+  /** Localized presentation-only reason (dsh-user-approval). Never persisted
+   *  in approval audit events; the raw `reason` remains the durable text. */
+  displayReason?: Record<string, string>
   agent?: { session?: { id?: string } }
   /** Live request signal (the host's own type — Node's global AbortSignal). */
   signal?: AbortSignal

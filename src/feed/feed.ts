@@ -134,6 +134,9 @@ export interface ExtCardHandle {
 interface ToolCallRecord {
   name: string
   startedAt: number
+  /** Raw model-supplied JSON arguments, kept so the approval float can show
+   *  the exact command/path being approved (dsh-user-approval callId). */
+  args?: string
 }
 
 /** Prefix for a quota failure, or '' for anything else.
@@ -824,7 +827,7 @@ export class FeedRenderer {
         const data = event.data
         if (data === undefined) break
         const { callId, name, arguments: args } = data
-        this.calls.set(callId ?? '', { name: name ?? 'tool', startedAt: this.eventTime })
+        this.calls.set(callId ?? '', { name: name ?? 'tool', startedAt: this.eventTime, ...(typeof args === 'string' ? { args } : {}) })
         const callLine = `🔧 ${name ?? 'tool'}(${FeedRenderer.argsPreview(args)})`
         if (this.reasoningBuf !== null) {
           this.panelLines.push('', callLine)

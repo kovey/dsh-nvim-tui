@@ -1284,7 +1284,7 @@ description:
   // 9d. approval window — including a long wrapped reason: the key-hint row
   // must stay inside the window (previously the fixed height clipped it).
   const winsBefore = (await lua('return vim.api.nvim_list_wins()', [])).length
-  await lua('require("dsh_tui").show_approval(...)', [{ toolName: 'bash', reason: '执行命令 ' + 'x'.repeat(120) }])
+  await lua('require("dsh_tui").show_approval(...)', [{ toolName: 'bash', reason: '执行命令 ' + 'x'.repeat(120), args: JSON.stringify({ command: 'rm -rf /tmp/approval-probe', justification: 'need to clean temp' }) }])
   let wins = await lua('return vim.api.nvim_list_wins()', [])
   assert.ok(wins.length > winsBefore, 'approval float window opened')
   let approvalF = await lua('return require("dsh_tui")._float', [])
@@ -1295,6 +1295,8 @@ description:
   assert.ok(approvalFCfg.height >= approvalFVisual, 'approval window height covers wrapped content')
   assert.ok(approvalFCfg.height >= 4, 'long reason grows the approval window')
   assert.ok(String(await floatTitle(approvalF.win)).includes('审批请求'), 'approval float carries a function title')
+  assert.ok(approvalFLines.some((l: string) => l.includes('参数:')), 'approval float shows the tool arguments section')
+  assert.ok(approvalFLines.some((l: string) => l.includes('rm -rf /tmp/approval-probe')), 'approval float shows the exact command')
   await assertFooter('[y]', 'approval')
   await assertCentered('require("dsh_tui")._float.win', 'approval')
   assert.equal(await lua('return vim.bo[require("dsh_tui")._float.buf].modifiable', []), false, 'approval buffer is read-only')
@@ -1445,12 +1447,18 @@ description:
   await lua('require("dsh_tui").question_move(1)', []) // q1 → option B
   await lua('require("dsh_tui").question_advance()', []) // q1 done → q2
   await lua('require("dsh_tui").question_toggle()', []) // q2 toggle x
+  await lua('require("dsh_tui")._float.state.custom["q2"] = "自定义反馈"', [])
+  await lua('require("dsh_tui").redraw_questions()', [])
+  qlines = await nvim.request('nvim_buf_get_lines', [qfloat.buf, 0, -1, false])
+  assert.ok(qlines.some((l: string) => l.includes('自定义: 自定义反馈')), 'custom answer is visible in the question float')
+  await assertFooter('[C-e]', 'questions')
   await lua('require("dsh_tui").question_advance()', []) // confirm
   hit = await waitNote('dsh-questions-answered')
-  const answers = (hit?.args?.[0] ?? []) as Array<{ selected?: string[] }>
+  const answers = (hit?.args?.[0] ?? []) as Array<{ selected?: string[]; custom?: string }>
   log('answers:', JSON.stringify(answers))
   assert.equal(answers[0]?.selected?.[0], 'B', 'single-select answer')
   assert.deepEqual(answers[1]?.selected, ['x'], 'multi-select answer')
+  assert.equal(answers[1]?.custom, '自定义反馈', 'custom free-text answer is included')
 
   // 9e. picker
   await lua(`require("dsh_tui").show_picker("选择", { { label = "m1", value = "model-a" }, { label = "m2", value = "model-b" } })`, [])

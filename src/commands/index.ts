@@ -8,6 +8,7 @@
  */
 import type { AppSlices, WritableSlice, QuestionsEntry } from '../kernel/app.js'
 import type { ApprovalRequest } from '../kernel/types.js'
+import { locale } from '../kernel/i18n.js'
 const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 import type { App } from '../kernel/app.js'
 import {
@@ -77,12 +78,30 @@ export function installCommands(app: App): void {
   // ---- queue-aware approval/questions (parent + subagents can ask
   //   CONCURRENTLY — a second request must queue, never overwrite the
   //   first settle) ----
+  /** Build the approval float payload: localized reason plus the exact tool
+   *  call arguments when the asker supplied `callId` (dsh-user-approval's
+   *  documented presentation hook). Without this the user decides a sandbox
+   *  escalation from a one-line reason and never sees the command. */
+  const approvalDisplay = (req: ApprovalRequest): {
+    toolName: string
+    reason: string
+    callId: string
+    args: string
+  } => {
+    const sid = req.agent?.session?.id
+    const rec = sid === undefined ? undefined : app.slices.sessions.live.get(sid)
+    const call = req.callId === undefined ? undefined : rec?.feed.calls.get(req.callId)
+    const localized = req.displayReason?.[locale()] ?? req.displayReason?.['en']
+    return {
+      toolName: req.toolName ?? '',
+      reason: localized ?? req.reason ?? '',
+      callId: req.callId ?? '',
+      args: call?.args ?? '',
+    }
+  }
   const showApprovalFloat = (req: ApprovalRequest): void => {
     if (app.slices.runtime.disposed) return
-    void app.luaCall('require("dsh_tui").show_approval(...)', [{
-      toolName: req.toolName ?? '',
-      reason: req.reason ?? '',
-    }]).catch(() => {
+    void app.luaCall('require("dsh_tui").show_approval(...)', [approvalDisplay(req)]).catch(() => {
       // Float failed to open for THIS head: settle it rejected and move on.
       if (A.approvalReq === req) A.settleApproval('rejected')
     })

@@ -220,16 +220,47 @@ function P.float_key(buf, key, cmd)
   vim.api.nvim_buf_set_keymap(buf, 'n', key, '<Cmd>lua ' .. cmd .. '<CR>', { noremap = true })
 end
 
---- Approval request (from approval/request). entry: {toolName, reason}.
+--- Format raw tool arguments for the approval float. Args are model-authored
+--- JSON, so a bad payload must never throw: fall back to the raw text. Pretty
+--- printing matters here — the user is deciding on the exact command/path.
+local function approval_arg_lines(raw)
+  local text = tostring(raw or '')
+  if text == '' then return {} end
+  local pretty = text
+  local ok, decoded = pcall(vim.json.decode, text)
+  if ok and type(decoded) == 'table' then
+    local ok2, inspected = pcall(vim.inspect, decoded, { newline = '\n', indent = '  ' })
+    if ok2 and type(inspected) == 'string' then pretty = inspected end
+  end
+  local out = {}
+  for _, line in ipairs(vim.split(pretty, '\n', { plain = true })) do
+    out[#out + 1] = '  ' .. line
+    if #out >= 24 then
+      out[#out + 1] = '  …'
+      break
+    end
+  end
+  return out
+end
+
+--- Approval request (from approval/request). entry: {toolName, reason, args}.
+--- `reason` is already localized by the runner (displayReason when the host
+--- supplies one); `args` is the exact tool call recorded by the feed.
 function P.show_approval(entry)
   local lines = {
     '工具: ' .. tostring(entry.toolName or '?'),
     '说明: ' .. tostring(entry.reason or '无'),
-    '',
   }
-  local buf = P.open_float(lines, { width = 72, title = '⚠ 审批请求' })
+  local argLines = approval_arg_lines(entry.args)
+  if #argLines > 0 then
+    table.insert(lines, '')
+    table.insert(lines, '参数:')
+    for _, line in ipairs(argLines) do table.insert(lines, line) end
+  end
+  table.insert(lines, '')
+  local buf = P.open_float(lines, { width = 84, title = '⚠ 审批请求' })
   S.float.kind = 'approval'
-  P.attach_footer(S.float.win, '[y] 允许一次  [a] 总是（自动模式）  [n] 拒绝  [Esc] 拒绝')
+  P.attach_footer(S.float.win, '[y] 允许一次  [a] 总是（自动模式）  [n] 拒绝  [Esc] 拒绝  [j/k] 滚动')
   P.float_key(buf, 'y', 'require("dsh_tui").approval_decide("y")')
   P.float_key(buf, 'a', 'require("dsh_tui").approval_decide("always")')
   P.float_key(buf, 'n', 'require("dsh_tui").approval_decide("n")')
@@ -265,7 +296,7 @@ function P.show_questions(questions)
   end
   P.open_float({ '…' }, { width = 80, title = '用户提问' })
   S.float.kind = 'questions'
-  S.float.state = { questions = qs, qIdx = 1, optIdx = 1, selected = {}, optRows = {} }
+  S.float.state = { questions = qs, qIdx = 1, optIdx = 1, selected = {}, custom = {}, optRows = {} }
   P.redraw_questions()
   local function install()
     local buf = S.float.buf
@@ -276,6 +307,7 @@ function P.show_questions(questions)
     P.float_key(buf, 'k', 'require("dsh_tui").question_move(-1)')
     P.float_key(buf, '<Space>', 'require("dsh_tui").question_toggle()')
     P.float_key(buf, '<CR>', 'require("dsh_tui").question_advance()')
+    P.float_key(buf, '<C-e>', 'require("dsh_tui").question_custom()')
     P.float_key(buf, '<Esc>', 'require("dsh_tui").questions_cancel()')
   end
   install()
@@ -286,6 +318,7 @@ function P.redraw_questions()
   if not st or S.float.kind ~= 'questions' then
     return
   end
+  st.custom = st.custom or {}
   local q = st.questions[st.qIdx]
   if not q then
     P.questions_confirm()
@@ -298,6 +331,10 @@ function P.redraw_questions()
   table.insert(lines, 'Q' .. st.qIdx .. '/' .. #st.questions .. ': ' .. q.question)
   if q.detail then
     table.insert(lines, q.detail)
+  end
+  local custom = st.custom[q.id]
+  if type(custom) == 'string' and custom ~= '' then
+    table.insert(lines, '自定义: ' .. custom)
   end
   table.insert(lines, '')
   local optRows = {}
@@ -312,9 +349,10 @@ function P.redraw_questions()
   if #q.options == 0 then
     table.insert(lines, '（无选项，回车继续）')
   end
-  local footerText = q.multiSelect and '[Space] 选择  [j/k] 移动  [Enter] ' ..
-    (st.qIdx == #st.questions and '确认' or '下一题') .. '  [Esc] 取消'
-    or '[j/k] 选择  [Enter] ' .. (st.qIdx == #st.questions and '确认' or '下一题') .. '  [Esc] 取消'
+  local nextLabel = (st.qIdx == #st.questions and '确认' or '下一题')
+  local footerText = q.multiSelect and ('[Space] 选择  [j/k] 移动  [Enter] ' .. nextLabel ..
+    '  [C-e] 自定义  [Esc] 取消')
+    or ('[j/k] 选择  [Enter] ' .. nextLabel .. '  [C-e] 自定义  [Esc] 取消')
 
   vim.bo[S.float.buf].modifiable = true -- popup buffers are locked otherwise
   vim.api.nvim_buf_set_lines(S.float.buf, 0, -1, false, lines)
@@ -369,6 +407,24 @@ function P.question_toggle()
   P.redraw_questions()
 end
 
+--- <C-e>: type a free-text answer (the host's `custom` field). Plan review's
+--- "Keep planning + feedback" and ask_user_question's "Other" both need it;
+--- the option list alone cannot express them.
+function P.question_custom()
+  local st = S.float.state
+  if not st or S.float.kind ~= 'questions' then return end
+  local q = st.questions[st.qIdx]
+  if not q then return end
+  local current = st.custom[q.id] or ''
+  vim.ui.input({ prompt = '自定义回答: ', default = current }, function(input)
+    if input == nil then return end
+    vim.schedule(function()
+      st.custom[q.id] = tostring(input)
+      P.redraw_questions()
+    end)
+  end)
+end
+
 function P.question_advance()
   local st = S.float.state
   local q = st.questions[st.qIdx]
@@ -387,6 +443,7 @@ end
 
 function P.questions_confirm()
   local st = S.float.state
+  st.custom = st.custom or {}
   local answers = {}
   for _, q in ipairs(st.questions) do
     local selected = {}
@@ -398,7 +455,10 @@ function P.questions_confirm()
     if #selected == 0 and #q.options > 0 and not q.multiSelect then
       table.insert(selected, q.options[1].label)
     end
-    table.insert(answers, { id = q.id, selected = selected })
+    local entry = { id = q.id, selected = selected }
+    local custom = st.custom[q.id]
+    if type(custom) == 'string' and custom ~= '' then entry.custom = custom end
+    table.insert(answers, entry)
   end
   P.close_float()
   if S.channel then

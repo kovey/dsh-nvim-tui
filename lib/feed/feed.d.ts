@@ -100,6 +100,9 @@ export interface ExtCardHandle {
 interface ToolCallRecord {
     name: string;
     startedAt: number;
+    /** Raw model-supplied JSON arguments, kept so the approval float can show
+     *  the exact command/path being approved (dsh-user-approval callId). */
+    args?: string;
 }
 /** Prefix for a quota failure, or '' for anything else.
  *

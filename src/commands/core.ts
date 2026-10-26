@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto'
 import { isAbsolute, join } from 'node:path'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { t, tf } from '../kernel/i18n.js'
+import { locale, t, tf } from '../kernel/i18n.js'
 import { runOfficialCommand } from './commands/official-commands.js'
 import { matchIntent } from './nlcmd.js'
 import { activeSessionCwd, type ApprovalRecord } from '../kernel/app.js'
@@ -774,7 +774,9 @@ export function registerHostEventHandlers(): void {
       app.slices.agent.enqueueApproval(entry)
       const sid = request.agent?.session?.id
       const rec = sid === undefined ? undefined : app.slices.sessions.live.get(sid)
-      rec?.feed.appendNotice(`⚠ 审批请求: ${request.toolName ?? '?'}${request.reason ? ` — ${request.reason}` : ''}`)
+      const localized = request.displayReason?.[locale()] ?? request.displayReason?.['en']
+      const shown = localized ?? request.reason ?? ''
+      rec?.feed.appendNotice(`⚠ 审批请求: ${request.toolName ?? '?'}${shown ? ` — ${shown}` : ''}`)
       // Approval bell / desktop notification: REMOVED (same reason as turn-end
       // in session-events: the plugin's nvim has no tty on stdout, so any raw
       // escape corrupts the terminal instead of notifying).
