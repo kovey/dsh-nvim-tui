@@ -54,7 +54,7 @@ do
   local submodules = {
     'state', 'buffer', 'highlight', 'statusline', 'cmd_menu', 'at_menu',
     'input', 'session', 'layout', 'rpc', 'keymaps', 'autocmds',
-    'popup_core', 'popups', 'subagent_chat', 'api',
+    'popup_core', 'popups', 'subagent_chat', 'terminal_view', 'api',
   }
   for _, name in ipairs(submodules) do
     local key = 'dsh_tui.' .. name
@@ -76,6 +76,7 @@ local AM = require('dsh_tui.at_menu')
 local PC = require('dsh_tui.popup_core')
 local PP = require('dsh_tui.popups')
 local SAC = require('dsh_tui.subagent_chat')
+local TV = require('dsh_tui.terminal_view')
 local SE = require('dsh_tui.session')
 local L = require('dsh_tui.layout')
 local K = require('dsh_tui.keymaps')
@@ -235,6 +236,15 @@ M.subagent_chat_submit = SAC.submit
 M.subagent_chat_history = SAC.history_move
 M.subagent_chat_resize = SAC.resize
 M.close_subagent_chat = SAC.close
+
+-- dsh_tui.terminal_view: host PTY console
+M.terminal_open = TV.open
+M.terminal_update = TV.update
+M.terminal_close = TV.close
+M.terminal_native = TV.native
+M.terminal_input = TV.input
+M.terminal_signal = TV.signal
+M.terminal_kill = TV.kill
 M.subagent_chat_ids = SAC.ids
 M.subagent_chat_jump = SAC.jump
 M.subagent_chat_goto_thinking = SAC.goto_thinking

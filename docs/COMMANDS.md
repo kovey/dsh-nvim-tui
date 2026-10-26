@@ -4,7 +4,7 @@
 `Enter` 补全或执行）。命令目录由 runner 启动时推给 nvim，与 `/help`、命令分发
 表共用同一份注册表，不会漂移。
 
-本页是 **70 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
+本页是 **72 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
 他插件经 `ctx.commands` 注册的命令也会进补全目录，用 `/commands` 查看；依赖的
 宿主服务未装配时，命令会给出明确提示，而不是静默失败。
 
@@ -53,6 +53,8 @@
 | `/archive [会话id]` | 归档会话（从所有列表隐藏，非破坏性） |
 | `/attach [路径]` | 附加文件 / 目录：图片进附件队列，其余转为 `@` 路径引用 |
 | `/image <路径> [提示]` | 发送本地图片（png/jpg/webp/gif，支持 `~/`）；macOS 无参读剪贴板；`/image clear` 清空 `<C-v>` 队列 |
+| `/schedule [new \| list \| delete <id> \| edit <id> \| history <id> \| catalog]` | 宿主持久化定时提醒：新建向导（延时/定时/间隔/每天/每周/Cron）、编辑、删除、投递历史、跨会话目录 |
+| `/terminal [new [name] \| attach \| kill <id> \| shell]` | 宿主持久终端（PTY）控制台：新建/附着/发 SIGINT/关闭；`shell` 打开 nvim 原生 `:terminal`（本地 shell，模型不可见） |
 
 ## 模型
 

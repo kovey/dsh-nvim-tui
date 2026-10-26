@@ -30,7 +30,7 @@ import type {
   AccountService, AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService,
   CommandsService, DeliverablesState, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService,
   MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService,
-  PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore,
+  PlanModeService, RuntimeCtx, SaveImageAttachment, ScheduleService, SessionEvent, SessionStore, TerminalService,
   LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionFeedbackService,
   SessionTitleService, SettingsService, SkillsService, SubagentInfo,
   SubagentsService, ToolsService, Usage, WorkspaceChangesService,
@@ -102,6 +102,8 @@ export interface ServiceMap {
   workspaceChanges: WorkspaceChangesService
   sessionFeedback: SessionFeedbackService
   account: AccountService
+  schedule: ScheduleService
+  terminals: TerminalService
 }
 
 /**

@@ -269,6 +269,78 @@ export interface AccountService {
   signOut?: (client: AccountClientMetadata) => Promise<AccountViewLike>
 }
 
+/** One durable Schedule record (dsh-schedule). Structural subset the TUI
+ *  renders; host-only fields stay untyped. */
+export interface ScheduleRecordLike {
+  id: string
+  kind: 'after' | 'at' | 'every' | 'daily' | 'weekly' | 'cron'
+  title: string
+  prompt: string
+  scheduledAt: string
+  afterSeconds?: number
+  everySeconds?: number
+  time?: string
+  timeZone?: string
+  weekdays?: number[]
+  expression?: string
+  [key: string]: unknown
+}
+
+export interface ScheduleCreateRequestLike {
+  prompt: string
+  title: string
+  after_seconds?: number
+  at?: string
+  every_seconds?: number
+  daily?: { time: string; time_zone: string }
+  weekly?: { time: string; time_zone: string; weekdays: number[] }
+  cron?: { expression: string; time_zone: string }
+}
+
+export interface ScheduleCatalogEntryLike {
+  sessionId?: string
+  record?: ScheduleRecordLike
+  [key: string]: unknown
+}
+
+export interface ScheduleHistoryLike {
+  items?: Array<{ scheduledAt?: string; deliveredAt?: string; prompt?: string }>
+  [key: string]: unknown
+}
+
+/** Host schedule service (dsh-schedule; optional row in the TUI profile). */
+export interface ScheduleService {
+  create?: (sessionId: string, request: ScheduleCreateRequestLike, signal?: AbortSignal) => Promise<ScheduleRecordLike>
+  list?: (request: { sessionId: string }) => Promise<ScheduleRecordLike[]>
+  catalog?: () => Promise<ScheduleCatalogEntryLike[]>
+  delete?: (request: { sessionId: string; id: string }, signal?: AbortSignal) => Promise<unknown>
+  update?: (request: { sessionId: string; id: string; expected: ScheduleRecordLike; title?: string; prompt?: string }, signal?: AbortSignal) => Promise<unknown>
+  history?: (request: { sessionId: string; id: string; limit: number }) => Promise<ScheduleHistoryLike>
+}
+
+/** Host PTY service (dsh-terminal). */
+export interface TerminalSessionSnapshotLike {
+  sessionId: string
+  name?: string
+  type: string
+  pid?: number
+  status?: { kind?: string; exitCode?: number | null; signal?: string | null }
+}
+
+export interface TerminalService {
+  listBackends?: () => string[]
+  spawn?: (owner: unknown, request: { type: string; name?: string; cwd?: string }, signal?: AbortSignal) => Promise<TerminalSessionSnapshotLike & { motd?: string }>
+  list?: (owner: unknown) => TerminalSessionSnapshotLike[]
+  read?: (owner: unknown, id: string, request?: { offset?: number; count?: number }) => { text: string; totalLines: number; lineBegin: number; lineEnd: number; truncated: boolean }
+  startSend?: (owner: unknown, id: string, request: { text: string; submit: boolean; signal?: AbortSignal }) => {
+    done: Promise<{ viewport: string; waitReason: string; sessionStatus: unknown; truncated: boolean }>
+    readOutput: () => { delta: string; truncated: boolean }
+    cancel: () => boolean
+  }
+  signal?: (owner: unknown, id: string, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL' | 'SIGTSTP' | 'SIGHUP') => Promise<unknown>
+  kill?: (owner: unknown, id: string, reason?: string) => Promise<boolean>
+}
+
 /** Host service serving `workspace/changes` summaries and comparisons. */
 export interface WorkspaceChangesService {
   summary(sessionId: string, seq: number): WorkspaceChangesSummary | undefined

@@ -243,7 +243,7 @@ src/
 ├── kernel/           # 内核：公共接口与功能（契约/总线/进程设施/工具）
 ├── feed/             # 渲染公共层（feed/table/diff/stats/images/whale）
 ├── boot/             # 运行期组合层（boot.ts + session-events.ts，编排豁免）
-├── commands/         # 消息 + 输入 + 命令（index/core/nlcmd + commands/ 45 命令文件）
+├── commands/         # 消息 + 输入 + 命令（index/core/nlcmd + commands/ 49 命令文件）
 ├── sessions/         # 会话域（index/services + commands/ 10）
 ├── subagents/  transcript/  statusline/  ext-api/  deps/  market/
 └── …各域 index.ts + services/shared + commands/ 一命令一文件
@@ -259,6 +259,6 @@ src/
 ### 7.3 命令系统：一命令一文件 + 自注册
 
 - 每个命令一个文件：实现 + `installXxxCommand(app)` 自注册（与模块
-  install 同构）；模块 index 逐个调用（70 命令全量文件化，含别名）
+  install 同构）；模块 index 逐个调用（72 命令全量文件化，含别名）
 - 命令文件禁止互相 import；共享实现下沉模块 shared/services
-- 命令目录断言：catalog 数（70）+ smoke 全量回归护航拆分等价性
+- 命令目录断言：catalog 数（72）+ smoke 全量回归护航拆分等价性

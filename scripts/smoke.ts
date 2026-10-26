@@ -4090,6 +4090,30 @@ description:
   await lua('vim.api.nvim_buf_set_lines(require("dsh_tui").ids().inputBuf, 0, -1, false, { "" }); require("dsh_tui").resize_input()', [])
   log('fullscreen input editor: open/prefill/discard ok')
 
+  // 9d2. host-PTY console view: renders scrollback, binds line/SIGINT/kill/close
+  // keys, and closes its own tab without touching the chat layout.
+  {
+    const tabBefore = await lua('return vim.api.nvim_get_current_tabpage()', [])
+    const winBefore = await lua('return vim.api.nvim_get_current_win()', [])
+    await lua('require("dsh_tui.input").focus()', [])
+    const tids = await lua('local r = require("dsh_tui").terminal_open("t1", "demo"); return { buf = r.buf, win = r.win }', [])
+    const tbuf = tids.buf
+    await lua('require("dsh_tui").terminal_update("t1", "hello\\nworld", "运行中")', [])
+    const tlines = await nvim.request('nvim_buf_get_lines', [tbuf, 0, -1, false])
+    assert.deepEqual(tlines, ['hello', 'world'], 'terminal scrollback renders')
+    const tmaps = await lua(`return vim.api.nvim_buf_get_keymap(${tbuf}, "n")`, [])
+    for (const key of ['<CR>', '<C-C>', 'K', 'q']) {
+      assert.ok(tmaps.some((m: any) => m.lhs === key), key + ' mapped in the terminal view')
+    }
+    assert.ok(String(await lua('return vim.wo.winbar', [])).includes('TERMINAL'), 'terminal view shows its key bar')
+    assert.equal(await lua('return vim.b.dsh_terminal_id', []), 't1', 'terminal buffer carries its session id')
+    await lua('require("dsh_tui").terminal_close("t1")', [])
+    assert.equal(await lua('return vim.api.nvim_get_current_tabpage()', []), tabBefore, 'closing the view restores the chat tab')
+    await lua(`vim.api.nvim_set_current_win(${winBefore})`, [])
+    await lua('pcall(vim.cmd, "stopinsert")', [])
+    await new Promise((r) => setTimeout(r, 100))
+  }
+
   log('SMOKE PASS')
 } finally {
   // Graceful close — the TUI's /exit path relies on ':qa!' so nvim never

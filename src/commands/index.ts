@@ -64,6 +64,8 @@ import { installChangesCommand } from './commands/changes.js'
 import { installOfficialCommandsCommand } from './commands/official-commands.js'
 import { installSettingsCommand } from './commands/settings.js'
 import { installAccountCommand } from './commands/account.js'
+import { installScheduleCommand } from './commands/schedule.js'
+import { installTerminalCommand } from './commands/terminal.js'
 import { installApprovalsCommand } from './commands/approvals.js'
 import { installDifficultyCommand } from './commands/difficulty.js'
 
@@ -331,6 +333,8 @@ export function installCommands(app: App): void {
   installOfficialCommandsCommand(app)
   installSettingsCommand(app)
   installAccountCommand(app)
+  installScheduleCommand(app)
+  installTerminalCommand(app)
   installApprovalsCommand(app)
   installDifficultyCommand(app)
 
