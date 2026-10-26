@@ -44,6 +44,28 @@ runner 行的 `config:` 写在 profile 的 `cordis.patch.yml` 里：
 状态与日志都在 `$DSH_HOME`（默认 `~/.dsh`）：`dsh-nvim-tui-state.json` 记录上次
 活跃会话与界面偏好，`nvim-tui-errors.log` 是错误日志。
 
+## 命令行参数
+
+TUI profile 不挂 `dsh-cmdline`，但启动器之后的参数会被解析（等价于
+`ctx.cmdlineArgs`；未挂时回退 argv）：
+
+```bash
+dsh --profile tui --resume <session-id>
+dsh --profile tui --continue --model deepseek/deepseek-flash
+dsh --profile tui --permission read-only
+```
+
+| 参数 | 作用 |
+|---|---|
+| `--resume <id>` | 恢复指定会话（优先于自动续会话） |
+| `--continue` / `-c` | 恢复上次活跃会话（默认行为，显式写出便于脚本） |
+| `--model <provider/model>` | 会话就绪后切换模型（持久化为默认） |
+| `--permission <name>` | 会话就绪后应用权限预设（如 `read-only`） |
+| `--help` / `-h` | 打印 TUI 帮助并退出 |
+| `--version` / `-v` | 打印版本并退出 |
+
+未知参数会打印错误并以 2 退出，不会被静默忽略。
+
 ## 主题
 
 `config.theme` 是 `高亮组 → 属性` 映射，每组可给 `{ fg, bg, bold, italic,

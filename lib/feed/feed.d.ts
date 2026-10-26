@@ -152,6 +152,7 @@ export declare class FeedRenderer {
     turnStartedAt: number | null;
     turnMarkerBase: number | null;
     calls: Map<string, ToolCallRecord>;
+    ptcCalls: Map<string, ToolCallRecord>;
     subagents: Map<string, {
         provider: string;
         startedAt: number;

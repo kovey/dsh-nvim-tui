@@ -119,6 +119,9 @@ export type SessionEvent =
   | (SessionEventBase & { type: 'tool-workflow/agent-end'; data?: { runId?: string; seq?: number; outcome?: string } })
   | (SessionEventBase & { type: 'tool-workflow/run-end'; data?: { runId?: string; stopReason?: string } })
   | (SessionEventBase & { type: 'deliverables/presented'; data?: { turn?: number; callId?: string; files?: PresentedFile[] } })
+  | (SessionEventBase & { type: 'tool/ptc-dispatch-start'; data?: { rootCallId?: string; parentCallId?: string; subCallId?: string; name?: string; arguments?: unknown } })
+  | (SessionEventBase & { type: 'tool/ptc-dispatch'; data?: { rootCallId?: string; parentCallId?: string; subCallId?: string; name?: string; arguments?: unknown; isError?: boolean; content?: unknown; error?: { code?: string; name?: string } } })
+  | (SessionEventBase & { type: 'image/offload'; data?: { targets?: Array<{ seq?: number; imageIndexes?: number[] }> } })
   | (SessionEventBase & { type: 'workspace/changes'; data?: { turn?: number } })
 
 /** subagent/start / subagent/end payload. */

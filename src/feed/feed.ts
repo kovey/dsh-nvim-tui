@@ -196,6 +196,7 @@ export class FeedRenderer {
   turnStartedAt: number | null
   turnMarkerBase: number | null
   calls: Map<string, ToolCallRecord> // callId -> { name, startedAt }
+  ptcCalls: Map<string, ToolCallRecord> // PTC subCallId -> { name, startedAt }
   subagents: Map<string, { provider: string; startedAt: number }> // runId -> …
   timer: ReturnType<typeof setTimeout> | null
   flushing: Promise<void> | null
@@ -284,6 +285,7 @@ export class FeedRenderer {
     this.turnStartedAt = null
     this.turnMarkerBase = null
     this.calls = new Map()
+    this.ptcCalls = new Map()
     this.subagents = new Map()
     this.timer = null
     this.flushing = null
@@ -837,6 +839,54 @@ export class FeedRenderer {
         }
         this.toolActivity = { name: name ?? 'tool', startedAt: Date.now() }
         this.schedule()
+        break
+      }
+      case 'tool/ptc-dispatch-start': {
+        // PTC mode: a tool dispatched from inside run_code. Log-only events;
+        // render a nested line so the user sees what the program is doing.
+        const data = event.data
+        if (data === undefined) break
+        const name = data.name ?? 'tool'
+        let argsText = ''
+        try { argsText = typeof data.arguments === 'string' ? data.arguments : JSON.stringify(data.arguments ?? {}) } catch { argsText = '{}' }
+        const subId = data.subCallId ?? ''
+        if (subId !== '') this.ptcCalls.set(subId, { name, startedAt: this.eventTime })
+        const line = `  ↳ 🔧 ${name}(${FeedRenderer.argsPreview(argsText)})`
+        if (this.reasoningBuf !== null) {
+          this.panelLines.push(line)
+          this.panelVersion++
+        } else {
+          this.pushTool(line)
+        }
+        this.schedule()
+        break
+      }
+      case 'tool/ptc-dispatch': {
+        const data = event.data
+        if (data === undefined) break
+        const subId = data.subCallId ?? ''
+        const started = subId !== '' ? this.ptcCalls.get(subId) : undefined
+        const name = data.name ?? started?.name ?? 'tool'
+        const elapsed = started ? Math.max(0, (this.eventTime || Date.now()) - (started.startedAt ?? this.eventTime)) : null
+        const text = FeedRenderer.messageText({ content: Array.isArray(data.content) ? data.content as MessageContent[] : [] })
+        const preview = text !== '' ? ' · ' + FeedRenderer.truncate(text) : ''
+        const line = `  ↳ ${data.isError === true ? '✗' : '✓'} ${name}${elapsed === null ? '' : ' · ' + formatElapsed(elapsed)}${preview}`
+        if (subId !== '') this.ptcCalls.delete(subId)
+        if (this.reasoningBuf !== null) {
+          this.panelLines.push(line)
+          this.panelVersion++
+        } else {
+          this.pushTool(line)
+        }
+        this.schedule()
+        break
+      }
+      case 'image/offload': {
+        const data = event.data
+        const targets = Array.isArray(data?.targets) ? data.targets : []
+        let count = 0
+        for (const target of targets) count += Array.isArray(target.imageIndexes) ? target.imageIndexes.length : 0
+        this.appendNotice(tf('🖼 已省略 {0} 张图片：模型侧改为占位符，原始附件仍保留在会话日志', [String(count)]))
         break
       }
       case 'tool/result': {

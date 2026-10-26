@@ -242,6 +242,32 @@ export async function boot(app: App): Promise<void> {
     // 3) boot sequence.
     await resumeOrCreate(app)
     if (app.slices.runtime.disposed) return
+    // CLI startup overrides (--model / --permission) apply AFTER the session
+    // exists: a model switch needs a live agent, and a permission preset is
+    // written to that session's log.
+    const startupModel = app.config['startupModel']
+    if (typeof startupModel === 'string' && startupModel !== '') {
+      await app.slices.agent.pickModel(startupModel)
+    }
+    const startupPermission = app.config['startupPermission']
+    if (typeof startupPermission === 'string' && startupPermission !== '') {
+      const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
+      const presets = app.svc('permissionPresets')
+      if (rec !== undefined && presets !== undefined && typeof presets.set === 'function') {
+        const names = [...presets.names]
+        if (names.includes(startupPermission)) {
+          try {
+            presets.set(rec.handle.agent.session, startupPermission)
+            app.slices.ui.updateStatusline()
+            app.notice(tf('权限预设已应用: {0}', [startupPermission]))
+          } catch (err) {
+            app.notice(tf('权限预设应用失败: {0}', [(err as Error).message]))
+          }
+        } else {
+          app.notice(tf('未知权限预设 {0}（可用: {1})', [startupPermission, names.join(' ')]))
+        }
+      }
+    }
     // Belt-and-braces: if the session came up through a path that did not go
     // through `switchTo`, the official-command debt is still owed.
     app.retryOfficialCatalog()

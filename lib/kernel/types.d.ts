@@ -284,6 +284,38 @@ export type SessionEvent = (SessionEventBase & {
         files?: PresentedFile[];
     };
 }) | (SessionEventBase & {
+    type: 'tool/ptc-dispatch-start';
+    data?: {
+        rootCallId?: string;
+        parentCallId?: string;
+        subCallId?: string;
+        name?: string;
+        arguments?: unknown;
+    };
+}) | (SessionEventBase & {
+    type: 'tool/ptc-dispatch';
+    data?: {
+        rootCallId?: string;
+        parentCallId?: string;
+        subCallId?: string;
+        name?: string;
+        arguments?: unknown;
+        isError?: boolean;
+        content?: unknown;
+        error?: {
+            code?: string;
+            name?: string;
+        };
+    };
+}) | (SessionEventBase & {
+    type: 'image/offload';
+    data?: {
+        targets?: Array<{
+            seq?: number;
+            imageIndexes?: number[];
+        }>;
+    };
+}) | (SessionEventBase & {
     type: 'workspace/changes';
     data?: {
         turn?: number;

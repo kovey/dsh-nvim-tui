@@ -30,6 +30,9 @@ dsh --profile nvim-tui
 `dsh plugin add` 会把声明了 `dsh.bundle` 的依赖并入该 profile 的 bundles 层栈，
 无需手改 `package.json`。启动后输入 `/help` 查看命令，输入 `/` 弹出补全。
 
+常用启动参数：`--resume <id>` / `--continue` / `--model provider/model` /
+`--permission <name>` / `--help`（见 [docs/CONFIG.md](./docs/CONFIG.md#命令行参数)）。
+
 ### 更新
 
 ```bash
@@ -60,8 +63,9 @@ dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"
   右侧面板，聊天区保持全宽。工具卡、GFM 框线表格（按显示宽度对齐、超宽自动折行）、
   Claude 风格代码块。
 - **转录增强**：📋 待办条与 ⚙ 任务板钉在聊天区底部（实时更新，全部完成才写入转录）、
-  ⋯ 压缩检查点、↻ 重试状态行、workflow 嵌套回放、子代理思考链边跑边输出；待办
-  逐项更新由守卫强制（[说明](./docs/CONFIG.md#待办清单守卫)）。
+  ⋯ 压缩检查点、↻ 重试状态行、workflow 嵌套回放、子代理思考链边跑边输出；
+  PTC/code 模式的子工具调用逐条渲染，图片 offload 有提示；待办逐项更新由守卫强制
+  （[说明](./docs/CONFIG.md#待办清单守卫)）。
 - **文件改动**：write / edit 等工具调用自动渲染 `✎ 路径 (+N −M)` 统一 diff；
   `/changes` 汇总本会话改动，`/diff` 左右对照审阅。
 - **会话管理**：`/sessions` 工作区分组浏览器、`/fork` 分叉、`/btw` 侧问、

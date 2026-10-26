@@ -36,6 +36,8 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { setLocale } from './kernel/i18n.js'
+import { parseTuiArgs, TUI_HELP } from './kernel/cli.js'
+import { BUILD_VERSION } from './kernel/app.js'
 import { createApp } from './kernel/app.js'
 import { installExtApi } from './ext-api/index.js'
 import { installStatusline } from './statusline/index.js'
@@ -78,6 +80,38 @@ export { EXT_API_VERSION, EXT_HANDLER_TIMEOUT_MS, matchSessionEventFilter } from
  * Mount the Neovim TUI runner over dsh-base.
  */
 export function apply(ctx: Context, config: RunnerConfig = {}): void {
+  // App arguments: dsh hands the profile its own slice via `cmdlineArgs`; the
+  // TUI profile does not mount dsh-cmdline, so fall back to argv after the
+  // launcher's `--profile` prefix. Help/version exit before spawning nvim.
+  const cmdline = ctx.get('cmdlineArgs') as { args?: readonly string[] } | undefined
+  const fromCmdline = Array.isArray(cmdline?.args)
+  const cli = parseTuiArgs(fromCmdline ? cmdline?.args ?? [] : process.argv.slice(2), fromCmdline)
+  const exit = (code: number): void => {
+    const appExit = ctx.get('appExit') as ((code?: number) => void) | undefined
+    if (typeof appExit === 'function') appExit(code)
+    else process.exit(code)
+  }
+  if (cli.help) {
+    process.stdout.write(TUI_HELP)
+    exit(0)
+    return
+  }
+  if (cli.version) {
+    process.stdout.write(`dsh-nvim-tui ${BUILD_VERSION}\n`)
+    exit(0)
+    return
+  }
+  if (cli.unknown.length > 0) {
+    process.stderr.write(`dsh-nvim-tui: unknown argument(s): ${cli.unknown.join(' ')}\n${TUI_HELP}`)
+    exit(2)
+    return
+  }
+  const effective: RunnerConfig = { ...config }
+  if (cli.resumeId !== undefined) effective.resumeSessionId = cli.resumeId
+  if (cli.resumeLatest === true) effective.resumeLatest = true
+  if (cli.model !== undefined) effective['startupModel'] = cli.model
+  if (cli.permission !== undefined) effective['startupPermission'] = cli.permission
+
   // dsh 0.1.5 removed the `sessions` service: the live-session store is the
   // agents registry itself (createApp builds the store-shaped adapter over
   // `agents.get/list` → `Agent.session`). Inject only what 0.1.5 provides —
@@ -88,7 +122,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     const localeInit = String(config['locale'] ?? process.env['DSH_NVIM_TUI_LOCALE'] ?? 'zh')
     setLocale(localeInit === 'en' ? 'en' : 'zh')
 
-    const app = createApp(ctx, runtimeCtx, config)
+    const app = createApp(ctx, runtimeCtx, effective)
     installRuntime(app) // runtime defaults first: installs push hostDisposers
     installExtApi(app)
     installStatusline(app)

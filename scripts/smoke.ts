@@ -40,6 +40,7 @@ import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliv
 import { deliverablePaths, emptyDeliverables, mergePresentedFiles, resolveDeliverablePath } from '../lib/kernel/deliverables.js'
 import { parseFeedbackArgs } from '../lib/commands/commands/feedback.js'
 import { parseSettingValue } from '../lib/commands/commands/settings.js'
+import { appArgv, parseTuiArgs } from '../lib/kernel/cli.js'
 import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
 import { installDiffCommand } from '../lib/commands/commands/diff.js'
@@ -317,6 +318,9 @@ try {
   feedA.workflowStart({ id: 'wf-1', meta: { name: '审计' } })
   feedA.workflowPhase({ id: 'wf-1', meta: {} }, '阶段一')
   feedA.workflowEnd({ id: 'wf-1', meta: {} }, { stopReason: 'completed' })
+  feedA.applyEvent({ type: 'tool/ptc-dispatch-start', time: 3200, data: { rootCallId: 'rc-1', parentCallId: 'rc-1', subCallId: 'rc-1:ptc:1', name: 'read', arguments: { file_path: 'a.md' } } })
+  feedA.applyEvent({ type: 'tool/ptc-dispatch', time: 3300, data: { rootCallId: 'rc-1', parentCallId: 'rc-1', subCallId: 'rc-1:ptc:1', name: 'read', arguments: { file_path: 'a.md' }, isError: false, content: [{ type: 'text', text: 'file body' }] } })
+  feedA.applyEvent({ type: 'image/offload', data: { targets: [{ seq: 1, imageIndexes: [0, 1] }] } })
   feedB.appendNotice('b-notice')
   await new Promise((r) => setTimeout(r, 150)) // let the 40ms throttle flush
 
@@ -327,6 +331,9 @@ try {
   let subLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
   assert.ok(subLines.some((l: string) => /^◇ deepseek-code · \d+\.\d+s$/.test(l)),
     'subagent activity line renders in the thinking slot')
+  assert.ok(subLines.some((l: string) => l.includes('↳ 🔧 read(')), 'PTC sub-call start renders a nested tool line')
+  assert.ok(subLines.some((l: string) => l.includes('↳ ✓ read')), 'PTC sub-call result renders a nested result line')
+  assert.ok(subLines.some((l: string) => l.includes('已省略 2 张图片')), 'image offload renders a notice')
   feedA.subagentEnd({ runId: 'run-x', provider: 'deepseek-code', id: 'uuid-x', stopReason: 'completed' })
   await new Promise((r) => setTimeout(r, 150))
   subLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false])
@@ -2639,6 +2646,24 @@ description:
       'declared files come first; heuristic duplicates are dropped')
     assert.equal(resolveDeliverablePath('/repo', 'docs/a.md'), '/repo/docs/a.md', 'relative paths resolve against the session cwd')
     assert.equal(resolveDeliverablePath('/repo', '/tmp/x'), '/tmp/x', 'absolute paths are untouched')
+  }
+
+  // App arguments: `dsh --profile tui --resume <id>` must reach the TUI, and
+  // a missing/unknown flag must fail loudly instead of starting a different
+  // session. Pure grammar, so no boot is needed.
+  {
+    assert.deepEqual(appArgv(['--profile', 'tui', '--resume', 'abc'], false), ['--resume', 'abc'])
+    assert.deepEqual(appArgv(['--profile=tui', '--continue'], false), ['--continue'])
+    assert.deepEqual(appArgv(['tui', '--model', 'x/y'], false), ['--model', 'x/y'])
+    const a = parseTuiArgs(['--profile', 'tui', '--resume', 'abc', '--model', 'deepseek/x', '--permission', 'read-only', '--continue'])
+    assert.equal(a.resumeId, 'abc')
+    assert.equal(a.model, 'deepseek/x')
+    assert.equal(a.permission, 'read-only')
+    assert.equal(a.resumeLatest, true)
+    assert.equal(parseTuiArgs(['--profile', 'tui', '--help']).help, true)
+    assert.equal(parseTuiArgs(['--profile', 'tui', '--version']).version, true)
+    assert.deepEqual(parseTuiArgs(['--profile', 'tui', '--resume']).unknown, ['--resume'], 'missing value is reported')
+    assert.deepEqual(parseTuiArgs(['--profile', 'tui', '--nope']).unknown, ['--nope'], 'unknown flag is reported')
   }
 
   // Settings form value typing: booleans/null/numbers/JSON literals are typed;
