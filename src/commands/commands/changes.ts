@@ -152,9 +152,10 @@ export const changesCommand = async (app: App, a: string | undefined) => {
   const wsEvent = rec.workspaceChangesEvent
   const wsSeq = wsEvent === null ? undefined : wsEvent.seq
   const wsSvc = app.svc('workspaceChanges')
-  const summary = wsSeq === undefined || typeof wsSvc?.summary !== 'function'
-    ? undefined
-    : wsSvc.summary(rec.id, wsSeq)
+  let summary: WorkspaceChangesSummary | undefined
+  if (wsSeq !== undefined && typeof wsSvc?.summary === 'function') {
+    try { summary = wsSvc.summary(rec.id, wsSeq) } catch { summary = undefined }
+  }
   const ledger = app.slices.ui.changeLedger.get(rec.feed)
   if (summary !== undefined && wsSeq !== undefined && summary.files.length > 0) {
     const hostPaths = new Set(summary.files.map((f) => f.path))

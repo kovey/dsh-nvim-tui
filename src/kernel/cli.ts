@@ -26,6 +26,27 @@ export interface TuiArgs {
   unknown: string[]
 }
 
+/** Launcher options that may legally appear AFTER the profile name; dsh
+ *  documents `dsh tui --patch ./extra.yml`. They are not app arguments and
+ *  must be skipped before parsing the app grammar. */
+const LAUNCHER_VALUE_FLAGS = new Set(['--profile', '--from-default-profile', '--patch'])
+const LAUNCHER_BOOL_FLAGS = new Set(['--dump-config', '--dump-config-schema', '--dump-default-config'])
+
+const skipLauncherFlags = (args: readonly string[]): string[] => {
+  let i = 0
+  while (i < args.length) {
+    const a = args[i] as string
+    if (LAUNCHER_VALUE_FLAGS.has(a)) { i += 2; continue }
+    if (a.startsWith('--profile=') || a.startsWith('--from-default-profile=') || a.startsWith('--patch=')) {
+      i += 1
+      continue
+    }
+    if (LAUNCHER_BOOL_FLAGS.has(a)) { i += 1; continue }
+    break
+  }
+  return args.slice(i)
+}
+
 /** Strip the launcher's own prefix when `cmdlineArgs` is unavailable.
  *  Launcher grammar: `dsh --profile <name> <app args…>`, `dsh <name> …`, or
  *  `--profile=<name>`. The bare `dsh --help` belongs to the launcher, so it
@@ -36,9 +57,9 @@ export const appArgv = (argv: readonly string[], fromCmdline: boolean): string[]
   const p = args.findIndex((a) => a === '--profile' || a.startsWith('--profile='))
   if (p >= 0) {
     const token = args[p] as string
-    return token.includes('=') ? args.slice(p + 1) : args.slice(p + 2)
+    return skipLauncherFlags(token.includes('=') ? args.slice(p + 1) : args.slice(p + 2))
   }
-  if (args[0] !== undefined && args[0] !== '' && !args[0].startsWith('-')) return args.slice(1)
+  if (args[0] !== undefined && args[0] !== '' && !args[0].startsWith('-')) return skipLauncherFlags(args.slice(1))
   return []
 }
 

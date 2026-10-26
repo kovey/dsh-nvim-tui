@@ -9,6 +9,7 @@
 import type { AppSlices, WritableSlice, QuestionsEntry } from '../kernel/app.js'
 import type { ApprovalRequest } from '../kernel/types.js'
 import { locale } from '../kernel/i18n.js'
+import { drainPrompts } from '../kernel/prompt.js'
 const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 import type { App } from '../kernel/app.js'
 import {
@@ -230,6 +231,9 @@ export function installCommands(app: App): void {
   A.setLivePopup = (v) => { A.livePopup = v }
   A.setPendingQueueEdit = (v) => { A.pendingQueueEdit = v }
   A.clearPendings = () => {
+    // A modal prompt (feedback/schedule wizard) must not outlive the session
+    // it was opened for; resolve it as cancelled so its command unwinds.
+    drainPrompts(app)
     releaseRenameTarget(A.pendingRename)
     A.pendingRename = null
     A.pendingQueueEdit = null

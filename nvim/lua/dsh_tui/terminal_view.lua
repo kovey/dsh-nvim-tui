@@ -72,8 +72,13 @@ function M.open(id, title)
   -- layout is nicer when the terminal and input stay visible together.
   -- noautocmd: the layout guard must not see a half-built foreign window
   -- between split creation and ownership registration.
-  pcall(vim.cmd, 'noautocmd split')
+  local winBefore = vim.api.nvim_get_current_win()
+  local splitOk = pcall(vim.cmd, 'noautocmd split')
   local win = vim.api.nvim_get_current_win()
+  if not splitOk or win == winBefore then
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    return false, 'could not create the terminal split'
+  end
   vim.api.nvim_win_set_buf(win, buf)
   pcall(vim.cmd, 'resize 15')
   local reg = ensure_reg()

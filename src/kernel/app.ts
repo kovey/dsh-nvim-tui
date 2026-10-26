@@ -44,6 +44,16 @@ import type {
  *  project directory while the shell cwd stays put. */
 export const activeSessionCwd = (app: App): string => {
   const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
+  // `/cwd` writes the host workingDirectory service; `session.header.cwd` is
+  // the ORIGINAL directory and goes stale after a switch. Prefer the service,
+  // then fall back to the header (pre-0.2.1 hosts), then the process cwd.
+  const wd = app.svc('workingDirectory')
+  if (rec !== undefined && typeof wd?.get === 'function') {
+    try {
+      const current = wd.get(rec.handle.agent.session)
+      if (typeof current === 'string' && current !== '') return current
+    } catch { /* fall through to the header */ }
+  }
   const cwd = rec?.handle?.agent?.session?.header?.cwd
   return typeof cwd === 'string' && cwd !== '' ? cwd : process.cwd()
 }
@@ -101,7 +111,7 @@ export interface ServiceMap {
   /** Host per-turn workspace change summaries (web/desktop composition). */
   workspaceChanges: WorkspaceChangesService
   sessionFeedback: SessionFeedbackService
-  account: AccountService
+  deepseekAccount: AccountService
   schedule: ScheduleService
   terminals: TerminalService
   dynamicCordisRunner: DynamicCordisService

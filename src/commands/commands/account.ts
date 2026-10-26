@@ -70,7 +70,7 @@ const profileText = (p: AccountProfileLike | null): string => {
 }
 
 export const accountCommand = async (app: App, a: string | undefined) => {
-  const svc = app.svc('account')
+  const svc = app.svc('deepseekAccount')
   if (svc === undefined || typeof svc.getState !== 'function') {
     app.notice(t('account 服务未装配（dsh-base 的 deepseek-account 行未挂载）'))
     return

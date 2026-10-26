@@ -80,7 +80,7 @@ export interface ServiceMap {
     /** Host per-turn workspace change summaries (web/desktop composition). */
     workspaceChanges: WorkspaceChangesService;
     sessionFeedback: SessionFeedbackService;
-    account: AccountService;
+    deepseekAccount: AccountService;
     schedule: ScheduleService;
     terminals: TerminalService;
     dynamicCordisRunner: DynamicCordisService;

@@ -283,7 +283,7 @@ export const switchTo = async (app: App, id: string) => {
   // Transient input-flow state is session-scoped: switching mid-flow must
   // not leak it into the new session (queued edits / rename prompts /
   // pending images / card inputs / subagent followups).
-  const hadPending = app.slices.agent.pendingImages.length > 0 ||
+  const hadPending = app.slices.agent.pendingImages.length > 0 || app.slices.agent.pendingFiles.length > 0 ||
     app.slices.agent.pendingRename !== null ||
     app.slices.agent.pendingQueueEdit !== null ||
     app.slices.agent.pendingSubagentFollowup !== null ||

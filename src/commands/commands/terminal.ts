@@ -63,10 +63,14 @@ const startPolling = (app: App, recId: string, id: string): void => {
       stopView(app, id, false)
     }
   }
-  void tick()
+  // Re-attaching must not leave the old poller alive: two timers would fight
+  // over the same buffer and leak one per attach.
+  const previous = views.get(id)
+  if (previous !== undefined) clearInterval(previous.timer)
   const timer = setInterval(() => { void tick() }, 600)
   timer.unref?.()
   views.set(id, { recId, timer })
+  void tick()
 }
 
 const openConsole = async (
@@ -76,7 +80,11 @@ const openConsole = async (
   motd?: string,
 ): Promise<void> => {
   const label = snap.name !== undefined && snap.name !== '' ? snap.name : snap.type
-  await app.luaCall('require("dsh_tui").terminal_open(...)', [snap.sessionId, label]).catch(() => {})
+  const opened = await app.luaCall('require("dsh_tui").terminal_open(...)', [snap.sessionId, label]).catch(() => false)
+  if (opened === false) {
+    app.notice(t('终端视图打开失败（无法创建 split）'))
+    return
+  }
   if (typeof motd === 'string' && motd !== '') {
     await app.luaCall('require("dsh_tui").terminal_update(...)', [snap.sessionId, motd, statusLabel(snap)]).catch(() => {})
   }

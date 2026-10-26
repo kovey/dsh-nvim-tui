@@ -222,6 +222,7 @@ export const scheduleCommand = async (app: App, a: string | undefined) => {
   if (sub === 'new') { await createWizard(app, rec.id); return }
   if (sub === 'catalog') { await showCatalog(app); return }
   if (sub === 'delete' && rest[0] !== undefined) {
+    if (typeof svc.delete !== 'function') { app.notice(t('该宿主不支持删除提醒')); return }
     const records = await listRecords(app, rec.id)
     const hit = records.find((r) => r.id === rest[0] || shortId(r.id) === rest[0])
     if (hit === undefined) { app.notice(t('找不到该提醒')); return }
@@ -237,6 +238,7 @@ export const scheduleCommand = async (app: App, a: string | undefined) => {
     else await editRecord(app, rec.id, hit)
     return
   }
+  if (typeof svc.list !== 'function') { app.notice(t('该宿主不支持提醒列表')); return }
   const records = await listRecords(app, rec.id)
   const rows: Array<{ label: string; value: string }> = [
     { label: t('＋ 新建提醒'), value: 'act:new' },
