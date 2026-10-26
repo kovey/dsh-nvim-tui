@@ -38,6 +38,8 @@ import { archiveVisible, nextArchiveMode, parseArchiveMode } from '../lib/sessio
 import { changeStatus, ledgerRows, ledgerTotals, recordChange, summarize } from '../lib/kernel/change-ledger.js'
 import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
 import { deliverablePaths, emptyDeliverables, mergePresentedFiles, resolveDeliverablePath } from '../lib/kernel/deliverables.js'
+import { parseFeedbackArgs } from '../lib/commands/commands/feedback.js'
+import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
 import { installDiffCommand } from '../lib/commands/commands/diff.js'
 import { officialRows, runOfficialCommand } from '../lib/commands/commands/official-commands.js'
@@ -2636,6 +2638,32 @@ description:
       'declared files come first; heuristic duplicates are dropped')
     assert.equal(resolveDeliverablePath('/repo', 'docs/a.md'), '/repo/docs/a.md', 'relative paths resolve against the session cwd')
     assert.equal(resolveDeliverablePath('/repo', '/tmp/x'), '/tmp/x', 'absolute paths are untouched')
+  }
+
+  // /export log shape: one canonical header line then one event per line. The
+  // file must be parseable JSONL, because support tooling reads it directly.
+  {
+    const text = serializeSessionLog(
+      { id: 'session-x', createdAt: 123, cwd: '/repo', isSeeded: false },
+      [{ type: 'turn/start', seq: 1, time: 456, data: { turn: 1 } } as never],
+      { id: 'fallback', createdAt: 0 },
+    )
+    const lines = text.trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>)
+    assert.equal(lines.length, 2, 'header + one event line')
+    assert.equal(lines[0]?.['type'], 'session', 'canonical header line')
+    assert.equal(lines[0]?.['version'], 4, 'missing version falls back to the current format')
+    assert.equal(lines[0]?.['cwd'], '/repo', 'cwd is preserved')
+    assert.equal(lines[1]?.['type'], 'turn/start', 'event line is verbatim')
+    assert.equal(lines[1]?.['seq'], 1, 'event seq is preserved')
+  }
+
+  // /feedback argument grammar: only an exact durable category id becomes a
+  // category; everything else is free text (a typo must not silently drop it).
+  {
+    assert.deepEqual(parseFeedbackArgs('task-result login failed'), { category: 'task-result', text: 'login failed' })
+    assert.deepEqual(parseFeedbackArgs('task-result'), { category: 'task-result', text: '' })
+    assert.deepEqual(parseFeedbackArgs('not-a-category hello'), { text: 'not-a-category hello' })
+    assert.deepEqual(parseFeedbackArgs(undefined), { text: '' })
   }
 
   // Plugin enable/disable edits exactly ONE line of a user-authored YAML, so the

@@ -51,6 +51,7 @@ import { installMcpCommand } from './commands/mcp.js'
 import { installPluginsCommand } from './commands/plugins.js'
 import { installLocaleCommand } from './commands/locale.js'
 import { installFbCommand } from './commands/fb.js'
+import { installFeedbackCommand } from './commands/feedback.js'
 import { installWorkflowCommand } from './commands/workflow.js'
 import { installPermissionCommand } from './commands/permission.js'
 import { installAttachCommand } from './commands/attach.js'
@@ -316,6 +317,7 @@ export function installCommands(app: App): void {
   installPluginsCommand(app)
   installLocaleCommand(app)
   installFbCommand(app)
+  installFeedbackCommand(app)
   installWorkflowCommand(app)
   installPermissionCommand(app)
   installAttachCommand(app)

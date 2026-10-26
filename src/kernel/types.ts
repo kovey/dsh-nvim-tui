@@ -200,6 +200,34 @@ export type WorkspaceFileDiff =
   | { kind: 'binary'; path: string; display: string }
   | { kind: 'oversized'; path: string; display: string }
 
+/** dsh-command-feedback categories (durable log vocabulary). */
+export const FEEDBACK_CATEGORIES = [
+  'task-result',
+  'instruction-following',
+  'product-interaction',
+  'service-stability',
+  'resource-cost',
+  'security-privacy-permission',
+  'other',
+] as const
+export type FeedbackCategory = (typeof FEEDBACK_CATEGORIES)[number]
+
+/** `sessionFeedback.record` request/result (dsh-command-feedback). */
+export interface SessionFeedbackRecordRequest {
+  sessionId: string
+  text?: string
+  category?: FeedbackCategory
+}
+
+export type SessionFeedbackRecordResult =
+  | { ok: true; value: { recorded: true } }
+  | { ok: false; error: { code: string; [key: string]: unknown } }
+
+/** Host service recording session-level feedback (`/feedback`). */
+export interface SessionFeedbackService {
+  record(request: SessionFeedbackRecordRequest): Promise<SessionFeedbackRecordResult>
+}
+
 /** Host service serving `workspace/changes` summaries and comparisons. */
 export interface WorkspaceChangesService {
   summary(sessionId: string, seq: number): WorkspaceChangesSummary | undefined

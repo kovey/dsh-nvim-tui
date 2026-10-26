@@ -31,7 +31,7 @@ import type {
   CommandsService, DeliverablesState, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService,
   MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService,
   PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore,
-  LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService,
+  LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionFeedbackService,
   SessionTitleService, SettingsService, SkillsService, SubagentInfo,
   SubagentsService, ToolsService, Usage, WorkspaceChangesService,
   WorkspacesService,
@@ -100,6 +100,7 @@ export interface ServiceMap {
   workingDirectory: WorkingDirectoryService
   /** Host per-turn workspace change summaries (web/desktop composition). */
   workspaceChanges: WorkspaceChangesService
+  sessionFeedback: SessionFeedbackService
 }
 
 /**

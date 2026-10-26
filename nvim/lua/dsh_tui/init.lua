@@ -168,6 +168,17 @@ M.abort_turn = R.abort_turn
 M.open_file_tab = R.open_file_tab
 M.apply_theme = R.apply_theme
 
+--- Generic one-line prompt for runner commands (kernel/prompt.ts).
+--- vim.ui.input is async; the callback must always answer so the Node promise
+--- can never hang when the user dismisses the prompt.
+function M.prompt_line(id, title, default)
+  vim.ui.input({ prompt = tostring(title or ''), default = tostring(default or '') }, function(input)
+    if S.channel then
+      vim.rpcnotify(S.channel, 'dsh-prompt-result', { id = tostring(id), value = input })
+    end
+  end)
+end
+
 -- dsh_tui.popup_core: the generic float family
 M.show_approval = PC.show_approval
 M.approval_decide = PC.approval_decide

@@ -21,7 +21,7 @@ import type { FeedRenderer } from '../feed/feed.js';
 import type { FileChange } from './change-ledger.js';
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js';
 import type { RunnerConfig } from './types.js';
-import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, CommandsService, DeliverablesState, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspaceChangesService, WorkspacesService } from './types.js';
+import type { AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, CommandsService, DeliverablesState, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionFeedbackService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspaceChangesService, WorkspacesService } from './types.js';
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
 /** The active session's working directory (falls back to the process cwd
  *  when no session is attached) — local-file commands must resolve against
@@ -79,6 +79,7 @@ export interface ServiceMap {
     workingDirectory: WorkingDirectoryService;
     /** Host per-turn workspace change summaries (web/desktop composition). */
     workspaceChanges: WorkspaceChangesService;
+    sessionFeedback: SessionFeedbackService;
 }
 /**
  * Positional-argument grammar of a slash command, for completion + hints.

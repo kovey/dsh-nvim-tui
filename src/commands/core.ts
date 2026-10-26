@@ -14,6 +14,7 @@ import { isAbsolute, join } from 'node:path'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { locale, t, tf } from '../kernel/i18n.js'
+import { settlePrompt } from '../kernel/prompt.js'
 import { runOfficialCommand } from './commands/official-commands.js'
 import { matchIntent } from './nlcmd.js'
 import { activeSessionCwd, type ApprovalRecord } from '../kernel/app.js'
@@ -710,6 +711,12 @@ export function registerNotifications(): void {
   })
   registerNvimNotification('dsh-questions-cancelled', t('提问'), (app) => {
     app.slices.agent.rejectQuestions('cancelled by user')
+  })
+  registerNvimNotification('dsh-prompt-result', t('输入'), (app, args) => {
+    const payload = (args?.[0] ?? {}) as { id?: unknown; value?: unknown }
+    const id = typeof payload.id === 'string' ? payload.id : ''
+    if (id === '') return
+    settlePrompt(app, id, typeof payload.value === 'string' ? payload.value : null)
   })
   registerNvimNotification('dsh-picker-selected', t('选择'), (app, args) => {
     app.slices.agent.settlePicker((args?.[0] ?? null) as string | null)
