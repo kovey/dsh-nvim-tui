@@ -4,12 +4,13 @@ import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { installTodoGuard } from '../kernel/todo-guard.js'
+import { emptyDeliverables, mergePresentedFiles } from '../kernel/deliverables.js'
 import { uiPref } from './prefs.js'
 import { FeedRenderer } from '../feed/feed.js'
 import { statSync } from 'node:fs'
 import { t, tf } from '../kernel/i18n.js'
 import { BUILD_STAMP, BUILD_VERSION } from '../kernel/app.js'
-import type { AgentHandle, SessionEvent } from '../kernel/types.js'
+import type { AgentHandle, PresentedFile, SessionEvent } from '../kernel/types.js'
 import type { App, AppSlices, ModelRef, WritableSlice } from '../kernel/app.js'
 const WSS = (d: AppSlices['sessions']) => d as WritableSlice<AppSlices['sessions']>
 
@@ -56,7 +57,8 @@ export const attachSession = async (app: App, handle: AgentHandle, modelRef: Mod
     goal: null,
     planActive: false,
     imagePoisonWarned: false,
-    deliverables: { turn: undefined, paths: [] },
+    deliverables: { turn: undefined, paths: [], presented: [] },
+    workspaceChangesEvent: null,
     todos: null,
     todosItems: [],
     jobsCache: new Map(),
@@ -197,6 +199,18 @@ const doResumeSession = async (app: App, id: string): Promise<string | undefined
       if (event.type === 'session/title') {
         const d = event.data as { title?: unknown } | undefined
         if (typeof d?.title === 'string' && d.title !== '') rec.title = d.title
+      } else if (event.type === 'turn/start') {
+        const d = event.data as { turn?: number } | undefined
+        rec.deliverables = emptyDeliverables(d?.turn)
+        rec.workspaceChangesEvent = null
+      } else if (event.type === 'deliverables/presented') {
+        const d = event.data as { turn?: number; files?: PresentedFile[] } | undefined
+        if (Array.isArray(d?.files)) rec.deliverables = mergePresentedFiles(rec.deliverables, d.turn, d.files)
+      } else if (event.type === 'workspace/changes') {
+        const d = event.data as { turn?: number } | undefined
+        if (typeof d?.turn === 'number' && typeof event.seq === 'number') {
+          rec.workspaceChangesEvent = { turn: d.turn, seq: event.seq }
+        }
       }
       app.slices.ui.foldEvent(rec, event)
       rec.feed.applyEvent(event, { history: true })

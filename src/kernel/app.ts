@@ -28,12 +28,12 @@ import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types
 import type { RunnerConfig } from './types.js'
 import type {
   AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService,
-  CommandsService, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService,
+  CommandsService, DeliverablesState, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService,
   MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService,
   PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore,
   LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService,
   SessionTitleService, SettingsService, SkillsService, SubagentInfo,
-  SubagentsService, ToolsService, Usage,
+  SubagentsService, ToolsService, Usage, WorkspaceChangesService,
   WorkspacesService,
 } from './types.js'
 
@@ -98,6 +98,8 @@ export interface ServiceMap {
   /** Per-Session working directory (dsh 0.2.1+; assembled by dsh-base). Absent
    *  on older hosts, so every use is optional-chained. */
   workingDirectory: WorkingDirectoryService
+  /** Host per-turn workspace change summaries (web/desktop composition). */
+  workspaceChanges: WorkspaceChangesService
 }
 
 /**
@@ -164,7 +166,9 @@ export interface SessionRec {
   goal: GoalState | null
   planActive: boolean
   imagePoisonWarned: boolean
-  deliverables: { turn: number | undefined; paths: string[] }
+  deliverables: DeliverablesState
+  /** Latest `workspace/changes` event (summary stays on the host). */
+  workspaceChangesEvent: { turn: number; seq: number } | null
   /** Image turn in flight: previous selection to restore + switch instant. */
   visionTmp: { prev: ReturnType<ModelSelection['currentSelection']>; switchAt: number } | null
   /** 难度路由状态（kernel/difficulty.ts）。 */

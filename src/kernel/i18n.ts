@@ -447,7 +447,7 @@ const EN_DICT: Record<string, string> = {
   '本会话暂无用量数据': 'no usage data for this session yet',
   '本会话还没有助手消息可反馈': 'no assistant message to rate in this session yet',
   '本会话还没有回合': 'this session has no turns yet',
-  '本回合还没有产出文件（写/改文件的工具运行后会出现在这里）': 'no files produced this turn yet (they appear after a write/edit tool runs)',
+  '本回合还没有产出文件（present / 写改文件的工具运行后会出现在这里）': 'no files produced this turn yet (they appear after a present/write/edit tool runs)',
   '查看/管理目标': 'View/manage goals',
   '标题已更新': 'title updated',
   '正在压缩上下文…': 'compacting context…',

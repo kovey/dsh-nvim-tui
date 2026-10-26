@@ -11,7 +11,8 @@
 import { FeedRenderer } from '../feed/feed.js'
 import { t, tf } from '../kernel/i18n.js'
 import { restoreDifficulty } from '../kernel/difficulty.js'
-import type { ChatMessage, GoalState, MessageContent, SessionEvent } from '../kernel/types.js'
+import { emptyDeliverables, mergePresentedFiles } from '../kernel/deliverables.js'
+import type { ChatMessage, GoalState, MessageContent, PresentedFile, SessionEvent } from '../kernel/types.js'
 import type { App, SessionRec } from '../kernel/app.js'
 import { refreshTodoBadge } from '../statusline/index.js'
 
@@ -81,10 +82,25 @@ export function makeSessionEventHandler(
   const MAIN_EVENT_HOOKS: Record<string, MainEventHook> = {
     'turn/start': (rec, _owner, event) => {
       const data = event.data as { turn?: number } | undefined
-      rec.deliverables = { turn: data?.turn, paths: [] }
+      rec.deliverables = emptyDeliverables(data?.turn)
+      rec.workspaceChangesEvent = null
       rec.pendingToolCalls.clear()
       rec.toolErrors = 0
       rec.lastTurnStartAt = Date.now()
+      return false
+    },
+    'deliverables/presented': (rec, _owner, event) => {
+      const data = event.data as { turn?: number; files?: PresentedFile[] } | undefined
+      if (Array.isArray(data?.files)) {
+        rec.deliverables = mergePresentedFiles(rec.deliverables, data.turn, data.files)
+      }
+      return false
+    },
+    'workspace/changes': (rec, _owner, event) => {
+      const data = event.data as { turn?: number } | undefined
+      if (typeof data?.turn === 'number' && typeof event.seq === 'number') {
+        rec.workspaceChangesEvent = { turn: data.turn, seq: event.seq }
+      }
       return false
     },
     'tool/call': (rec, _owner, event) => {
@@ -97,7 +113,7 @@ export function makeSessionEventHandler(
         const p = producedPathFromCall(data.name, data.arguments)
         if (p !== null) {
           if (!(rec.deliverables?.paths ?? []).includes(p)) {
-            rec.deliverables = rec.deliverables ?? { turn: undefined, paths: [] }
+            rec.deliverables = rec.deliverables ?? emptyDeliverables()
             rec.deliverables.paths.push(p)
           }
           if (typeof data.callId === 'string' && data.callId !== '') {

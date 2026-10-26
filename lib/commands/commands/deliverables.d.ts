@@ -1,4 +1,4 @@
-import type { App } from '../../kernel/app.js';
+import { type App } from '../../kernel/app.js';
 /**
  * OS "open with the default application" argv, or undefined when this platform
  * has no known opener.
@@ -14,7 +14,11 @@ export declare const systemOpenArgv: (path: string, platform?: string) => string
 /** Same, but selecting the file in the platform's file manager. Only macOS has
  *  a portable spelling; elsewhere the action is simply not offered. */
 export declare const systemRevealArgv: (path: string, platform?: string) => string[] | undefined;
-/** /deliverables — files this session's current turn produced (mutation
- *  tools' follow-along paths, derived from tool/call arguments). */
+/** /deliverables — files this session's current turn produced.
+ *
+ *  Explicit `deliverables/presented` declarations come first (they can cover
+ *  files made by bash or any tool without a path argument), then the mutation
+ *  tool heuristic. Relative declared paths resolve against the session cwd —
+ *  the cwd `/new <dir>` or `/cwd` set, not the shell's. */
 export declare const deliverablesCommand: (app: App) => Promise<void>;
 export declare function installDeliverablesCommand(app: App): void;

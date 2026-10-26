@@ -37,6 +37,7 @@ import { togglePluginEntry } from '../lib/kernel/plugin-toggle.js'
 import { archiveVisible, nextArchiveMode, parseArchiveMode } from '../lib/sessions/archive-filter.js'
 import { changeStatus, ledgerRows, ledgerTotals, recordChange, summarize } from '../lib/kernel/change-ledger.js'
 import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
+import { deliverablePaths, emptyDeliverables, mergePresentedFiles, resolveDeliverablePath } from '../lib/kernel/deliverables.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
 import { installDiffCommand } from '../lib/commands/commands/diff.js'
 import { officialRows, runOfficialCommand } from '../lib/commands/commands/official-commands.js'
@@ -2616,6 +2617,25 @@ description:
       'macOS reveals with `open -R`')
     assert.equal(systemRevealArgv('/tmp/x.pdf', 'linux'), undefined,
       'reveal is macOS-only (no portable spelling)')
+  }
+
+  // Deliverables: explicit `present` declarations are authoritative and must
+  // survive de-duplication against the mutation-tool path heuristic. Pure
+  // folding, so the rule is asserted without a live session.
+  {
+    const turn = emptyDeliverables(3)
+    const merged = mergePresentedFiles(turn, 3, [
+      { path: 'docs/a.md', description: 'API guide' },
+      { path: 'out/report.csv' },
+      { path: 'docs/a.md', description: 'duplicate' },
+    ])
+    assert.equal(merged.presented.length, 2, 'presented files de-duplicate by path')
+    assert.equal(merged.presented[0]?.description, 'API guide', 'description is kept')
+    merged.paths.push('src/x.ts', 'docs/a.md')
+    assert.deepEqual(deliverablePaths(merged), ['docs/a.md', 'out/report.csv', 'src/x.ts'],
+      'declared files come first; heuristic duplicates are dropped')
+    assert.equal(resolveDeliverablePath('/repo', 'docs/a.md'), '/repo/docs/a.md', 'relative paths resolve against the session cwd')
+    assert.equal(resolveDeliverablePath('/repo', '/tmp/x'), '/tmp/x', 'absolute paths are untouched')
   }
 
   // Plugin enable/disable edits exactly ONE line of a user-authored YAML, so the

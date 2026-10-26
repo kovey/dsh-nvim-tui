@@ -35,6 +35,10 @@ const ROW_TEMPLATES: Record<string, RowTemplate> = {
     pkg: '@deepseek-ai/dsh-workspace', file: 'package.json',
     yaml: "    - id: workspace\n      name: '@deepseek-ai/dsh-workspace'",
   },
+  'workspace-changes': {
+    pkg: '@deepseek-ai/dsh-workspace-changes', file: 'package.json',
+    yaml: "    - id: workspace-changes\n      name: '@deepseek-ai/dsh-workspace-changes'",
+  },
   'plugin-inventory': {
     pkg: '@deepseek-ai/dsh-host-plugin-inventory', file: 'package.json',
     yaml: "    - id: plugin-inventory\n      name: '@deepseek-ai/dsh-host-plugin-inventory'",
@@ -264,6 +268,7 @@ const svcOk = (app: App, key: string): boolean => app.runtimeCtx.get(key) !== un
 /** Service keys the host-plugin checks watch (readiness poll after assembly). */
 const HOST_SVC_KEYS: Record<string, string> = {
   'agent-presets': 'agentPresets',
+  'workspace-changes': 'workspaceChanges',
   'cordis-host-runner': 'dynamicCordisRunner',
   'file-reference': 'fileReferences',
   workspace: 'workspaceRegistry',
@@ -319,6 +324,7 @@ export async function checkAll(app: App, s: AppSlices['agent'], patchPath: strin
   host('cordis-host-runner', 'cordis-host-runner', 'cordis 预设（/preset ptc）', 'dynamicCordisRunner')
   host('file-reference', 'file-reference', '@ 文件引用补全', 'fileReferences')
   host('workspace', 'workspace', '/workspace 工作区与 /archive 归档', 'workspaceRegistry')
+  host('workspace-changes', 'workspace-changes', '/changes 宿主改动快照（git + 整文件）', 'workspaceChanges')
   host('plugin-inventory', 'plugin-inventory', '/plugins 插件清单', 'pluginInventory')
   host('message-feedback', 'message-feedback', '/fb 消息反馈', 'messageFeedback')
   host('session-reference', 'session-reference', '💬 跨会话引用补全', 'sessionReferenceResolver')

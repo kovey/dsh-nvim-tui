@@ -276,6 +276,18 @@ export type SessionEvent = (SessionEventBase & {
         runId?: string;
         stopReason?: string;
     };
+}) | (SessionEventBase & {
+    type: 'deliverables/presented';
+    data?: {
+        turn?: number;
+        callId?: string;
+        files?: PresentedFile[];
+    };
+}) | (SessionEventBase & {
+    type: 'workspace/changes';
+    data?: {
+        turn?: number;
+    };
 });
 /** subagent/start / subagent/end payload. */
 export interface SubagentInfo {
@@ -302,6 +314,76 @@ export interface ApprovalRequest {
     };
     /** Live request signal (the host's own type — Node's global AbortSignal). */
     signal?: AbortSignal;
+}
+/** `deliverables/presented` payload (dsh-tool-present): files the model
+ *  explicitly declared for delivery. Authoritative over the mutation-tool
+ *  argument heuristic in session-events.ts. */
+export interface PresentedFile {
+    /** Absolute, or relative to the Session working directory. */
+    path: string;
+    description?: string;
+}
+/** Per-turn deliverables: explicit declarations + heuristic mutation paths. */
+export interface DeliverablesState {
+    turn: number | undefined;
+    /** Mutation-tool paths (write/edit/…) — a fallback for tools that do not
+     *  emit deliverables/presented. */
+    paths: string[];
+    /** Explicit `present` declarations; may include files produced by bash. */
+    presented: PresentedFile[];
+}
+/** One changed file in a host `workspace/changes` summary. */
+export interface WorkspaceChangedFile {
+    path: string;
+    display: string;
+    added: number;
+    deleted: number;
+    binary?: true;
+    oversized?: true;
+}
+/** Host per-turn workspace change summary (dsh-workspace-changes). */
+export interface WorkspaceChangesSummary {
+    turn: number;
+    cwd: string;
+    files: WorkspaceChangedFile[];
+    total: number;
+    added: number;
+    deleted: number;
+    snapshot?: {
+        before: string;
+        after: string;
+    };
+}
+/** One unified-diff hunk from a host workspace comparison. */
+export interface WorkspaceDiffHunk {
+    oldStart: number;
+    oldLines: number;
+    newStart: number;
+    newLines: number;
+    lines: string[];
+}
+/** Host comparison of one file's turn-start/turn-end contents. */
+export type WorkspaceFileDiff = {
+    kind: 'text';
+    path: string;
+    display: string;
+    before: boolean;
+    after: boolean;
+    hunks: WorkspaceDiffHunk[];
+    coarse: boolean;
+} | {
+    kind: 'binary';
+    path: string;
+    display: string;
+} | {
+    kind: 'oversized';
+    path: string;
+    display: string;
+};
+/** Host service serving `workspace/changes` summaries and comparisons. */
+export interface WorkspaceChangesService {
+    summary(sessionId: string, seq: number): WorkspaceChangesSummary | undefined;
+    diff(sessionId: string, seq: number, index: number, signal: AbortSignal): Promise<WorkspaceFileDiff | undefined>;
 }
 /** One user question (userQuestions service). */
 export interface UserQuestion {
