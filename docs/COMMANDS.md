@@ -4,7 +4,7 @@
 `Enter` 补全或执行）。命令目录由 runner 启动时推给 nvim，与 `/help`、命令分发
 表共用同一份注册表，不会漂移。
 
-本页是 **72 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
+本页是 **77 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
 他插件经 `ctx.commands` 注册的命令也会进补全目录，用 `/commands` 查看；依赖的
 宿主服务未装配时，命令会给出明确提示，而不是静默失败。
 
@@ -52,6 +52,7 @@
 | `/workspace [add <目录> [标题] \| delete <id>]` | 工作区管理（分组 / 排序 / 归档） |
 | `/archive [会话id]` | 归档会话（从所有列表隐藏，非破坏性） |
 | `/attach [路径]` | 附加文件 / 目录：图片进附件队列，其余转为 `@` 路径引用 |
+| `/upload <路径> \| clear` | 把本地文件作为 durable 附件随下一条消息发送（经 attachments.saveFile；上限 20 MB） |
 | `/image <路径> [提示]` | 发送本地图片（png/jpg/webp/gif，支持 `~/`）；macOS 无参读剪贴板；`/image clear` 清空 `<C-v>` 队列 |
 | `/schedule [new \| list \| delete <id> \| edit <id> \| history <id> \| catalog]` | 宿主持久化定时提醒：新建向导（延时/定时/间隔/每天/每周/Cron）、编辑、删除、投递历史、跨会话目录 |
 | `/terminal [new [name] \| attach \| kill <id> \| shell]` | 宿主持久终端（PTY）控制台：新建/附着/发 SIGINT/关闭；`shell` 打开 nvim 原生 `:terminal`（本地 shell，模型不可见） |
@@ -101,12 +102,16 @@
 | `/export [md\|log] [路径]` | 导出渲染后的 Markdown，或原始会话日志（header + 全部事件，JSONL） |
 | `/lines [路径]` | 文件行视图（只读浮窗，`i` 打开编辑；无参弹目录选择器） |
 | `/market [关键词 \| refresh \| update-all]` | 插件市场：精选目录按 GitHub ★ 倒序，安装 / 更新 / 卸载 + 热启停（HMR 免重启），磁盘缓存可离线 |
-| `/mcp` | MCP server 工具统计（按 server 分组） |
+| `/mcp [tools\|config\|resources]` | MCP 汇总 / 工具清单 / server 配置行 / 资源能力说明 |
 | `/plugin [install\|update\|remove <spec> \| list]` | 市场目录之外的直装入口（npm 包名 / `owner/repo` / git URL）。更新 git/tag 依赖必须带新 ref，`--latest` 推不动 git ref |
 | `/plugins` | 宿主插件清单（loader 条目只读投影） |
 | `/plugins:set` | 启停本 profile `cordis.patch.yml` 里声明的插件条目（自动备份 `.bak`，重启生效） |
 | `/status` | 会话快照 |
-| `/trajectory` | 回合步骤轨迹 |
+| `/outline` | 回合大纲：每回合首条提示 + 步数/工具数，Enter 跳到该回合轨迹 |
+| `/files [目录]` | nvim netrw 文件树（可新建/重命名/删除；缺 netrw 时提示 /dir） |
+| `/preview <路径>` | 只读预览：文本/源码滚动浮窗；图片/PDF/Office/二进制用系统程序打开 |
+| `/cordis [inventory\|snapshot]` | 动态 Cordis 插件检查：本会话 snapshot / inventory / 插件详情（只读） |
+| `/trajectory [回合号]` | 回合步骤轨迹（无参显示最近一回合） |
 
 ## 记忆
 

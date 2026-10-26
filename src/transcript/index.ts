@@ -16,6 +16,7 @@ import type { ChatMessage, HarnessSession, MessageContent, SessionEvent } from '
 import type { App, SessionRec } from '../kernel/app.js'
 import { registerHostHandler } from '../kernel/host-events.js'
 import { installTrajectoryCommand } from './commands/trajectory.js'
+import { installOutlineCommand } from './commands/outline.js'
 import { installExportCommand } from './commands/export.js'
 import { installRewindCommand } from './commands/rewind.js'
 import { installQueueCommand } from './commands/queue.js'
@@ -318,6 +319,7 @@ export function installTranscript(app: App): void {
   app.slices.trans.repairOrphanToolCalls = (rec) => repairOrphanToolCalls(rec)
   // -- the slash commands, one file each (self-registering) --
   installTrajectoryCommand(app)
+  installOutlineCommand(app)
   installExportCommand(app)
   installRewindCommand(app)
   installQueueCommand(app)

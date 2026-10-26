@@ -306,6 +306,8 @@ export declare class FeedRenderer {
     static messageText(message: ChatMessage | undefined): string;
     /** Display labels for a message's image blocks (durable attachment refs). */
     static messageImages(message: ChatMessage | undefined): string[];
+    /** Display labels for a message's durable file-upload blocks. */
+    static messageFiles(message: ChatMessage | undefined): string[];
     /** Extract reasoning (thinking) text from a message's content blocks. */
     static messageReasoning(message: ChatMessage | undefined): string;
     /** Close the open thinking block. The compact chat line is TRANSIENT — it

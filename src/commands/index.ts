@@ -49,12 +49,16 @@ import { installTasksCommand } from './commands/tasks.js'
 import { installSkillsCommand } from './commands/skills.js'
 import { installMcpCommand } from './commands/mcp.js'
 import { installPluginsCommand } from './commands/plugins.js'
+import { installCordisCommand } from './commands/cordis.js'
 import { installLocaleCommand } from './commands/locale.js'
 import { installFbCommand } from './commands/fb.js'
 import { installFeedbackCommand } from './commands/feedback.js'
 import { installWorkflowCommand } from './commands/workflow.js'
 import { installPermissionCommand } from './commands/permission.js'
 import { installAttachCommand } from './commands/attach.js'
+import { installUploadCommand } from './commands/upload.js'
+import { installFilesCommand } from './commands/files.js'
+import { installPreviewCommand } from './commands/preview.js'
 import { installDirCommand } from './commands/dir.js'
 import { installLinesCommand } from './commands/lines.js'
 import { installHistoryCommand } from './commands/history.js'
@@ -230,6 +234,7 @@ export function installCommands(app: App): void {
     A.pendingRename = null
     A.pendingQueueEdit = null
     A.pendingImages = []
+    W(app.slices.agent).pendingFiles = []
     A.pendingSubagentFollowup = null
   }
 
@@ -261,6 +266,7 @@ export function installCommands(app: App): void {
     currentSelection: () => app.runtimeCtx.agentDefaultModel.currentSelection(),
     pendingInput: [],
     pendingImages: [],
+    pendingFiles: [],
     pendingRename: null,
     pendingQueueEdit: null,
     approvalSettle: null,
@@ -318,12 +324,16 @@ export function installCommands(app: App): void {
   installSkillsCommand(app)
   installMcpCommand(app)
   installPluginsCommand(app)
+  installCordisCommand(app)
   installLocaleCommand(app)
   installFbCommand(app)
   installFeedbackCommand(app)
   installWorkflowCommand(app)
   installPermissionCommand(app)
   installAttachCommand(app)
+  installUploadCommand(app)
+  installFilesCommand(app)
+  installPreviewCommand(app)
   installDirCommand(app)
   installLinesCommand(app)
   installHistoryCommand(app)

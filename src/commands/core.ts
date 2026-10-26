@@ -23,7 +23,7 @@ import { routeDifficultyForTurn } from '../kernel/difficulty.js'
 import { findVisionModel, effortSupported } from '../kernel/vision.js'
 import { readClipboardImage, splitImageDataUrls, parseImageDataUrl } from '../feed/images.js'
 import { queueSubagentPromptKey } from '../kernel/types.js'
-import type { ApprovalRequest, InboxLike, LlmService, MessageContent, SaveImageAttachment } from '../kernel/types.js'
+import type { ApprovalRequest, FileAttachmentRef, InboxLike, LlmService, MessageContent, SaveImageAttachment } from '../kernel/types.js'
 import type { AppSlices, WritableSlice } from '../kernel/app.js'
 import { registerHostHandler } from '../kernel/host-events.js'
 import { registerNvimNotification } from '../kernel/rpc.js'
@@ -42,9 +42,9 @@ import { skillsCommand } from './commands/skills.js'
  * running turn is never interrupted — the input is processed as a later
  * turn of the same drain.
  */
-export const followup = async (app: App, rec: SessionRec, text: string, images?: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }> | string>) => {
+export const followup = async (app: App, rec: SessionRec, text: string, images?: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }> | string>, files?: FileAttachmentRef[]) => {
   if (app.slices.runtime.disposed || rec === undefined) return
-  if ((text ?? '').trim() === '' && (images === undefined || images.length === 0)) return
+  if ((text ?? '').trim() === '' && (images === undefined || images.length === 0) && (files === undefined || files.length === 0)) return
   // Surface the queueing so the message doesn't look lost. (Use /btw to
   // fork a side session instead.)
   if (rec.status !== undefined && rec.status.startsWith('● running')) {
@@ -58,7 +58,11 @@ export const followup = async (app: App, rec: SessionRec, text: string, images?:
   if (images !== undefined && images.length > 0 && (text ?? '').trim() === '') {
     text = t('📎 图片消息')
   }
+  if (files !== undefined && files.length > 0 && (text ?? '').trim() === '') {
+    text = t('📎 文件消息')
+  }
   const content: MessageContent[] = [{ type: 'text', text }]
+  for (const file of files ?? []) content.push({ type: 'file', attachment: file })
   if (images !== undefined && images.length > 0) {
     const attachments = app.svc('attachments')
     if (attachments === undefined) {
@@ -219,8 +223,10 @@ export const send = (app: App, text: string) => {
   }
   // Clipboard images queued via <C-v> ride along with the submitted text.
   const all = [...parsed, ...app.slices.agent.pendingImages]
+  const files = [...app.slices.agent.pendingFiles]
   W(app.slices.agent).pendingImages = []
-  void followup(app, rec, clean, all)
+  W(app.slices.agent).pendingFiles = []
+  void followup(app, rec, clean, all, files)
 }
 
 /** <C-v> handler: queue the macOS clipboard image for the next submit. */
@@ -434,7 +440,7 @@ export const onInput = (app: App, text: string): void => {
   }
   const echoRec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   const split = splitImageDataUrls(trimmed)
-  if (echoRec !== undefined && app.slices.agent.pendingImages.length === 0 &&
+  if (echoRec !== undefined && app.slices.agent.pendingImages.length === 0 && app.slices.agent.pendingFiles.length === 0 &&
     split.images.length === 0) {
     // Echo the CLEANED text — the EXACT string the host will store and
     // replay. Echoing the pre-collapse draft desyncs the dedupe queue on

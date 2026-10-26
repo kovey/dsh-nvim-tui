@@ -129,6 +129,13 @@ export function splitImageDataUrls(text: string): { text: string; images: string
   return { text: clean, images }
 }
 
+/** Human label for a durable file upload. */
+export const fileLabel = (ref: { name?: string; bytes?: number } | undefined): string => {
+  const bytes = typeof ref?.bytes === 'number' ? ref.bytes : 0
+  const size = bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`
+  return `📎 文件 (${ref?.name ?? 'file'} · ${size})`
+}
+
 /** Human label for a chat line / notice: `📎 图片 (image/png · 640×480 · 123.4KB)`. */
 export function imageLabel(ref: ImageAttachmentRef | undefined): string {
   const kb = (ref?.bytes ?? 0) / 1024

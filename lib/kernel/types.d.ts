@@ -39,6 +39,12 @@ export interface ImageAttachmentRef {
     [hostField: string]: unknown;
 }
 /** One message content block. */
+export interface FileAttachmentRef {
+    attachmentId: string;
+    name: string;
+    bytes: number;
+    [hostField: string]: unknown;
+}
 export type MessageContent = {
     type: 'text';
     text: string;
@@ -48,6 +54,9 @@ export type MessageContent = {
 } | {
     type: 'image';
     attachment: ImageAttachmentRef;
+} | {
+    type: 'file';
+    attachment: FileAttachmentRef;
 } | {
     type: string;
     [key: string]: unknown;
@@ -115,6 +124,18 @@ export type SessionEvent = (SessionEventBase & {
     data?: {
         turn?: number;
         [key: string]: unknown;
+    };
+}) | (SessionEventBase & {
+    type: 'step/start';
+    data?: {
+        turn?: number;
+        step?: number;
+    };
+}) | (SessionEventBase & {
+    type: 'step/end';
+    data?: {
+        turn?: number;
+        step?: number;
     };
 }) | (SessionEventBase & {
     type: 'turn/end';
@@ -611,6 +632,26 @@ export interface TerminalService {
     signal?: (owner: unknown, id: string, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL' | 'SIGTSTP' | 'SIGHUP') => Promise<unknown>;
     kill?: (owner: unknown, id: string, reason?: string) => Promise<boolean>;
 }
+/** Dynamic Cordis runner (dsh-cordis-host-runner): read-only inspection
+ *  surface the TUI exposes; define/run stays with the model tool. */
+export interface DynamicCordisService {
+    inventory?: () => unknown[];
+    snapshot?: (agent: unknown) => Array<{
+        pluginId?: string;
+        packages?: Array<{
+            packageId?: string;
+            name?: string;
+            purpose?: string;
+            hasHostHalf?: boolean;
+            hasClientHalf?: boolean;
+        }>;
+        activeRun?: {
+            pluginRunId?: string;
+            handlers?: string[];
+        };
+    }>;
+    inspectPlugin?: (agent: unknown, pluginId: string) => unknown;
+}
 /** Host service serving `workspace/changes` summaries and comparisons. */
 export interface WorkspaceChangesService {
     summary(sessionId: string, seq: number): WorkspaceChangesSummary | undefined;
@@ -715,6 +756,11 @@ export interface SessionPersistenceService {
 /** dsh-attachment durable image save. */
 export interface AttachmentsService {
     saveImage: (img: SaveImageAttachment) => Promise<ImageAttachmentRef>;
+    /** Durable verbatim file upload (`/upload`); absent on stores without files. */
+    saveFile?: (input: {
+        data: Uint8Array;
+        name?: string;
+    }) => Promise<FileAttachmentRef>;
     imageLimits?: {
         maxImagesPerMessage?: number;
     };

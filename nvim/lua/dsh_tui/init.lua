@@ -54,7 +54,7 @@ do
   local submodules = {
     'state', 'buffer', 'highlight', 'statusline', 'cmd_menu', 'at_menu',
     'input', 'session', 'layout', 'rpc', 'keymaps', 'autocmds',
-    'popup_core', 'popups', 'subagent_chat', 'terminal_view', 'api',
+    'popup_core', 'popups', 'subagent_chat', 'terminal_view', 'file_view', 'api',
   }
   for _, name in ipairs(submodules) do
     local key = 'dsh_tui.' .. name
@@ -77,6 +77,7 @@ local PC = require('dsh_tui.popup_core')
 local PP = require('dsh_tui.popups')
 local SAC = require('dsh_tui.subagent_chat')
 local TV = require('dsh_tui.terminal_view')
+local FV = require('dsh_tui.file_view')
 local SE = require('dsh_tui.session')
 local L = require('dsh_tui.layout')
 local K = require('dsh_tui.keymaps')
@@ -245,6 +246,9 @@ M.terminal_native = TV.native
 M.terminal_input = TV.input
 M.terminal_signal = TV.signal
 M.terminal_kill = TV.kill
+
+-- dsh_tui.file_view: netrw tree
+M.file_tree = FV.tree
 M.subagent_chat_ids = SAC.ids
 M.subagent_chat_jump = SAC.jump
 M.subagent_chat_goto_thinking = SAC.goto_thinking

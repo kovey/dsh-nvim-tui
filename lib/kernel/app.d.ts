@@ -21,7 +21,7 @@ import type { FeedRenderer } from '../feed/feed.js';
 import type { FileChange } from './change-ledger.js';
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js';
 import type { RunnerConfig } from './types.js';
-import type { AccountService, AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, CommandsService, DeliverablesState, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, ScheduleService, SessionEvent, SessionStore, TerminalService, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionFeedbackService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspaceChangesService, WorkspacesService } from './types.js';
+import type { AccountService, AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService, CommandsService, DeliverablesState, DifficultyState, DynamicCordisService, FileAttachmentRef, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService, MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService, PlanModeService, RuntimeCtx, SaveImageAttachment, ScheduleService, SessionEvent, SessionStore, TerminalService, LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionFeedbackService, SessionTitleService, SettingsService, SkillsService, SubagentInfo, SubagentsService, ToolsService, Usage, WorkspaceChangesService, WorkspacesService } from './types.js';
 /** Version + build stamp shown in the boot banner (proof of which code runs). */
 /** The active session's working directory (falls back to the process cwd
  *  when no session is attached) — local-file commands must resolve against
@@ -83,6 +83,7 @@ export interface ServiceMap {
     account: AccountService;
     schedule: ScheduleService;
     terminals: TerminalService;
+    dynamicCordisRunner: DynamicCordisService;
 }
 /**
  * Positional-argument grammar of a slash command, for completion + hints.
@@ -479,6 +480,8 @@ export interface AppSlices {
         readonly pendingImages: Array<SaveImageAttachment | Extract<MessageContent, {
             type: 'image';
         }>>;
+        /** Durable file uploads queued for the next submit. */
+        readonly pendingFiles: FileAttachmentRef[];
         readonly pendingRename: {
             kind: 'workspace';
             id: string;

@@ -4,19 +4,23 @@ import { FeedRenderer } from '../../feed/feed.js'
 import type { ChatMessage } from '../../kernel/types.js'
 import type { App } from '../../kernel/app.js'
 
-export const trajectoryCommand = (app: App) => {
+export const trajectoryCommand = (app: App, a?: string) => {
   const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) {
     app.notice(t('无活跃会话'))
     return
   }
   const events = app.slices.trans.sessionEvents(rec.handle.agent.session)
-  const turnStart = [...events].reverse().find((e) => e.type === 'turn/start')
+  const wanted = (a ?? '').trim()
+  const parsed = wanted === '' ? undefined : Number(wanted.replace(/^#/, ''))
+  const turnStart = parsed !== undefined && Number.isInteger(parsed)
+    ? [...events].find((e) => e.type === 'turn/start' && e.data?.turn === parsed)
+    : [...events].reverse().find((e) => e.type === 'turn/start')
   if (turnStart === undefined) {
-    app.notice(t('本会话还没有回合'))
+    app.notice(wanted !== '' ? tf('找不到回合 {0}', [wanted]) : t('本会话还没有回合'))
     return
   }
-  const turn = turnStart.data?.turn
+  const turn = (turnStart.data as { turn?: number } | undefined)?.turn
   const lines = [tf('回合 #{0} 步骤轨迹', [turn ?? '?']), '']
   let toolCount = 0
   for (const e of events) {
@@ -43,5 +47,12 @@ export const trajectoryCommand = (app: App) => {
 /** /export — write the rendered transcript to a markdown file. */
 
 export function installTrajectoryCommand(app: App): void {
-  app.registerCommands([{ name: '/trajectory', desc: t('回合步骤轨迹'), usage: t(''), group: t('信息'), fn: () => trajectoryCommand(app) }])
+  app.registerCommands([{
+    name: '/trajectory',
+    desc: t('回合步骤轨迹'),
+    usage: t('[回合号]'),
+    group: t('信息'),
+    args: [{ kind: 'free', label: '[回合号]', hint: t('不填则显示最近一回合') }],
+    fn: (a?: string) => trajectoryCommand(app, a),
+  }])
 }

@@ -28,7 +28,7 @@ import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types
 import type { RunnerConfig } from './types.js'
 import type {
   AccountService, AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService,
-  CommandsService, DeliverablesState, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService,
+  CommandsService, DeliverablesState, DifficultyState, DynamicCordisService, FileAttachmentRef, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService,
   MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService,
   PlanModeService, RuntimeCtx, SaveImageAttachment, ScheduleService, SessionEvent, SessionStore, TerminalService,
   LoaderService, PluginInventoryService, SessionPersistenceService, SessionProjectionsService, SessionQueryService, SessionReferenceService, SessionFeedbackService,
@@ -104,6 +104,7 @@ export interface ServiceMap {
   account: AccountService
   schedule: ScheduleService
   terminals: TerminalService
+  dynamicCordisRunner: DynamicCordisService
 }
 
 /**
@@ -384,6 +385,8 @@ export interface AppSlices {
   officialCatalogPending: boolean
     readonly pendingInput: string[]
     readonly pendingImages: Array<SaveImageAttachment | Extract<MessageContent, { type: 'image' }>>
+    /** Durable file uploads queued for the next submit. */
+    readonly pendingFiles: FileAttachmentRef[]
     readonly pendingRename: { kind: 'workspace'; id: string } | { kind: 'session'; id: string; background?: boolean } | null
     readonly pendingQueueEdit: { list: 'nextTurn' | 'nextStep'; messageId: string } | null
     readonly approvalSettle: ((outcome: string) => void) | null

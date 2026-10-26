@@ -28,10 +28,10 @@ import { NeovimClient } from 'neovim'
 import { whaleFrames, whaleRowsIndented } from './whale.js'
 
 import { transformTables, renderTable, isTableRow, isSeparator } from './table.js'
-import { imageLabel } from './images.js'
+import { fileLabel, imageLabel } from './images.js'
 import { formatElapsed, formatTokens } from './stats.js'
 import { t, tf } from '../kernel/i18n.js'
-import type { ChatMessage, ImageAttachmentRef, MessageContent, MessageSourceLike, SessionEvent } from '../kernel/types.js'
+import type { ChatMessage, FileAttachmentRef, ImageAttachmentRef, MessageContent, MessageSourceLike, SessionEvent } from '../kernel/types.js'
 
 const INLINE_RE = /(\*\*[^*]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\n]+\))/g
 /** Exact ✎ diff header: ✎ (新增|修改|删除) <path> (+N −M) — the ONLY line
@@ -622,6 +622,15 @@ export class FeedRenderer {
       .map((b) => imageLabel(b.attachment))
   }
 
+  /** Display labels for a message's durable file-upload blocks. */
+  static messageFiles(message: ChatMessage | undefined): string[] {
+    const content = message?.content
+    if (!Array.isArray(content)) return []
+    return content
+      .filter((b): b is Extract<MessageContent, { type: 'file' }> => b?.type === 'file' && (b as { attachment?: FileAttachmentRef }).attachment !== undefined)
+      .map((b) => fileLabel(b.attachment))
+  }
+
   /** Extract reasoning (thinking) text from a message's content blocks. */
   static messageReasoning(message: ChatMessage | undefined): string {
     const content = message?.content
@@ -760,8 +769,8 @@ export class FeedRenderer {
           break
         }
         const text = FeedRenderer.messageText(msg)
-        const images = FeedRenderer.messageImages(msg)
-        if (text || images.length > 0) this.pushUser(text, images)
+        const labels = [...FeedRenderer.messageImages(msg), ...FeedRenderer.messageFiles(msg)]
+        if (text || labels.length > 0) this.pushUser(text, labels)
         break
       }
       case 'assistant/message': {

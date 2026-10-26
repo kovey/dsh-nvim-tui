@@ -25,6 +25,11 @@ export declare function splitImageDataUrls(text: string): {
     text: string;
     images: string[];
 };
+/** Human label for a durable file upload. */
+export declare const fileLabel: (ref: {
+    name?: string;
+    bytes?: number;
+} | undefined) => string;
 /** Human label for a chat line / notice: `📎 图片 (image/png · 640×480 · 123.4KB)`. */
 export declare function imageLabel(ref: ImageAttachmentRef | undefined): string;
 /**

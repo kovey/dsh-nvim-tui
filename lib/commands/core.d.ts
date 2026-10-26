@@ -1,4 +1,4 @@
-import type { MessageContent, SaveImageAttachment } from '../kernel/types.js';
+import type { FileAttachmentRef, MessageContent, SaveImageAttachment } from '../kernel/types.js';
 import type { App, ModelRef, SessionRec } from '../kernel/app.js';
 /**
  * Send a user message with optional image attachments.
@@ -13,7 +13,7 @@ import type { App, ModelRef, SessionRec } from '../kernel/app.js';
  */
 export declare const followup: (app: App, rec: SessionRec, text: string, images?: Array<SaveImageAttachment | Extract<MessageContent, {
     type: 'image';
-}> | string>) => Promise<void>;
+}> | string>, files?: FileAttachmentRef[]) => Promise<void>;
 /**
  * Queue one human prompt to a continuable child through the official
  * symbol-keyed host prompt queue (Symbol.for('dsh.subagent.queuePrompt')).

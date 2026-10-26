@@ -67,10 +67,11 @@ dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"
   PTC/code 模式的子工具调用逐条渲染，图片 offload 有提示；待办逐项更新由守卫强制
   （[说明](./docs/CONFIG.md#待办清单守卫)）。
 - **文件改动**：write / edit 等工具调用自动渲染 `✎ 路径 (+N −M)` 统一 diff；
-  `/changes` 汇总本会话改动，`/diff` 左右对照审阅。
+  `/changes` 汇总本会话改动，`/diff` 左右对照审阅；`/files` 打开 netrw 文件树，
+  `/preview` 只读预览，`/upload` 把本地文件作为 durable 附件发送。
 - **会话管理**：`/sessions` 工作区分组浏览器、`/fork` 分叉、`/btw` 侧问、
-  `/queue` 消息队列、`/search` 跨会话搜索、`/cwd` 切换工作目录；启动自动续上次
-  活跃会话（类似 `claude --continue`）。
+  `/queue` 消息队列、`/search` 跨会话搜索、`/cwd` 切换工作目录；`/outline`
+  回合大纲；启动自动续上次活跃会话（类似 `claude --continue`）。
 - **子代理与工作流**：`/subagents` 目录 + 对话窗（边跑边看，可续聊 continuable
   子代理）；`/workflow` 查看阶段树。
 - **多模态识图**：原生 image 直发；当前模型不支持图像时自动临时切到官方识图模型，
@@ -80,8 +81,8 @@ dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"
 - **模型与状态栏**：模型 · effort · 缓存命中 · 上下文占用 · TTFT / tok/s · 成本 ·
   权限模式 · 排队 / jobs / 待办；`/difficulty` 按任务难度自动选模型。
 - **扩展与生态**：`/market` 插件市场（安装 / 更新 / 热启停）、`/plugin` 直装；
-  [EXT-API](./docs/EXT-API.md) 允许其他 dsh 插件和 nvim 插件在 TUI 内渲染 UI、
-  订阅会话事件。
+  `/cordis` 检查动态 Cordis 插件；[EXT-API](./docs/EXT-API.md) 允许其他 dsh 插件
+  和 nvim 插件在 TUI 内渲染 UI、订阅会话事件。
 - **可定制**：`/theme` 预设或自定义高亮组、`/density`、`/layout`、`/whale`、
   `/glance`；`/locale zh|en` 切换界面语言。
 
@@ -113,13 +114,13 @@ dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"
 
 | 分组 | 命令 |
 |---|---|
-| 会话 | `/sessions` `/new` `/fork` `/btw` `/queue` `/compact` `/cwd` `/search` `/schedule` `/terminal` |
+| 会话 | `/sessions` `/new` `/fork` `/btw` `/queue` `/compact` `/cwd` `/search` `/schedule` `/terminal` `/upload` |
 | 模型 | `/model` `/models` `/effort` `/difficulty` |
 | 视图 | `/panel` `/theme` `/density` `/layout` `/whale` `/locale` |
 | 运维 | `/settings` `/deps` `/doctor` `/plugins` `/market` `/plugin` `/mcp` |
-| 信息 | `/help` `/status` `/context` `/cost` `/changes` `/diff` `/export` |
+| 信息 | `/help` `/status` `/context` `/cost` `/changes` `/diff` `/export` `/outline` `/files` `/preview` |
 
-完整命令表（72 个内置命令，按分组）见 [docs/COMMANDS.md](./docs/COMMANDS.md)。
+完整命令表（77 个内置命令，按分组）见 [docs/COMMANDS.md](./docs/COMMANDS.md)。
 宿主与其他插件注册的命令也会进入补全目录，可用 `/commands` 查看。
 
 ## 配置

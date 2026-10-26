@@ -41,6 +41,7 @@ import { deliverablePaths, emptyDeliverables, mergePresentedFiles, resolveDelive
 import { parseFeedbackArgs } from '../lib/commands/commands/feedback.js'
 import { parseSettingValue } from '../lib/commands/commands/settings.js'
 import { appArgv, parseTuiArgs } from '../lib/kernel/cli.js'
+import { turnOutlineRows } from '../lib/transcript/commands/outline.js'
 import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
 import { installDiffCommand } from '../lib/commands/commands/diff.js'
@@ -2677,6 +2678,23 @@ description:
     assert.deepEqual(parseSettingValue('{"provider":"x"}'), { provider: 'x' })
     assert.equal(parseSettingValue('deepseek-flash'), 'deepseek-flash')
     assert.equal(parseSettingValue('not json {'), 'not json {')
+  }
+
+  // Turn outline: one row per turn, first human prompt, step/tool counts and
+  // the end reason. Pure fold, so the navigation index is asserted directly.
+  {
+    const rows = turnOutlineRows([
+      { type: 'turn/start', seq: 1, time: 1, data: { turn: 1 } } as never,
+      { type: 'user/message', seq: 2, time: 2, data: { content: [{ type: 'text', text: '修一下 bug' }] } } as never,
+      { type: 'step/start', seq: 3, time: 3, data: { turn: 1, step: 1 } } as never,
+      { type: 'tool/call', seq: 4, time: 4, data: { turn: 1, step: 1, name: 'bash', callId: 'c1', arguments: '{}' } } as never,
+      { type: 'turn/end', seq: 5, time: 5, data: { turn: 1, reason: 'completed' } } as never,
+    ])
+    assert.equal(rows.length, 1, 'one outline row per turn')
+    assert.equal(rows[0]?.user, '修一下 bug')
+    assert.equal(rows[0]?.steps, 1)
+    assert.equal(rows[0]?.tools, 1)
+    assert.equal(rows[0]?.reason, 'completed')
   }
 
   // /export log shape: one canonical header line then one event per line. The
