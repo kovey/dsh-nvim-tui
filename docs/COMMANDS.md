@@ -4,7 +4,7 @@
 `Enter` 补全或执行）。命令目录由 runner 启动时推给 nvim，与 `/help`、命令分发
 表共用同一份注册表，不会漂移。
 
-本页是 **69 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
+本页是 **70 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
 他插件经 `ctx.commands` 注册的命令也会进补全目录，用 `/commands` 查看；依赖的
 宿主服务未装配时，命令会给出明确提示，而不是静默失败。
 
@@ -18,7 +18,8 @@
 | `/help` | 弹出全部命令（`Enter` 填入输入框） |
 | `/sessions [all\|only]` | 工作区分组 + 未分组 + 归档筛选的会话浏览器：打开 / 重命名 / 归档 / 移入工作区，`all` 含归档、`only` 只看归档 |
 | `/panel` | 展开 / 收起活动面板（同 `<C-o>`） |
-| `/settings [edit \| set <ns> <key.path> <value>]` | 设置总览；`edit` 在新标签页打开 `settings.yaml`；`set` 类型化写入（值按 JSON/布尔/数字解析，密钥回显打码） |
+| `/settings [form [ns] \| edit \| key \| set <ns> <key.path> <value>]` | 设置总览；`form` 选命名空间后逐字段交互修改；`edit` 打开 `settings.yaml`；`key` 打开凭证文件；`set` 类型化写入 |
+| `/account [login\|logout\|usage\|topup]` | DeepSeek 账号：状态 / 余额 / 浏览器登录 / 退出 / 用量或充值页 |
 | `/deps [install]` | 依赖体检（缺什么 / 一键装配）；`/search` 的索引服务也由它装配 |
 | `/locale [zh\|en]` | 界面语言（runner 侧文案；nvim 侧按键提示仍为中文） |
 

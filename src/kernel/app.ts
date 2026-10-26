@@ -27,7 +27,7 @@ import type { FileChange } from './change-ledger.js'
 import type { ExtEventName, ExtSessionEventFilter, TuiExtApi } from './ext-types.js'
 import type { RunnerConfig } from './types.js'
 import type {
-  AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService,
+  AccountService, AgentHandle, AgentPresetsService, ApprovalRequest, AttachmentsService, CompactionService,
   CommandsService, DeliverablesState, DifficultyState, FileReferencesService, GoalsService, GoalState, HarnessSession, JobsService, LlmService,
   MessageContent, MessageFeedbackService, ModelSelection, PermissionPresetsService,
   PlanModeService, RuntimeCtx, SaveImageAttachment, SessionEvent, SessionStore,
@@ -101,6 +101,7 @@ export interface ServiceMap {
   /** Host per-turn workspace change summaries (web/desktop composition). */
   workspaceChanges: WorkspaceChangesService
   sessionFeedback: SessionFeedbackService
+  account: AccountService
 }
 
 /**

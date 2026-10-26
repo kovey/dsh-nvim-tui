@@ -228,6 +228,47 @@ export interface SessionFeedbackService {
   record(request: SessionFeedbackRecordRequest): Promise<SessionFeedbackRecordResult>
 }
 
+/** Account UI metadata (dsh-deepseek-account). Kept structural: the TUI only
+ *  reads safe views and never touches credentials. */
+export interface AccountClientMetadata {
+  version: string
+  locale: string
+  timezoneOffsetSeconds: number
+}
+
+export interface AccountViewLike {
+  status?: string
+  links?: { usageUrl?: string; topUpUrl?: string }
+  attempt?: {
+    id?: string
+    phase?: string
+    authorizeUrl?: string
+    expiresAt?: number
+    errorCode?: string
+  } | null
+}
+
+export interface AccountProfileLike {
+  status?: string
+  value?: { name?: string | null; contact?: string | null; id?: string | null }
+}
+
+export interface AccountBalanceLike {
+  status?: string
+  value?: Array<{ currency?: string; balance?: string }>
+  bonusWallets?: Array<{ currency?: string; balance?: string }>
+}
+
+/** Host account service (base mounts dsh-deepseek-account-platform). */
+export interface AccountService {
+  getState?: () => Promise<AccountViewLike>
+  getProfile?: (client: AccountClientMetadata) => Promise<AccountProfileLike | null>
+  getBalance?: (client: AccountClientMetadata) => Promise<AccountBalanceLike | null>
+  startSignIn?: (client: AccountClientMetadata, callbackOrigin: string, loginSource: 'web' | 'desktop') => Promise<AccountViewLike>
+  cancelSignIn?: (id: string) => Promise<AccountViewLike>
+  signOut?: (client: AccountClientMetadata) => Promise<AccountViewLike>
+}
+
 /** Host service serving `workspace/changes` summaries and comparisons. */
 export interface WorkspaceChangesService {
   summary(sessionId: string, seq: number): WorkspaceChangesSummary | undefined
@@ -499,7 +540,10 @@ export interface SettingsService {
     ns?: string
     schema?: unknown
     value?: unknown
+    user?: unknown
     revision?: unknown
+    applies?: unknown
+    secrets?: Array<{ path?: unknown[]; set?: boolean }>
     [k: string]: unknown
   }>
   documentPath?: string

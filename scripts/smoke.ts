@@ -39,6 +39,7 @@ import { changeStatus, ledgerRows, ledgerTotals, recordChange, summarize } from 
 import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliverables.js'
 import { deliverablePaths, emptyDeliverables, mergePresentedFiles, resolveDeliverablePath } from '../lib/kernel/deliverables.js'
 import { parseFeedbackArgs } from '../lib/commands/commands/feedback.js'
+import { parseSettingValue } from '../lib/commands/commands/settings.js'
 import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
 import { installDiffCommand } from '../lib/commands/commands/diff.js'
@@ -2638,6 +2639,19 @@ description:
       'declared files come first; heuristic duplicates are dropped')
     assert.equal(resolveDeliverablePath('/repo', 'docs/a.md'), '/repo/docs/a.md', 'relative paths resolve against the session cwd')
     assert.equal(resolveDeliverablePath('/repo', '/tmp/x'), '/tmp/x', 'absolute paths are untouched')
+  }
+
+  // Settings form value typing: booleans/null/numbers/JSON literals are typed;
+  // everything else stays a string (a model id must not become a number).
+  {
+    assert.equal(parseSettingValue('true'), true)
+    assert.equal(parseSettingValue('false'), false)
+    assert.equal(parseSettingValue('null'), null)
+    assert.equal(parseSettingValue('42'), 42)
+    assert.equal(parseSettingValue('-1.5'), -1.5)
+    assert.deepEqual(parseSettingValue('{"provider":"x"}'), { provider: 'x' })
+    assert.equal(parseSettingValue('deepseek-flash'), 'deepseek-flash')
+    assert.equal(parseSettingValue('not json {'), 'not json {')
   }
 
   // /export log shape: one canonical header line then one event per line. The

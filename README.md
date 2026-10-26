@@ -115,7 +115,7 @@ dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"
 | 运维 | `/settings` `/deps` `/doctor` `/plugins` `/market` `/plugin` `/mcp` |
 | 信息 | `/help` `/status` `/context` `/cost` `/changes` `/diff` `/export` |
 
-完整命令表（69 个内置命令，按分组）见 [docs/COMMANDS.md](./docs/COMMANDS.md)。
+完整命令表（70 个内置命令，按分组）见 [docs/COMMANDS.md](./docs/COMMANDS.md)。
 宿主与其他插件注册的命令也会进入补全目录，可用 `/commands` 查看。
 
 ## 配置
