@@ -3,6 +3,111 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.5.0] — 2026-10-26
+
+本版集中补齐 7 个能力面：审批详情/自定义问答、交付物与宿主改动快照、原始日志与
+会话反馈、设置/账号、定时提醒与持久终端、PTC/CLI、文件/大纲/Cordis/MCP。
+命令数 **68 → 77**。宿主锚点**不变**（仍为 dsh 0.2.1-rc.2；`engines.dsh` 仍为
+`>=0.2.0-rc.2 <0.2.2`），无破坏性 API 变更。
+
+### Added · 审批与提问
+
+- 审批浮窗消费 `callId` / `displayReason`，从 feed 的 `tool/call` 取原始参数并
+  pretty-print；审批时能看到**具体命令/路径**，而不只是一行 reason。
+- 提问浮窗新增 `<C-e>` 自定义文本，随 `selected` 一起回传；plan review 的
+  “Keep planning + 反馈”与 `ask_user_question` 的 Other 可用。
+
+### Added · 交付物与改动
+
+- 消费 `deliverables/presented`：`/deliverables` 以 `present` 声明为准，再合并
+  写/改工具的路径启发式；相对路径按会话 cwd 解析，并显示描述。
+- `workspace/changes`：`/changes` 优先展示宿主 per-turn 快照（git + 整文件），
+  可查看宿主 hunk 对比；同时保留 diff 账本中更早的改动。`/deps` 新增
+  `workspace-changes` 可选行。
+
+### Added · 导出与反馈
+
+- `/export log [path]`：按宿主 canonical JSONL 结构导出 header + 全部事件；
+  `/export md` 仍导出渲染转录。
+- `/feedback [分类] <文本>`：调用 `sessionFeedback.record`，支持 7 个宿主分类；
+  无参数弹分类选择器 + 文本输入；新增通用 `vim.ui.input → Node prompt` 桥。
+
+### Added · 设置与账号
+
+- `/settings form [ns]`：选命名空间与顶层字段，按布尔/数字/JSON/字符串类型化
+  写入（带 revision）；敏感字段拒绝回显。
+- `/settings key`：打开 `.credentials.yaml`（不存在则创建 0600 空 refs 文档）。
+- `/account [login|logout|usage|topup]`：账号状态/资料/钱包、浏览器登录与退出。
+  修正了宿主服务名（`deepseekAccount`，不是 `account`）。
+
+### Added · 定时提醒与持久终端
+
+- `/schedule`：新建向导（延时/定时/固定间隔/每天/每周/Cron）、编辑、删除、投递
+  历史、跨会话 catalog；全部走宿主 `ctx.schedule`，提醒绑定原会话。
+- `/terminal`：宿主 `ctx.terminals` 的 PTY 控制台。split 内渲染 scrollback，
+  `<CR>` 行输入、`<C-c>` SIGINT、`K` kill、`q` 关闭视图；`/terminal shell`
+  提供 nvim 原生 `:terminal` 的完整交互 fallback。
+- 两者依赖可选 host 行：`dsh-schedule` / `dsh-terminal` + `dsh-terminal-bash`。
+  首次使用前跑 `/deps install`（`/deps` 已能检查 terminal-bash 后端）。
+
+### Added · PTC、图片与启动参数
+
+- PTC `run_code` 的 `tool/ptc-dispatch-start` / `tool/ptc-dispatch` 渲染为父调用
+  下的嵌套 🔧/✓ 行（含耗时/结果预览）。
+- `image/offload` 显示被省略的图片数量，并说明原始附件仍在会话日志。
+- 启动参数：`--resume <id>`、`--continue`、`--model <provider/model>`、
+  `--permission <name>`、`--help`、`--version`；未知参数报错退出 2。
+  dsh launcher 的 `--patch/--from-default-profile/--dump-*` 可出现在 profile
+  名之后，解析时先剥离，不会误判为 app 参数。
+
+### Added · 文件、大纲与检查
+
+- `/files [目录]`：nvim netrw 文件树（split，注册 layout guard 所有权）。
+- `/preview <路径>`：文本/源码只读浮窗；图片/PDF/Office/二进制显示元数据 +
+  系统打开。
+- `/upload <路径>`：经 `attachments.saveFile` 变成 durable `file` block，随下一条
+  消息发送；`/upload clear` 清空。
+- `/outline`：回合大纲（首条提示/步数/工具数/结束原因），Enter 打开该回合的
+  `/trajectory`；`/trajectory [回合号]` 支持指定回合。
+- `/cordis [inventory|snapshot]`：动态 Cordis 插件只读检查。
+- `/mcp [tools|config|resources]`：工具清单、loader 中的 server 行配置、资源能力
+  说明。
+
+### Fixed
+
+- `/account` 读取正确的宿主服务名 `deepseekAccount`。
+- `activeSessionCwd` 优先读 `workingDirectory` 服务；`/cwd` 后 `/files`、`/preview`、
+  `/upload`、`/deliverables` 的相对路径不再落到旧目录。
+- 终端 split 失败不再替换聊天 buffer；重附着不再泄漏轮询 timer。
+- `/schedule`、`/terminal`、`/changes` 对可选服务方法缺失给出明确提示；
+  `workspaceChanges.summary` 抛错时回退 diff 账本。
+- 会话切换统一取消 `promptLine`，避免 feedback/schedule 向导悬挂；
+  `pendingFiles` 纳入切换清理与提示。
+- CLI launcher flags 回归修复（见上）。
+
+### 验证与限制
+
+- `npm run build`、`npm run check`、`npm run smoke` 全绿；`docs/COMMANDS.md` 与源码
+  注册表均为 77 条；文档链接/围栏检查通过。
+- 真机 e2e 未完成：当前沙箱禁止写 `~/.dsh/profiles/nvim-tui/cordis.yml`（EPERM），
+  属 workspace-write 权限限制；真实终端可跑 `npm run e2e`。
+- `/schedule`、`/terminal` 的真实宿主服务需先 `/deps install` 并重启/HMR；
+  `/account login` 的浏览器 OAuth 流程未真机验证；`/preview` 的图片/PDF 走系统
+  打开；`/mcp config`、`/cordis` 为只读检查；新增文案的 en 字典尚未逐条补齐。
+
+覆盖提交：
+[`ffe4926`](https://github.com/kovey/dsh-nvim-tui/commit/ffe4926) ·
+[`c90141d`](https://github.com/kovey/dsh-nvim-tui/commit/c90141d) ·
+[`87b6da5`](https://github.com/kovey/dsh-nvim-tui/commit/87b6da5) ·
+[`1729812`](https://github.com/kovey/dsh-nvim-tui/commit/1729812) ·
+[`16e0fe5`](https://github.com/kovey/dsh-nvim-tui/commit/16e0fe5) ·
+[`976ba7c`](https://github.com/kovey/dsh-nvim-tui/commit/976ba7c) ·
+[`81a5313`](https://github.com/kovey/dsh-nvim-tui/commit/81a5313) ·
+[`959fef5`](https://github.com/kovey/dsh-nvim-tui/commit/959fef5) ·
+[`ed67915`](https://github.com/kovey/dsh-nvim-tui/commit/ed67915) ·
+[`6c09e9e`](https://github.com/kovey/dsh-nvim-tui/commit/6c09e9e) ·
+[`3541ae6`](https://github.com/kovey/dsh-nvim-tui/commit/3541ae6)
+
 ## [v0.4.14] — 2026-10-19
 
 ### Added · `/cwd` 会话工作目录（查看 / 切换）

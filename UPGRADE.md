@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.4.14（宿主 0.2.1-rc.2） | [v0.4.14 → v0.5.0（功能批次，宿主不变；零破坏）](#v0414--v050功能批次宿主不变零破坏) |
 | nvim-tui v0.4.12（宿主 0.2.0-rc.2） | [v0.4.12 → v0.4.14（**宿主 0.2.0-rc.2 → 0.2.1-rc.2**；新增 /cwd；兼容判定改 engines.dsh）](#v0412--v0414宿主-020-rc2--021-rc2新增-cwd兼容判定改-enginesdsh) |
 | nvim-tui v0.4.11（宿主 0.2.0-rc.2） | [v0.4.11 → v0.4.12（功能与修复，**宿主不变**；零破坏）](#v0411--v0412功能与修复宿主不变零破坏) |
 | nvim-tui v0.4.10（宿主 0.2.0-rc.2） | [v0.4.10 → v0.4.11（功能新增，**宿主不变**；零破坏）](#v0410--v0411功能新增宿主不変零破坏) |
@@ -39,6 +40,66 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.4.14 → v0.5.0（功能批次，宿主不变；零破坏）
+
+> **结论先行**：宿主**不变**（仍为 0.2.1-rc.2；`engines.dsh` 仍为
+> `>=0.2.0-rc.2 <0.2.2`），无需升级 dsh。本版是 7 个能力面的功能批次，
+> 无破坏性 API 变更；有几处**行为变化**需要知道，见下。
+
+```bash
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.5.0"
+dsh --profile <name>
+```
+
+### 新增能力（命令数 68 → 77）
+
+- **审批/提问**：审批浮窗显示 `callId` 对应的工具参数与本地化 `displayReason`；
+  提问支持 `<C-e>` 自定义文本（plan review 的反馈可用）。
+- **交付物/改动**：消费 `deliverables/presented`；`/changes` 优先用宿主
+  `workspace/changes` 快照并支持 hunk 对比（`/deps` 新增 `workspace-changes` 行）。
+- **导出/反馈**：`/export log` 导出 canonical JSONL；`/feedback` 会话级分类反馈。
+- **设置/账号**：`/settings form` 表单化写入、`/settings key` 打开凭证文件、
+  `/account` 状态/余额/浏览器登录（服务名修正为 `deepseekAccount`）。
+- **定时提醒/终端**：`/schedule` 与 `/terminal`（nvim PTY 控制台 +
+  `/terminal shell` 原生 `:terminal`）。
+- **PTC/CLI**：PTC 子调用嵌套渲染、image offload 提示、`--resume/--continue/
+  --model/--permission/--help/--version`。
+- **文件/大纲/检查**：`/files`（netrw）、`/preview`、`/upload`、`/outline`、
+  `/cordis`、`/mcp tools|config|resources`。
+
+### 行为变化（非破坏）
+
+- `/export` 无路径时默认写到**会话 cwd**（此前是进程 cwd）；显式路径不变。
+- `/feedback` 现在是 TUI 原生命令（覆盖同名官方命令）：支持分类/文本；直接
+  `/feedback <文本>` 仍等价于记录一条无分类反馈。
+- `activeSessionCwd` 优先读 `workingDirectory` 服务：`/cwd` 后 `/files`、
+  `/preview`、`/upload`、`/deliverables` 的相对路径会跟随新目录（这是修复，
+  但会让此前依赖旧 header 的脚本看到不同结果）。
+- `/settings` 新增 `form` / `key` 子命令；原 `edit` / `set` 保持。
+- CLI 现在会解析 app 参数；dsh launcher 的 `--patch` 等 flag 会先被剥离。
+
+### 可选宿主行（首次使用前）
+
+`/schedule`、`/terminal`、`/changes` 宿主快照等依赖可选行，先执行：
+
+```bash
+/deps install
+```
+
+- `/schedule`：`dsh-schedule`
+- `/terminal`：`dsh-terminal` + `dsh-terminal-bash`
+- `/changes` 宿主快照：`dsh-workspace-changes`
+- `/files` 使用 nvim 自带 netrw（用户配置禁用时提示改用 `/dir`）
+
+### 验证与限制
+
+- `npm run build` / `check` / `smoke` 全绿；77 个命令与 `docs/COMMANDS.md` 一致。
+- 真机 e2e **未完成**：当前沙箱禁止写 `~/.dsh/profiles/<profile>/cordis.yml`
+  （EPERM），属 workspace-write 限制；真实终端可跑 `npm run e2e`。
+- `/schedule`、`/terminal` 的真实宿主服务需先 `/deps install` 并重启/HMR；
+  `/account login` 浏览器 OAuth 未真机验证；`/preview` 图片/PDF 走系统打开；
+  `/cordis`、`/mcp config` 为只读检查；新增文案的 en 字典尚未逐条补齐。
 
 ## v0.4.12 → v0.4.14（宿主 0.2.0-rc.2 → 0.2.1-rc.2；新增 /cwd；兼容判定改 engines.dsh）
 
