@@ -3,6 +3,42 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.5.1] — 2026-10-28
+
+宿主兼容补丁：依赖锚点从 dsh **0.2.1-rc.2** 前移到 **0.2.1-rc.4**，TUI 运行时代码
+零改动。rc.3/rc.4 的官方变更集中在 Web 侧栏、ACP stdout 与账号模型列表，本插件
+可达的类型面没有变化。
+
+### Changed · 宿主锚点前移
+
+- `peerDependencies` / `devDependencies` 的 15 个 `@deepseek-ai/dsh-*` 包全部
+  前移到 `0.2.1-rc.4`；`@deepseek-ai/cordis` 从 `~4.0.4` 升到 `~4.0.5`。
+- 移除 `@deepseek-ai/dsh-invariants`：该包没有 rc.4 发布，且 rc.4 的
+  `dsh-agent` / `dsh-tools` 已不再把它列为 peer（rc.2 时代遗留的 devDependency）。
+- 重新生成 `package-lock.json`，无 `0.2.1-rc.2` 残留。
+- `engines.dsh` **保持** `>=0.2.0-rc.2 <0.2.2`：不因补丁版升级而收窄已验证范围；
+  0.2.2 / 0.3.0 仍未验证，故意不声明兼容。
+- README 兼容矩阵补充 0.2.1-rc.3 / 0.2.1-rc.4 实测。
+
+### 兼容性验证
+
+| 检查项 | 结果 |
+|---|---|
+| rc4 `dsh-app-boot` 的 `evaluatePluginCompatibility()` | rc.2 / rc.3 / rc.4 均返回 `undefined`（兼容） |
+| 本插件消费的 8 个核心包 + 11 个可选 host 包 `lib/` diff | rc.2 → rc.4 **无差异**（仅 package.json 版本号变化） |
+| `tsc` 对着 rc.4 真实 `.d.ts`（build / check） | **通过** |
+| `npm run smoke`（终端视图 / PTC / CLI / 审批等全量回归） | **通过** |
+| 隔离 DSH_HOME + 本地 dsh 0.2.1-rc.4 启动 | 插件行正常激活，TUI 渲染 prompt 并写入 session |
+| 完整真机 e2e | 未完成：隔离 home 没有 API key，host 报 `MISSING_CREDENTIAL`；**不是插件兼容失败** |
+
+### 未验证
+
+- 真实模型回合的完整 e2e（需要把 API key 放进隔离 home 或真实终端环境）。
+- 0.2.2 / 0.3.0：仍未验证，`engines.dsh` 上界保持 `<0.2.2`。
+
+覆盖提交：
+[`91274f3`](https://github.com/kovey/dsh-nvim-tui/commit/91274f3)
+
 ## [v0.5.0] — 2026-10-26
 
 本版集中补齐 7 个能力面：审批详情/自定义问答、交付物与宿主改动快照、原始日志与

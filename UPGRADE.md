@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.5.0（宿主 0.2.1-rc.2） | [v0.5.0 → v0.5.1（宿主前移 rc.2 → rc.4；零代码改动）](#v050--v051宿主前移-rc2--rc4零代码改动) |
 | nvim-tui v0.4.14（宿主 0.2.1-rc.2） | [v0.4.14 → v0.5.0（功能批次，宿主不变；零破坏）](#v0414--v050功能批次宿主不变零破坏) |
 | nvim-tui v0.4.12（宿主 0.2.0-rc.2） | [v0.4.12 → v0.4.14（**宿主 0.2.0-rc.2 → 0.2.1-rc.2**；新增 /cwd；兼容判定改 engines.dsh）](#v0412--v0414宿主-020-rc2--021-rc2新增-cwd兼容判定改-enginesdsh) |
 | nvim-tui v0.4.11（宿主 0.2.0-rc.2） | [v0.4.11 → v0.4.12（功能与修复，**宿主不变**；零破坏）](#v0411--v0412功能与修复宿主不变零破坏) |
@@ -40,6 +41,50 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.5.0 → v0.5.1（宿主前移 0.2.1-rc.2 → 0.2.1-rc.4；零代码改动）
+
+> **结论先行**：本版只把依赖/类型锚点前移到 **dsh 0.2.1-rc.4**，TUI 运行时代码
+> 没有改动。`engines.dsh` 仍是 `>=0.2.0-rc.2 <0.2.2`，因此 rc.2 / rc.3 / rc.4
+> 都仍在兼容范围内（rc4 的 `evaluatePluginCompatibility()` 实测三者均通过）。
+
+```bash
+npm i -g @deepseek-ai/dsh@0.2.1-rc.4
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.5.1"
+dsh --profile <name>
+```
+
+### 这次改了什么
+
+- 15 个 `@deepseek-ai/dsh-*` peer/dev 依赖：`0.2.1-rc.2` → `0.2.1-rc.4`。
+- `@deepseek-ai/cordis`：`~4.0.4` → `~4.0.5`（rc4 的 peer 要求）。
+- 移除 `@deepseek-ai/dsh-invariants`：rc.4 未发布该包，rc4 的 `dsh-agent` /
+  `dsh-tools` 也不再把它列为 peer；它只是 rc.2 时代遗留的 devDependency。
+- 重新生成 lock，无 rc.2 残留；README 兼容矩阵补充 rc.3 / rc.4。
+- **没有命令、UI、事件或配置行为变化**；v0.5.0 的功能/限制说明继续适用。
+
+### 为什么是零破坏
+
+rc.3 的官方变更是 Web 侧栏“更多”菜单与未发送草稿修复；rc.4 只修复 ACP 模式
+诊断输出混入 stdout。二者都不在 TUI 的调用路径上。实际 diff 验证：本插件消费的
+8 个核心包 + 11 个可选 host 包的 `lib/`（含 `.d.ts`）在 rc.2 与 rc.4 之间**没有
+差异**，只有 `package.json` 版本号变化；`tsc` 对着 rc.4 真实类型通过。
+
+### 可选宿主行
+
+与 v0.5.0 相同：`/schedule`、`/terminal`、`/changes` 宿主快照等仍需
+`/deps install`；rc.4 的 `dsh-schedule` / `dsh-terminal` / `dsh-terminal-bash`
+等包仍存在。
+
+### 验证与限制
+
+- `npm run build` / `check` / `smoke` 在 rc.4 类型面上全绿。
+- 用隔离 DSH_HOME + 本地 dsh 0.2.1-rc.4 实际启动：插件行激活，TUI 渲染 prompt
+  并创建 session。
+- **完整真机 e2e 未完成**：隔离 home 没有 API key，host 报
+  `MISSING_CREDENTIAL`；这不是插件兼容失败。真实终端带凭据可复跑
+  `npm run e2e`。
+- 0.2.2 / 0.3.0 仍未验证，故 `engines.dsh` 上界保持 `<0.2.2`。
 
 ## v0.4.14 → v0.5.0（功能批次，宿主不变；零破坏）
 

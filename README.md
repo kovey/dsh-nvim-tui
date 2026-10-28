@@ -46,7 +46,7 @@ dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"
 
 | 依赖 | 要求 | 说明 |
 |---|---|---|
-| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | `>=0.2.0-rc.2 <0.2.2` | 已实测 0.2.0-rc.2 / 0.2.1-rc.1 / 0.2.1-rc.2；0.2.2 与 0.3.0 未验证，故意不声明兼容 |
+| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | `>=0.2.0-rc.2 <0.2.2` | 已实测 0.2.0-rc.2 / 0.2.1-rc.1 / 0.2.1-rc.2；0.2.1-rc.3 / rc.4 已验证类型面与兼容判定（rc.4 另做启动验证）；0.2.2 与 0.3.0 未验证，故意不声明兼容 |
 | [Neovim](https://neovim.io) | 0.9+（推荐 0.10+） | 0.10+ 完整体验（输入框四边框、弹窗提示嵌入边框）；0.9 可运行但降级 |
 | Node.js | 23.6+ | 跟随 dsh 的 `engines` 要求，通常无需单独安装 |
 
