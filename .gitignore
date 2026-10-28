@@ -22,3 +22,6 @@ node_modules/
 
 # OS junk
 .DS_Store
+
+# local Swift/OCR module cache (never project source)
+.tmp-swift/
