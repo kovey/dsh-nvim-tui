@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.5.1（宿主 0.2.1-rc.4） | [v0.5.1 → v0.5.2（schedule 修复；宿主不变）](#v051--v052schedule-修复宿主不变) |
 | nvim-tui v0.5.0（宿主 0.2.1-rc.2） | [v0.5.0 → v0.5.1（宿主前移 rc.2 → rc.4；零代码改动）](#v050--v051宿主前移-rc2--rc4零代码改动) |
 | nvim-tui v0.4.14（宿主 0.2.1-rc.2） | [v0.4.14 → v0.5.0（功能批次，宿主不变；零破坏）](#v0414--v050功能批次宿主不变零破坏) |
 | nvim-tui v0.4.12（宿主 0.2.0-rc.2） | [v0.4.12 → v0.4.14（**宿主 0.2.0-rc.2 → 0.2.1-rc.2**；新增 /cwd；兼容判定改 engines.dsh）](#v0412--v0414宿主-020-rc2--021-rc2新增-cwd兼容判定改-enginesdsh) |
@@ -41,6 +42,44 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.5.1 → v0.5.2（schedule 修复；宿主不变）
+
+> **结论先行**：宿主不变（仍为 0.2.1-rc.4），只修 TUI 组合里
+> `dsh-schedule` 永久 pending 的问题。已装过 `/deps install` 的 profile
+> 不需要重装 schedule 行。
+
+```bash
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.5.2"
+dsh --profile <name>
+```
+
+### 根因
+
+`dsh-schedule` 的 `static inject` 包含 `sessionController`，投递时调用
+`resolveAgent(sessionId)`。这个服务由 Web/API 组合提供
+（`dsh-api-session-controller` + API gateway + client connection +
+file-upload），TUI profile 没有它，所以 loader 一直显示：
+
+```
+schedule (@deepseek-ai/dsh-schedule): pending (waiting for service: sessionController)
+```
+
+### 修复
+
+TUI 启动时提供一个窄适配器，只实现 `resolveAgent`：
+
+- live 会话 → 直接返回 Agent；
+- 非 live 会话 → 走 `ensureLiveSession()` 后台恢复（不切换当前聊天）；
+- 恢复失败 → 返回 `{ error }` 让 schedule 重试。
+
+不挂 `dsh-api-session-controller`，避免把整套 Web 栈装进 TUI。
+
+### 验证
+
+隔离 profile（rc4 + schedule 行）启动后，探针确认 `app.svc('schedule')` 已
+激活；`npm run smoke` 覆盖 live session 解析。schedule 的**真实投递**仍建议
+在带凭据的真实终端创建一条 1 分钟后的提醒验证一次。
 
 ## v0.5.0 → v0.5.1（宿主前移 0.2.1-rc.2 → 0.2.1-rc.4；零代码改动）
 

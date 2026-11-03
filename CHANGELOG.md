@@ -3,6 +3,42 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.5.2] — 2026-11-03
+
+### Fixed · `schedule` 永久 `pending (waiting for service: sessionController)`
+
+**根因**：`@deepseek-ai/dsh-schedule` 的注入列表写死了 `sessionController`，
+并在投递时只使用 `resolveAgent(sessionId)`。这个服务原本属于 Web/API 组合
+（`dsh-api-session-controller` + API gateway + client connection +
+file-upload）。TUI profile 没有这些行，所以 schedule 行永远处于 pending；
+此前 `/deps` 只装了 `dsh-schedule`，没有补上它依赖的 controller。
+
+**修复**：TUI 启动时提供一个**窄适配器**（`src/sessions/session-controller.ts`）：
+
+- 已 live 的会话 → 直接返回其 Agent；
+- 非 live 会话 → 走 TUI 既有的后台恢复路径 `ensureLiveSession()`（会安装
+  model selection / todo guard，但**不切换当前聊天视图**）；
+- 恢复失败 → 返回 `{ error }`，交给 schedule 的重试逻辑。
+
+没有挂 `dsh-api-session-controller`：那会把 API gateway、client connection、
+file-upload 整套 Web 栈拖进 TUI。适配器只实现调度器真正用到的
+`resolveAgent`，是 TUI 组合专用。
+
+**验证**：隔离 profile（rc4 + `dsh-schedule` 行）启动后，探针确认
+`app.svc('schedule')` 已激活；smoke 覆盖 live session 的 `resolveAgent`。
+
+### 升级
+
+```bash
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.5.2"
+dsh --profile <name>
+```
+
+已装过 `/deps install` 的 profile 无需重装 schedule 行，重启即可生效。
+
+覆盖提交：
+[`faf6d8a`](https://github.com/kovey/dsh-nvim-tui/commit/faf6d8a)
+
 ## [v0.5.1] — 2026-10-28
 
 宿主兼容补丁：依赖锚点从 dsh **0.2.1-rc.2** 前移到 **0.2.1-rc.4**，TUI 运行时代码
