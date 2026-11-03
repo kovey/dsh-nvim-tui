@@ -42,6 +42,7 @@ import { parseFeedbackArgs } from '../lib/commands/commands/feedback.js'
 import { parseSettingValue } from '../lib/commands/commands/settings.js'
 import { appArgv, parseTuiArgs } from '../lib/kernel/cli.js'
 import { turnOutlineRows } from '../lib/transcript/commands/outline.js'
+import { installSessionController } from '../lib/sessions/session-controller.js'
 import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
 import { installDiffCommand } from '../lib/commands/commands/diff.js'
@@ -2681,6 +2682,24 @@ description:
     assert.deepEqual(parseSettingValue('{"provider":"x"}'), { provider: 'x' })
     assert.equal(parseSettingValue('deepseek-flash'), 'deepseek-flash')
     assert.equal(parseSettingValue('not json {'), 'not json {')
+  }
+
+  // Schedule bridge: dsh-schedule injects `sessionController` even though the
+  // TUI profile has no web controller. The adapter must expose exactly
+  // resolveAgent and resolve a live session without touching the UI.
+  {
+    const agent = { followup: () => {}, session: { id: 'session-live' } }
+    const live = new Map([['session-live', { handle: { agent } }]])
+    const fakeApp = { slices: { sessions: { live } } }
+    let provided: { name: string; value: { resolveAgent: (id: string) => Promise<unknown> } } | undefined
+    const fakeCtx = {
+      get: () => undefined,
+      provide: (name: string, value: { resolveAgent: (id: string) => Promise<unknown> }) => { provided = { name, value } },
+    }
+    installSessionController(fakeApp as never, fakeCtx as never)
+    assert.equal(provided?.name, 'sessionController')
+    const resolved = await provided?.value.resolveAgent('session-live') as { agent?: unknown }
+    assert.equal(resolved.agent, agent, 'live session resolves to its agent')
   }
 
   // Turn outline: one row per turn, first human prompt, step/tool counts and

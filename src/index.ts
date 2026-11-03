@@ -42,6 +42,7 @@ import { createApp } from './kernel/app.js'
 import { installExtApi } from './ext-api/index.js'
 import { installStatusline } from './statusline/index.js'
 import { installSessions } from './sessions/index.js'
+import { installSessionController } from './sessions/session-controller.js'
 import { installSubagents } from './subagents/index.js'
 import { installTranscript } from './transcript/index.js'
 import { installCommands } from './commands/index.js'
@@ -127,6 +128,7 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     installExtApi(app)
     installStatusline(app)
     installSessions(app)
+    installSessionController(app, ctx)
     installSubagents(app)
     installTranscript(app)
     installCommands(app)
