@@ -116,17 +116,18 @@ end
 
 function I.quote_selection()
   if S.input_buf == nil or not vim.api.nvim_buf_is_valid(S.input_buf) then return 0 end
-  local sb = vim.fn.getpos("'<")
-  local eb = vim.fn.getpos("'>")
-  local buf = sb[1]
-  if buf == 0 then buf = active_chat_buf() end
-  -- Marks made while typing live in the input buffer; the quote comes from chat.
-  if buf == nil or buf == S.input_buf or not vim.api.nvim_buf_is_valid(buf) then
-    buf = active_chat_buf()
-    sb = { 0, 0, 0, 0 }
-    eb = { 0, 0, 0, 0 }
-  end
-  if buf == nil or not vim.api.nvim_buf_is_valid(buf) then return 0 end
+  local chat = active_chat_buf()
+  if chat == nil or not vim.api.nvim_buf_is_valid(chat) then return 0 end
+  -- `'<`/`'>` are buffer-local: read them with the CHAT buffer current, not
+  -- with the input buffer current (the command runs after focus moved).
+  local sb = { 0, 0, 0, 0 }
+  local eb = { 0, 0, 0, 0 }
+  pcall(vim.api.nvim_buf_call, chat, function()
+    sb = vim.fn.getpos("'<")
+    eb = vim.fn.getpos("'>")
+  end)
+  local buf = chat
+  if sb[1] ~= 0 and sb[1] ~= S.input_buf and vim.api.nvim_buf_is_valid(sb[1]) then buf = sb[1] end
   local startLine = sb[2]
   local endLine = eb[2]
   if startLine == 0 or endLine == 0 then

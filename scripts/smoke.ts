@@ -4248,16 +4248,19 @@ description:
     await new Promise((r) => setTimeout(r, 100))
   }
 
-  // Quote: the active chat line becomes a Markdown quote block in the
-  // composer and focus returns to insert mode. (Visual marks are nvim-owned;
-  // the current-line fallback is the stable unit-testable surface.)
+  // Quote: visual marks on the active chat buffer become a Markdown quote
+  // block; with no marks the current chat line is used. Both paths return
+  // focus to the composer.
   {
     const qchat = await lua('return require("dsh_tui").ensure_chat("session-quote")', [])
-    const count = await lua(`local S=require("dsh_tui.state"); local b=${qchat.chatBuf}; vim.api.nvim_set_current_win(${qchat.chatWin}); vim.api.nvim_win_set_buf(${qchat.chatWin}, b); S.chat_win=${qchat.chatWin}; S.activeId="session-quote"; S.chats["session-quote"]=b; vim.api.nvim_buf_set_lines(b, 0, -1, false, { "quoted one", "quoted two" }); vim.api.nvim_win_set_cursor(${qchat.chatWin}, {1,0}); return require("dsh_tui").quote_selection()`, [])
-    assert.equal(count, 1, 'quote falls back to the current chat line')
+    const count = await lua(`local S=require("dsh_tui.state"); local b=${qchat.chatBuf}; vim.api.nvim_set_current_win(${qchat.chatWin}); vim.api.nvim_win_set_buf(${qchat.chatWin}, b); S.chat_win=${qchat.chatWin}; S.activeId="session-quote"; S.chats["session-quote"]=b; vim.api.nvim_buf_set_lines(b, 0, -1, false, { "quoted one", "quoted two" }); vim.api.nvim_buf_call(b, function() vim.fn.setpos("'<", {0,1,1,0}); vim.fn.setpos("'>", {0,2,1,0}) end); vim.api.nvim_win_set_cursor(${qchat.chatWin}, {1,0}); return require("dsh_tui").quote_selection()`, [])
+    assert.equal(count, 2, 'quote reads the visual line range')
     const qtext = await lua('return require("dsh_tui.buffer").input_text()', [])
-    assert.equal(qtext, '> quoted one', 'quote block is inserted into the composer')
+    assert.equal(qtext, '> quoted one\n> quoted two', 'quote block is inserted into the composer')
     assert.equal(await lua('return vim.api.nvim_get_current_win() == require("dsh_tui.state").input_win', []), true, 'quote returns focus to the composer')
+    await lua('require("dsh_tui").fill_input("")', [])
+    const count2 = await lua(`local S=require("dsh_tui.state"); local b=${qchat.chatBuf}; vim.api.nvim_buf_call(b, function() vim.fn.setpos("'<", {0,0,0,0}); vim.fn.setpos("'>", {0,0,0,0}) end); vim.api.nvim_win_set_cursor(${qchat.chatWin}, {1,0}); return require("dsh_tui").quote_selection()`, [])
+    assert.equal(count2, 1, 'quote falls back to the current chat line')
     await lua('require("dsh_tui").fill_input("")', [])
   }
 
