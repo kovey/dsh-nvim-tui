@@ -3,7 +3,8 @@ import { t, tf } from '../../kernel/i18n.js'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { activeSessionCwd, type App } from '../../kernel/app.js'
-import { serializeSessionLog, sessionEventsOf } from '../../kernel/session-log.js'
+import { historyMarkdown, serializeSessionLog, sessionEventsOf } from '../../kernel/session-log.js'
+
 
 /** `/export [md|log] [path]` — rendered Markdown (default) or the canonical
  *  JSONL session log (header + every committed event). The raw log preserves
@@ -31,9 +32,12 @@ export const exportCommand = async (app: App, a?: string) => {
       app.notice(tf('已导出原始日志: {0}（{1} 行）', [path, String(text.split('\n').length - 1)]))
       return
     }
-    const lines = await app.slices.runtime.nvim!.request('nvim_buf_get_lines', [rec.feed.bufId, 0, -1, false])
+    const lines = await app.slices.runtime.nvim!.request('nvim_buf_get_lines', [rec.feed.bufId, 0, -1, false]) as string[]
     const path = pathArg !== '' ? pathArg : join(activeSessionCwd(app), `dsh-export-${stamp}.md`)
-    writeFileSync(path, `# ${rec.title ?? rec.id}\n\n` + lines.join('\n') + '\n')
+    const persisted = app.svc('sessionPersistence')
+    let logPath: string | undefined
+    try { logPath = persisted?.locate?.(rec.handle.agent.session.header)?.path } catch { logPath = undefined }
+    writeFileSync(path, historyMarkdown(lines, { id: rec.id, title: rec.title, logPath, cwd: activeSessionCwd(app) }))
     app.notice(tf('已导出: {0}', [path]))
   } catch (err) {
     app.notice(tf('导出失败: {0}', [(err as Error).message]))

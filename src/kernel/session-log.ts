@@ -70,3 +70,20 @@ export const sessionEventsOf = (session: HarnessSession): readonly SessionEvent[
   if (typeof session.snapshotEvents === 'function') return session.snapshotEvents()
   return Array.isArray(session.events) ? session.events : []
 }
+
+/** Header + rendered transcript, including the durable log location. Shared
+ *  by `/export md` and `/copy history` so both carry the same provenance. */
+export const historyMarkdown = (
+  lines: readonly string[],
+  meta: { id: string; title?: string | undefined; logPath?: string | undefined; cwd?: string | undefined },
+): string => {
+  const title = meta.title !== undefined && meta.title !== '' ? meta.title : meta.id
+  const header = [
+    `# ${title}`,
+    '',
+    `- session: ${meta.id}`,
+    `- log: ${meta.logPath ?? (meta.cwd !== undefined ? `${meta.cwd}/（未找到原始日志路径）` : '（未找到原始日志路径）')}`,
+    '',
+  ]
+  return header.join('\n') + lines.join('\n') + '\n'
+}

@@ -173,6 +173,8 @@ M.apply_theme = R.apply_theme
 --- Generic one-line prompt for runner commands (kernel/prompt.ts).
 --- vim.ui.input is async; the callback must always answer so the Node promise
 --- can never hang when the user dismisses the prompt.
+M.quote_selection = I.quote_selection
+
 function M.prompt_line(id, title, default)
   vim.ui.input({ prompt = tostring(title or ''), default = tostring(default or '') }, function(input)
     if S.channel then

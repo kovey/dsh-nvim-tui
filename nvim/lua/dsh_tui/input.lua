@@ -102,6 +102,62 @@ function I.fill(text)
   I.focus()
 end
 
+--- Quote the chat buffer's current line or visual selection into the input.
+--- `/quote` is dispatched after the visual selection ended, so read the
+--- buffer-local `'<`/`'>` marks instead of relying on the current input buffer.
+--- Returns the number of quoted lines, or 0 when there is nothing to quote.
+local function active_chat_buf()
+  if S.chat_win ~= nil and vim.api.nvim_win_is_valid(S.chat_win) then
+    return vim.api.nvim_win_get_buf(S.chat_win)
+  end
+  if S.activeId ~= nil then return S.chats[S.activeId] end
+  return nil
+end
+
+function I.quote_selection()
+  if S.input_buf == nil or not vim.api.nvim_buf_is_valid(S.input_buf) then return 0 end
+  local sb = vim.fn.getpos("'<")
+  local eb = vim.fn.getpos("'>")
+  local buf = sb[1]
+  if buf == 0 then buf = active_chat_buf() end
+  -- Marks made while typing live in the input buffer; the quote comes from chat.
+  if buf == nil or buf == S.input_buf or not vim.api.nvim_buf_is_valid(buf) then
+    buf = active_chat_buf()
+    sb = { 0, 0, 0, 0 }
+    eb = { 0, 0, 0, 0 }
+  end
+  if buf == nil or not vim.api.nvim_buf_is_valid(buf) then return 0 end
+  local startLine = sb[2]
+  local endLine = eb[2]
+  if startLine == 0 or endLine == 0 then
+    -- No visual marks: quote the chat cursor's current line (or the last line).
+    if S.chat_win ~= nil and vim.api.nvim_win_is_valid(S.chat_win) then
+      local cur = vim.api.nvim_win_get_cursor(S.chat_win)
+      startLine = cur[1]
+      endLine = cur[1]
+    else
+      startLine = vim.api.nvim_buf_line_count(buf)
+      endLine = startLine
+    end
+  end
+  if startLine > endLine then startLine, endLine = endLine, startLine end
+  local lines = vim.api.nvim_buf_get_lines(buf, startLine - 1, endLine, false)
+  local quoted = {}
+  for _, line in ipairs(lines) do
+    line = (line or ''):gsub('%s+$', '')
+    quoted[#quoted + 1] = '> ' .. line
+  end
+  local text = table.concat(quoted, '\n')
+  if text == '' then return 0 end
+  local draft = I.text()
+  I.fill(draft ~= '' and (draft .. '\n\n' .. text) or text)
+  -- Window switches can make :startinsert a silent no-op; seed one real key.
+  if vim.api.nvim_get_mode().mode ~= 'i' then
+    vim.api.nvim_feedkeys('i', 'n', false)
+  end
+  return #quoted
+end
+
 --- Append text to the input line at the cursor (runner: /attach mentions).
 function I.append(text)
   if S.input_buf == nil or not vim.api.nvim_buf_is_valid(S.input_buf) then

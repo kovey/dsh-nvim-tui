@@ -41,6 +41,7 @@ export interface ParsedLine {
     /** Undefined is meaningful (no group) — the producer passes it explicitly. */
     group?: string | null | undefined;
 }
+export type StepsMode = 'all' | 'final';
 export interface FeedOptions {
     flushDelayMs?: number;
     idsProvider?: (() => Promise<unknown>) | null;
@@ -53,6 +54,8 @@ export interface FeedOptions {
     inlineReasoning?: boolean;
     /** Blue whale wallpaper/watermark (default off; the runner enables it). */
     whale?: boolean;
+    /** Work-step visibility: 'final' hides tool/subagent/workflow cards. */
+    stepsMode?: StepsMode;
     /** Empty-state welcome block: lines ABOVE the whale (big banner + title)
      *  and lines BELOW it (usage hints); rows may carry a highlight group. */
     welcome?: () => {
@@ -165,6 +168,7 @@ export declare class FeedRenderer {
     ns: number | null;
     lastView: string[];
     dense: boolean;
+    stepsMode: StepsMode;
     /** Ext cards (P1 extension API): card id → tracked base range, so
      *  update()/dismiss() splice the block in place (flush rebuilds the full
      *  view from base, so deletions propagate). */
@@ -222,7 +226,7 @@ export declare class FeedRenderer {
     whaleTicker: ReturnType<typeof setInterval> | null;
     ticker: ReturnType<typeof setTimeout> | null;
     eventTime: number;
-    constructor(nvim: NeovimClient, bufId: number, winId: number, { flushDelayMs, idsProvider, activeChecker, reasoningBuf, reasoningView, inlineReasoning, whale, welcome, }?: FeedOptions);
+    constructor(nvim: NeovimClient, bufId: number, winId: number, { flushDelayMs, idsProvider, activeChecker, reasoningBuf, reasoningView, inlineReasoning, whale, stepsMode, welcome, }?: FeedOptions);
     /** Clear the transcript (the /clear command). */
     clear(): void;
     /** Notice line (runner lifecycle, status). Multi-line text (e.g. an error
@@ -234,6 +238,11 @@ export declare class FeedRenderer {
     pushBlock(role: string, text: string): void;
     /** User bubble with image attachment labels (📎 lines under the text). */
     pushUser(text: string, imageLabels: string[]): void;
+    /** Rebuild the visible transcript under a new work-step mode. */
+    setStepsMode(mode: StepsMode, events?: readonly SessionEvent[]): void;
+    /** Collapse a long Markdown quote in the user echo; the stored message is
+     *  untouched, so the model still receives the complete quoted text. */
+    static compactQuote(text: string, maxLines?: number, maxChars?: number): string;
     pushTool(line: string): void;
     /** File-change diff block (✎ header + `+ `/`- `/context lines). ALWAYS
      *  renders in the chat — the panel stays the compact activity log (the

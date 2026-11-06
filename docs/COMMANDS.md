@@ -4,7 +4,7 @@
 `Enter` 补全或执行）。命令目录由 runner 启动时推给 nvim，与 `/help`、命令分发
 表共用同一份注册表，不会漂移。
 
-本页是 **77 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
+本页是 **81 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
 他插件经 `ctx.commands` 注册的命令也会进补全目录，用 `/commands` 查看；依赖的
 宿主服务未装配时，命令会给出明确提示，而不是静默失败。
 
@@ -29,6 +29,7 @@
 |---|---|
 | `/new [目录]` | 新建会话（可指定 cwd；无参弹目录选择器） |
 | `/clear` | 清空当前会话屏幕（不删历史） |
+| `/quote` | 把聊天区选中/当前行作为 Markdown 引用插入输入框 |
 | `/fork [directive]` | 分叉当前会话（继承历史与血缘），directive 作为首条消息 |
 | `/branch` | `/fork` 别名 |
 | `/btw <问题>` | 侧问：分叉新会话发送该问题，不打断当前对话 |
@@ -79,6 +80,7 @@
 | 命令 | 说明 |
 |---|---|
 | `/density` | 紧凑模式（工具卡片仅显示标题行） |
+| `/steps [all\|final]` | 工作步骤显示：`final` 只保留用户/助手正文与通知，隐藏工具/子代理/工作流卡 |
 | `/glance <cache\|context\|tokens\|cost\|elapsed\|total>` | 状态栏分段显隐 |
 | `/layout default\|panel` | 布局预设（无参循环切换） |
 | `/theme default\|dim\|vivid\|contrast\|mono` | 内置高亮预设（不覆盖则跟随 colorscheme） |
@@ -93,13 +95,15 @@
 | `/commands [名称]` | 官方命令注册表（宿主 / 插件注册的命令） |
 | `/config` | 配置摘要 |
 | `/context` | 上下文组成分解（≈used/capacity · system/tools/messages · claim 窗口） |
+| `/stats [回合号]` | 按轮次查看步骤、工具调用、token/缓存与耗时 |
 | `/cost` | 用量与成本（会话累计 token、预估成本） |
 | `/cwd [路径]` | 查看 / 切换本会话工作目录（dsh 0.2.1+；相对路径按 `cd` 语义） |
 | `/deliverables` | 本回合交付物（在新标签页打开产物文件） |
 | `/diff [路径]` | 左右对照审阅某个文件的改动（内容取自改动发生时的快照，不重读文件） |
 | `/dir [路径]` | 目录浏览浮窗（`Enter` 进目录 / 文件在新标签页打开，`gt`/`gT` 切换） |
 | `/doctor` | 终端 + 会话日志诊断（点名曾有日志故障的会话并给出修复出路） |
-| `/export [md\|log] [路径]` | 导出渲染后的 Markdown，或原始会话日志（header + 全部事件，JSONL） |
+| `/export [md\|log] [路径]` | 导出渲染后的 Markdown（头含会话 id/标题/原始日志路径），或原始会话日志（JSONL） |
+| `/copy [history\|last\|raw]` | 复制完整历史 Markdown、最后一条助手文本或原始 JSONL 到系统剪贴板 |
 | `/lines [路径]` | 文件行视图（只读浮窗，`i` 打开编辑；无参弹目录选择器） |
 | `/market [关键词 \| refresh \| update-all]` | 插件市场：精选目录按 GitHub ★ 倒序，安装 / 更新 / 卸载 + 热启停（HMR 免重启），磁盘缓存可离线 |
 | `/mcp [tools\|config\|resources]` | MCP 汇总 / 工具清单 / server 配置行 / 资源能力说明 |

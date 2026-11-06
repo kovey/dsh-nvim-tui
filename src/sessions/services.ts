@@ -65,6 +65,7 @@ export const attachSession = async (app: App, handle: AgentHandle, opts?: { back
     reasoningBuf: rids?.reasoningBuf ?? null,
     reasoningView: () => ({ open: app.slices.runtime.reasoningOpen, win: app.slices.runtime.reasoningWinId }),
     whale: app.config['whaleArt'] !== 'off',
+    stepsMode: uiPref<'all' | 'final'>(app, 'stepsMode') ?? 'all',
     welcome: welcomeLines,
   })
   app.slices.sessions.live.set(id, {

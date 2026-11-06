@@ -51,6 +51,8 @@ import { installSkillsCommand } from './commands/skills.js'
 import { installMcpCommand } from './commands/mcp.js'
 import { installPluginsCommand } from './commands/plugins.js'
 import { installCordisCommand } from './commands/cordis.js'
+import { installQuoteCommand } from './commands/quote.js'
+import { installCopyCommand } from './commands/copy.js'
 import { installLocaleCommand } from './commands/locale.js'
 import { installFbCommand } from './commands/fb.js'
 import { installFeedbackCommand } from './commands/feedback.js'
@@ -329,6 +331,8 @@ export function installCommands(app: App): void {
   installMcpCommand(app)
   installPluginsCommand(app)
   installCordisCommand(app)
+  installQuoteCommand(app)
+  installCopyCommand(app)
   installLocaleCommand(app)
   installFbCommand(app)
   installFeedbackCommand(app)

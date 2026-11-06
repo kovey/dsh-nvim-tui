@@ -76,6 +76,8 @@ const ROLE_BY_PREFIX: Array<[RegExp, string]> = [
   [/^▣ /, 'DshTuiExt'],
 ]
 
+export type StepsMode = 'all' | 'final'
+
 export interface FeedOptions {
   flushDelayMs?: number
   idsProvider?: (() => Promise<unknown>) | null
@@ -85,6 +87,8 @@ export interface FeedOptions {
   inlineReasoning?: boolean
   /** Blue whale wallpaper/watermark (default off; the runner enables it). */
   whale?: boolean
+  /** Work-step visibility: 'final' hides tool/subagent/workflow cards. */
+  stepsMode?: StepsMode
   /** Empty-state welcome block: lines ABOVE the whale (big banner + title)
    *  and lines BELOW it (usage hints); rows may carry a highlight group. */
   welcome?: () => { above?: WelcomeLine[]; below?: WelcomeLine[] }
@@ -206,6 +210,7 @@ export class FeedRenderer {
   ns: number | null // extmark namespace, created on first flush
   lastView: string[] // last flushed buffer text, diffed per flush
   dense: boolean // /density: compact tool cards (title line only)
+  stepsMode: StepsMode // /steps final: hide work-step cards
   /** Ext cards (P1 extension API): card id → tracked base range, so
    *  update()/dismiss() splice the block in place (flush rebuilds the full
    *  view from base, so deletions propagate). */
@@ -258,6 +263,7 @@ export class FeedRenderer {
     reasoningView = null,
     inlineReasoning = false,
     whale = false,
+    stepsMode = 'all',
     welcome,
   }: FeedOptions = {}) {
     this.nvim = nvim
@@ -267,6 +273,7 @@ export class FeedRenderer {
     this.idsProvider = idsProvider
     this.activeChecker = activeChecker ?? (() => true)
     this.whale = whale
+    this.stepsMode = stepsMode
     this.welcome = welcome ?? null
     this.whaleFrame = 0
     this.whaleTicker = null
@@ -370,7 +377,7 @@ export class FeedRenderer {
       // User echoes stay verbatim EXCEPT markdown tables, which get the same
       // bordered-table beautification as assistant content (rows keep the
       // `> ` quote prefix).
-      for (const entry of transformTables(text.split('\n'), false, 0, this.lastWinW)) {
+      for (const entry of transformTables(FeedRenderer.compactQuote(text).split('\n'), false, 0, this.lastWinW)) {
         this.base.push(`> ${entry.table ? entry.text : entry.raw}`)
       }
     }
@@ -378,7 +385,39 @@ export class FeedRenderer {
     this.schedule()
   }
 
+  /** Rebuild the visible transcript under a new work-step mode. */
+  setStepsMode(mode: StepsMode, events?: readonly SessionEvent[]): void {
+    this.stepsMode = mode
+    if (events === undefined) return
+    this.clear()
+    this.stepsMode = mode
+    for (const event of events) this.applyEvent(event, { history: true })
+    void this.flush()
+  }
+
+  /** Collapse a long Markdown quote in the user echo; the stored message is
+   *  untouched, so the model still receives the complete quoted text. */
+  static compactQuote(text: string, maxLines = 3, maxChars = 240): string {
+    const lines = text.split('\n')
+    const quoteCount = lines.filter((line) => line.startsWith('> ')).length
+    if (quoteCount <= maxLines) return text
+    const kept: string[] = []
+    let seen = 0
+    for (const line of lines) {
+      if (line.startsWith('> ')) {
+        if (seen < maxLines) kept.push(line)
+        seen++
+      } else {
+        kept.push(line)
+      }
+    }
+    kept.push(`> …（还有 ${String(quoteCount - maxLines)} 行引用）`)
+    const joined = kept.join('\n')
+    return joined.length <= maxChars ? joined : joined.slice(0, Math.max(0, maxChars - 1)) + '…'
+  }
+
   pushTool(line: string): void {
+    if (this.stepsMode === 'final') return
     this.base.push('', line)
     this.schedule()
   }
@@ -389,17 +428,19 @@ export class FeedRenderer {
    *  content the user wants to read in the conversation. Lines are rendered
    *  verbatim — no markdown stripping inside code content. */
   pushDiff(header: string, lines: string[]): void {
-    if (lines.length === 0) return
+    if (this.stepsMode === 'final' || lines.length === 0) return
     this.base.push('', header, ...lines)
     this.schedule()
   }
 
   pushSubagent(line: string): void {
+    if (this.stepsMode === 'final') return
     this.base.push('', line)
     this.schedule()
   }
 
   pushWorkflow(line: string): void {
+    if (this.stepsMode === 'final') return
     this.base.push('', line)
     this.schedule()
   }
@@ -836,7 +877,7 @@ export class FeedRenderer {
       case 'tool/call': {
         this.commitReasoning()
         const data = event.data
-        if (data === undefined) break
+        if (data === undefined || this.stepsMode === 'final') break
         const { callId, name, arguments: args } = data
         this.calls.set(callId ?? '', { name: name ?? 'tool', startedAt: this.eventTime, ...(typeof args === 'string' ? { args } : {}) })
         const callLine = `🔧 ${name ?? 'tool'}(${FeedRenderer.argsPreview(args)})`
@@ -854,7 +895,7 @@ export class FeedRenderer {
         // PTC mode: a tool dispatched from inside run_code. Log-only events;
         // render a nested line so the user sees what the program is doing.
         const data = event.data
-        if (data === undefined) break
+        if (data === undefined || this.stepsMode === 'final') break
         const name = data.name ?? 'tool'
         let argsText = ''
         try { argsText = typeof data.arguments === 'string' ? data.arguments : JSON.stringify(data.arguments ?? {}) } catch { argsText = '{}' }
@@ -872,7 +913,7 @@ export class FeedRenderer {
       }
       case 'tool/ptc-dispatch': {
         const data = event.data
-        if (data === undefined) break
+        if (data === undefined || this.stepsMode === 'final') break
         const subId = data.subCallId ?? ''
         const started = subId !== '' ? this.ptcCalls.get(subId) : undefined
         const name = data.name ?? started?.name ?? 'tool'

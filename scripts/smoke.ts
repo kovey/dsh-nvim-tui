@@ -43,6 +43,10 @@ import { parseSettingValue } from '../lib/commands/commands/settings.js'
 import { appArgv, parseTuiArgs } from '../lib/kernel/cli.js'
 import { turnOutlineRows } from '../lib/transcript/commands/outline.js'
 import { installSessionController } from '../lib/sessions/session-controller.js'
+import { lastAssistantText, parseCopyMode } from '../lib/commands/commands/copy.js'
+import { historyMarkdown } from '../lib/kernel/session-log.js'
+import { clipboardCommands } from '../lib/kernel/clipboard.js'
+import { collectTurnStats } from '../lib/transcript/commands/stats.js'
 import { modelRefFor } from '../lib/sessions/services.js'
 import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
@@ -2724,6 +2728,49 @@ description:
     assert.equal(resolved.agent, agent, 'live session resolves to its agent')
   }
 
+  // 0.2.2 TUI features: quote compaction, copy payloads, step folding, stats.
+  {
+    assert.equal(parseCopyMode(undefined), 'history')
+    assert.equal(parseCopyMode('last'), 'last')
+    assert.equal(parseCopyMode('raw'), 'raw')
+    assert.equal(parseCopyMode('nope'), undefined)
+    assert.deepEqual(clipboardCommands('darwin'), [['pbcopy']])
+    assert.deepEqual(clipboardCommands('win32'), [['clip']])
+    assert.equal(clipboardCommands('linux').length, 3)
+    const md = historyMarkdown(['> hello', '', 'answer'], { id: 'session-x', title: 'Demo', logPath: '/tmp/session.jsonl' })
+    assert.ok(md.includes('# Demo'))
+    assert.ok(md.includes('- session: session-x'))
+    assert.ok(md.includes('- log: /tmp/session.jsonl'))
+    assert.ok(md.includes('answer'))
+    assert.equal(lastAssistantText([
+      { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'first' }] } } },
+      { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'last answer' }] } } },
+    ] as never), 'last answer')
+    const compact = FeedRenderer.compactQuote('> 1\n> 2\n> 3\n> 4\n> 5', 3)
+    assert.ok(compact.includes('> 1') && compact.includes('还有 2 行引用'))
+    assert.ok(!compact.includes('> 5'))
+    const stats = collectTurnStats([
+      { type: 'turn/start', time: 1000, data: { turn: 1 } } as never,
+      { type: 'step/start', time: 1100, data: { turn: 1, step: 1 } } as never,
+      { type: 'tool/call', time: 1200, data: { turn: 1, step: 1 } } as never,
+      { type: 'assistant/message', time: 1500, data: { turn: 1, step: 1, usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 50 } } } as never,
+      { type: 'turn/end', time: 2000, data: { turn: 1 } } as never,
+    ] as never)
+    assert.equal(stats.turns.length, 1)
+    assert.equal(stats.totals.steps, 1)
+    assert.equal(stats.totals.tools, 1)
+    assert.equal(stats.totals.input, 100)
+    assert.equal(stats.turns[0]?.durationMs, 1000)
+    feedA.setStepsMode('final')
+    feedA.applyEvent({ type: 'tool/call', time: 4000, data: { turn: 2, step: 1, callId: 'final-hidden', name: 'hidden-step', arguments: '{}' } })
+    feedA.applyEvent({ type: 'assistant/message', time: 4100, data: { turn: 2, step: 1, message: { content: [{ type: 'text', text: 'FINAL ONLY' }] } } })
+    await new Promise((r) => setTimeout(r, 120))
+    const finalLines = await nvim.request('nvim_buf_get_lines', [chatA.chatBuf, 0, -1, false]) as string[]
+    assert.equal(finalLines.some((line) => line.includes('hidden-step')), false, 'final steps mode hides tool cards')
+    assert.equal(finalLines.some((line) => line.includes('FINAL ONLY')), true, 'final steps mode keeps assistant text')
+    feedA.setStepsMode('all')
+  }
+
   // Turn outline: one row per turn, first human prompt, step/tool counts and
   // the end reason. Pure fold, so the navigation index is asserted directly.
   {
@@ -4199,6 +4246,19 @@ description:
     await lua(`vim.api.nvim_set_current_win(${winBefore})`, [])
     await lua('pcall(vim.cmd, "stopinsert")', [])
     await new Promise((r) => setTimeout(r, 100))
+  }
+
+  // Quote: the active chat line becomes a Markdown quote block in the
+  // composer and focus returns to insert mode. (Visual marks are nvim-owned;
+  // the current-line fallback is the stable unit-testable surface.)
+  {
+    const qchat = await lua('return require("dsh_tui").ensure_chat("session-quote")', [])
+    const count = await lua(`local S=require("dsh_tui.state"); local b=${qchat.chatBuf}; vim.api.nvim_set_current_win(${qchat.chatWin}); vim.api.nvim_win_set_buf(${qchat.chatWin}, b); S.chat_win=${qchat.chatWin}; S.activeId="session-quote"; S.chats["session-quote"]=b; vim.api.nvim_buf_set_lines(b, 0, -1, false, { "quoted one", "quoted two" }); vim.api.nvim_win_set_cursor(${qchat.chatWin}, {1,0}); return require("dsh_tui").quote_selection()`, [])
+    assert.equal(count, 1, 'quote falls back to the current chat line')
+    const qtext = await lua('return require("dsh_tui.buffer").input_text()', [])
+    assert.equal(qtext, '> quoted one', 'quote block is inserted into the composer')
+    assert.equal(await lua('return vim.api.nvim_get_current_win() == require("dsh_tui.state").input_win', []), true, 'quote returns focus to the composer')
+    await lua('require("dsh_tui").fill_input("")', [])
   }
 
   log('SMOKE PASS')

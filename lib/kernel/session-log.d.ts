@@ -40,3 +40,11 @@ export declare const serializeSessionLog: (header: SessionHeaderLike | undefined
 }) => string;
 /** The committed events of one live session (alpha.4+ snapshot, older array). */
 export declare const sessionEventsOf: (session: HarnessSession) => readonly SessionEvent[];
+/** Header + rendered transcript, including the durable log location. Shared
+ *  by `/export md` and `/copy history` so both carry the same provenance. */
+export declare const historyMarkdown: (lines: readonly string[], meta: {
+    id: string;
+    title?: string | undefined;
+    logPath?: string | undefined;
+    cwd?: string | undefined;
+}) => string;

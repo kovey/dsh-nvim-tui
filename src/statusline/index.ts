@@ -21,6 +21,7 @@ import { registerHostHandler } from '../kernel/host-events.js'
 import { hiddenGlance } from './commands/glance.js'
 import { installWhaleCommand } from './commands/whale.js'
 import { installDensityCommand } from './commands/density.js'
+import { installStepsCommand } from './commands/steps.js'
 import { installGlanceCommand } from './commands/glance.js'
 import { installCostCommand } from './commands/cost.js'
 
@@ -382,6 +383,7 @@ export function installStatusline(app: App): void {
   // -- the slash commands, one file each (self-registering) --
   installWhaleCommand(app)
   installDensityCommand(app)
+  installStepsCommand(app)
   installGlanceCommand(app)
   installCostCommand(app)
 
