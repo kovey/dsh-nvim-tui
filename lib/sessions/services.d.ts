@@ -1,6 +1,10 @@
 import type { AgentHandle } from '../kernel/types.js';
 import type { App, ModelRef } from '../kernel/app.js';
-export declare const attachSession: (app: App, handle: AgentHandle, modelRef: ModelRef, opts?: {
+/** Adapt the 0.2.2 Agent.model API to the TUI's existing ModelRef surface.
+ *  Existing difficulty/vision code keeps assigning `current`; the setter now
+ *  records a durable model/selection instead of mutating a local ref. */
+export declare const modelRefFor: (app: App, handle: AgentHandle) => ModelRef;
+export declare const attachSession: (app: App, handle: AgentHandle, opts?: {
     background?: boolean;
 }) => Promise<string>;
 /** Empty-state hero: big DSH·TUI banner + title ABOVE the whale, usage

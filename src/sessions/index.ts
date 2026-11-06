@@ -248,7 +248,7 @@ export function installSessions(app: App): void {
       const cachedTitle = (h: { id: string; inheritedEventCount?: number }): string | undefined => {
         if (typeof projections?.cachedSnapshot !== 'function') return undefined
         try {
-          const snap = projections.cachedSnapshot(h, h.inheritedEventCount ?? 0, ['title'])
+          const snap = projections.cachedSnapshot(h, ['title'])
           const title = snap?.values?.['title']
           return typeof title === 'string' && title !== '' ? title : undefined
         } catch {

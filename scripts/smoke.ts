@@ -43,6 +43,7 @@ import { parseSettingValue } from '../lib/commands/commands/settings.js'
 import { appArgv, parseTuiArgs } from '../lib/kernel/cli.js'
 import { turnOutlineRows } from '../lib/transcript/commands/outline.js'
 import { installSessionController } from '../lib/sessions/session-controller.js'
+import { modelRefFor } from '../lib/sessions/services.js'
 import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
 import { installDiffCommand } from '../lib/commands/commands/diff.js'
@@ -2682,6 +2683,27 @@ description:
     assert.deepEqual(parseSettingValue('{"provider":"x"}'), { provider: 'x' })
     assert.equal(parseSettingValue('deepseek-flash'), 'deepseek-flash')
     assert.equal(parseSettingValue('not json {'), 'not json {')
+  }
+
+  // dsh 0.2.2 Agent.model migration: the TUI's ModelRef is a proxy over the
+  // durable Agent-owned selection. Reads follow current(); writes call select
+  // instead of mutating a detached object.
+  {
+    let selected: { provider: string; model: string; reasoningEffort?: string } | undefined
+    const agent = {
+      model: {
+        current: () => selected,
+        select: (next: { provider: string; model: string }) => { selected = next },
+      },
+    }
+    const fakeApp = {
+      slices: { agent: { currentSelection: () => ({ provider: 'fallback', model: 'fallback-model' }) } },
+      exitDiag: () => {},
+    }
+    const ref = modelRefFor(fakeApp as never, { agent } as never)
+    ref.current = { provider: 'deepseek-official', model: 'deepseek-v4-flash' }
+    assert.deepEqual(selected, { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    assert.equal(ref.current.model, 'deepseek-v4-flash', 'proxy reads the durable selection')
   }
 
   // Schedule bridge: dsh-schedule injects `sessionController` even though the

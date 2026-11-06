@@ -588,9 +588,9 @@ export interface PluginInventoryService {
 /** dsh-session-projection registry (whole-log projection reads). */
 export interface SessionProjectionsService {
   stateOf?: (session: unknown, key: string) => unknown
-  snapshot?: (session: unknown) => Record<string, unknown>
+  snapshot?: (session: unknown, keys?: readonly string[]) => { values?: Record<string, unknown>; asOfSeq?: number } | undefined
   /** Persisted projection-cache read by session header (zero log I/O). */
-  cachedSnapshot?: (meta: unknown, inheritedEventCount: number, keys?: string[]) =>
+  cachedSnapshot?: (meta: unknown, keys?: string[]) =>
     { values?: Record<string, unknown> } | undefined
 }
 
@@ -737,6 +737,11 @@ export interface AgentHandle {
     followup: (message: unknown) => void
     steer: (directive: unknown) => void
     inbox?: InboxLike
+    /** dsh 0.2.2+: durable Agent-owned model selection. */
+    model?: {
+      current: () => { provider: string; model: string; reasoningEffort?: string | undefined } | undefined
+      select: (selection: { provider: string; model: string; reasoningEffort?: string | undefined }) => void
+    }
     [key: string]: unknown
   }
   dispose: () => Promise<unknown>

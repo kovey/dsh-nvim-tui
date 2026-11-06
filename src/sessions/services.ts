@@ -21,8 +21,32 @@ const todoGuardEnabled = (app: App): { enabled: boolean; onError: (stage: string
   onError: (stage, err) => app.exitDiag(`todo-guard-${stage}`, err instanceof Error ? err.message : String(err)),
 })
 
-export const attachSession = async (app: App, handle: AgentHandle, modelRef: ModelRef, opts?: { background?: boolean }) => {
+/** Adapt the 0.2.2 Agent.model API to the TUI's existing ModelRef surface.
+ *  Existing difficulty/vision code keeps assigning `current`; the setter now
+ *  records a durable model/selection instead of mutating a local ref. */
+export const modelRefFor = (app: App, handle: AgentHandle): ModelRef => {
+  const model = handle.agent.model
+  if (model === undefined) {
+    return { current: app.slices.agent.currentSelection() }
+  }
+  return {
+    get current() {
+      return (model.current() ?? app.slices.agent.currentSelection()) as ModelRef['current']
+    },
+    set current(next) {
+      if (next === undefined) return
+      try {
+        model.select(next)
+      } catch (err) {
+        app.exitDiag('model-select-failed', err instanceof Error ? err.message : String(err))
+      }
+    },
+  }
+}
+
+export const attachSession = async (app: App, handle: AgentHandle, opts?: { background?: boolean }) => {
   const id = handle.agent.session.id
+  const modelRef = modelRefFor(app, handle)
   const ids = await app.lua.ensureChat(id)
   // Background resume (row actions like rename) must NOT touch the global
   // view state — the active session owns the visible chat/reasoning
@@ -101,7 +125,6 @@ export const attachSession = async (app: App, handle: AgentHandle, modelRef: Mod
 
 export const createSession = async (app: App, cwdPath?: string) => {
   const selection = app.slices.agent.currentSelection()
-  const modelRef = { current: selection, assembled: void 0 }
   let cwd = process.cwd()
   if (cwdPath) {
     const abs = resolve(cwdPath)
@@ -121,13 +144,13 @@ export const createSession = async (app: App, cwdPath?: string) => {
       model: selection.model,
     },
     setup: (agentCtx) => {
-      installModelSelection(agentCtx, modelRef as unknown as Parameters<typeof installModelSelection>[1])
+      installModelSelection(agentCtx)
       installTodoGuard(agentCtx, todoGuardEnabled(app))
     },
   })
   let id: string
   try {
-    id = await attachSession(app, handle, modelRef)
+    id = await attachSession(app, handle)
   } catch (err) {
     // A half-mounted attach must not leak the freshly created agent.
     await rollbackAttach(app, handle.agent.session.id, handle)
@@ -175,7 +198,6 @@ export const ensureLiveSession = async (app: App, id: string): Promise<string | 
 
 const doResumeSession = async (app: App, id: string): Promise<string | undefined> => {
   const selection = app.slices.agent.currentSelection()
-  const modelRef = { current: selection, assembled: void 0 }
   const handle = await app.runtimeCtx.agents.resume({
     resumeSessionId: id,
     agentOptions: {
@@ -183,11 +205,11 @@ const doResumeSession = async (app: App, id: string): Promise<string | undefined
       model: selection.model,
     },
     setup: (agentCtx) => {
-      installModelSelection(agentCtx, modelRef as unknown as Parameters<typeof installModelSelection>[1])
+      installModelSelection(agentCtx)
       installTodoGuard(agentCtx, todoGuardEnabled(app))
     },
   })
-  const sid = await attachSession(app, handle, modelRef, { background: true })
+  const sid = await attachSession(app, handle, { background: true })
   const rec = app.slices.sessions.live.get(sid)!
   try {
     const events = app.slices.trans.sessionEvents(handle.agent.session)
@@ -384,7 +406,6 @@ export const forkSession = async (app: App, directive: string | undefined): Prom
     let cut = (lastEnd.seq ?? 0) + 1
     while (cut < events.length && events[cut]?.type !== 'turn/start') cut++
     const selection = app.slices.agent.currentSelection()
-    const modelRef = { current: selection, assembled: void 0 }
     const handle = await app.runtimeCtx.agents.create({
       sessionId: `session-${randomUUID()}`,
       seed: events.slice(0, cut),
@@ -396,13 +417,13 @@ export const forkSession = async (app: App, directive: string | undefined): Prom
       },
       agentOptions: { provider: selection.provider, model: selection.model },
       setup: (agentCtx) => {
-        installModelSelection(agentCtx, modelRef as unknown as Parameters<typeof installModelSelection>[1])
+        installModelSelection(agentCtx)
         installTodoGuard(agentCtx, todoGuardEnabled(app))
       },
     })
     let id: string
     try {
-      id = await attachSession(app, handle, modelRef)
+      id = await attachSession(app, handle)
     } catch (err) {
       await rollbackAttach(app, handle.agent.session.id, handle)
       throw err

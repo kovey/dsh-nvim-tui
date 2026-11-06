@@ -3,6 +3,7 @@
 import { t } from '../../kernel/i18n.js'
 import { formatTokens } from '../../feed/stats.js'
 import { billedInput } from '../../feed/stats.js'
+import { projectionValue } from '../../kernel/app.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -15,10 +16,9 @@ export const contextCommand = async (app: App): Promise<void> => {
     app.notice(t('无活跃会话'))
     return
   }
-  const projections = app.svc('sessionProjections')
-  if (typeof projections?.stateOf === 'function') {
+  {
     try {
-      const b = projections.stateOf(rec.handle.agent.session, 'contextBreakdown') as {
+      const b = projectionValue(app, rec.handle.agent.session, 'contextBreakdown') as {
         systemTokens?: number; toolsTokens?: number; messageTokens?: number
         claim?: { start?: number; end?: number; tokens?: number }
       } | undefined

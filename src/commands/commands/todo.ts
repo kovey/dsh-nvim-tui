@@ -2,6 +2,7 @@
  *  wired by the commands module index). */
 import { t } from '../../kernel/i18n.js'
 import { followup } from '../core.js'
+import { projectionValue } from '../../kernel/app.js'
 import type { App } from '../../kernel/app.js'
 
 
@@ -23,12 +24,9 @@ export const todoCommand = async (app: App, a: string | undefined): Promise<void
   // ctx.sessionProjections): authoritative on resumed sessions; fall back
   // to the live todo/write fold.
   let items: Array<{ content: string; status: string }> = rec.todosItems ?? []
-  const projections = app.svc('sessionProjections')
-  if (typeof projections?.stateOf === 'function') {
-    const proj = projections.stateOf(rec.handle.agent.session, 'todos') as
-      Array<{ content: string; status: string }> | null | undefined
-    if (Array.isArray(proj) && proj.length > 0) items = proj
-  }
+  const proj = projectionValue(app, rec.handle.agent.session, 'todos') as
+    Array<{ content: string; status: string }> | null | undefined
+  if (Array.isArray(proj) && proj.length > 0) items = proj
   if (items.length === 0) {
     app.notice(t('（当前没有待办任务——直接告诉我要做什么，我会自己维护清单）'))
     return

@@ -27,6 +27,10 @@ import type { AccountService, AgentHandle, AgentPresetsService, ApprovalRequest,
  *  when no session is attached) — local-file commands must resolve against
  *  THIS, not process.cwd(): /search can resume a session from another
  *  project directory while the shell cwd stays put. */
+/** Read one projection without the deprecated registry `stateOf` when the
+ *  host exposes the key-taking snapshot face (0.2.2). Fall back for host-only
+ *  units or older compositions. */
+export declare const projectionValue: (app: App, session: unknown, key: string) => unknown;
 export declare const activeSessionCwd: (app: App) => string;
 /** dsh 0.1.5 persistence.list() returns snapshots ({header, revision, …});
  *  pre-0.1.5 hosts returned the header directly. Normalize either shape. */

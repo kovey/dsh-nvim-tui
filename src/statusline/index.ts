@@ -15,6 +15,7 @@ import {
 import { t, tf } from '../kernel/i18n.js'
 import { TIER_ICONS } from '../kernel/difficulty.js'
 import type { InboxLike, SessionEvent } from '../kernel/types.js'
+import { projectionValue } from '../kernel/app.js'
 import type { App, SessionRec } from '../kernel/app.js'
 import { registerHostHandler } from '../kernel/host-events.js'
 import { hiddenGlance } from './commands/glance.js'
@@ -264,10 +265,9 @@ const updateStatusline = (app: App) => {
   }
   // Whole-log performance projection (official client's TTFT/throughput
   // stats): sessionStats unit, read live from the projection registry.
-  const projections = app.svc('sessionProjections')
-  if (rec !== undefined && typeof projections?.stateOf === 'function') {
+  if (rec !== undefined) {
     try {
-      const stats = projections.stateOf(rec.handle.agent.session, 'sessionStats') as {
+      const stats = projectionValue(app, rec.handle.agent.session, 'sessionStats') as {
         ttftMs?: number; ttftSteps?: number; decodeMs?: number; decodeTokens?: number
       } | undefined
       if (stats !== undefined && (stats.ttftSteps ?? 0) > 0) {
