@@ -3,6 +3,54 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.6.0] — 2026-11-06
+
+宿主锚点前移到 **dsh 0.2.2-rc.1**，并声明支持整个 **v0.2.2** 系列
+（`>=0.2.2-rc.1 <0.3.0`）。这是**不兼容 0.2.1 宿主**的接口升级：0.2.2 改了
+Agent 模型选择、Session Projection 注册和 tools 执行器，旧插件无法同时正确
+跑在两边。
+
+### Changed · 宿主接口适配
+
+- `peerDependencies` / `devDependencies` 前移到 `0.2.2-rc.1`，
+  `@deepseek-ai/cordis` 升到 `~4.1.0`；Node engine 对齐宿主 **>=24.9**。
+- **Agent.model**：`installModelSelection(agentCtx)` 不再接收可变的
+  `ModelSelectionRef`。TUI 保留自己的 `ModelRef` 表面作为代理：
+  - getter 读 `agent.model.current()`；
+  - setter 调 `agent.model.select()`，把选择写入 `model/selection` 事件；
+  - `/model`、难度路由、识图临时切模、回合结束恢复继续按原路径工作。
+- **Session Projection**：注册改为异步（宿主在服务初始化时 await）。TUI 不注册
+  投影，只读：`cachedSnapshot(meta, keys)` 的旧 `inheritedEventCount` 参数已移除；
+  读取优先用 `snapshot(session, [key])`，host-only 单元回退到已弃用的
+  `stateOf`（兼容路径）。
+- **tools 执行器**：0.2.2 把 native/PTC 执行拆成按 Agent 作用域选择的插件；
+  TUI 的 `tui_command` 仍通过 `tools.register` 注册，`/mcp` 用
+  `schemas(agent)` 读取工具清单。基础组合由 `dsh-base` 自带 native executor；
+  PTC 由宿主 overlay/preset 决定是否启用。
+- 保留 v0.5.2 的 `sessionController` 窄适配器，`/schedule` 在 0.2.2 下仍能激活。
+
+### 验证
+
+- `npm run build` / `npm run check` / `npm run smoke` 全绿（tsc 对着 rc1 真实类型）。
+- 隔离 DSH_HOME + 本地 dsh 0.2.2-rc.1 实际启动：插件行激活，TUI 正常渲染。
+- rc1 运行时探针：`Agent.model.current/select` 可用；`tools.schemas(agent)` 返回
+  26 个工具且包含 `tui_command`；`schedule` 服务激活；`sessionProjections`
+  可读（`todos` 为空）。
+- rc1 `evaluatePluginCompatibility`：`0.2.2-rc.1` / `0.2.2` / `0.2.3` 兼容，
+  `0.3.0` 拒绝。
+- `npm run e2e` 能拉起 rc1 TUI 并写出 dump；本轮模型请求遇到上游
+  `No available channel for model deepseek-flash` 重试，未作为模型成功证据。
+
+### 限制
+
+- 不支持 0.2.1 及更早宿主（Agent.model/投影/tools 接口不兼容）。
+- `/preset ptc` 是否可用取决于宿主 v0.2.2 的 PTC overlay/preset；TUI 只渲染
+  `tool/ptc-dispatch*` 事件。
+- 0.2.2 系列后续补丁版未逐一真机验证；接口稳定，engines 声明到 `<0.3.0`。
+
+覆盖提交：
+[`8bae478`](https://github.com/kovey/dsh-nvim-tui/commit/8bae478)
+
 ## [v0.5.2] — 2026-11-03
 
 ### Fixed · `schedule` 永久 `pending (waiting for service: sessionController)`

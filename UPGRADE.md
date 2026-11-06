@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.5.2（宿主 0.2.1-rc.4） | [v0.5.2 → v0.6.0（**宿主 0.2.1-rc.4 → 0.2.2-rc.1**；Agent.model/投影/工具适配）](#v052--v060宿主-021-rc4--022-rc1agentmodel投影工具适配) |
 | nvim-tui v0.5.1（宿主 0.2.1-rc.4） | [v0.5.1 → v0.5.2（schedule 修复；宿主不变）](#v051--v052schedule-修复宿主不变) |
 | nvim-tui v0.5.0（宿主 0.2.1-rc.2） | [v0.5.0 → v0.5.1（宿主前移 rc.2 → rc.4；零代码改动）](#v050--v051宿主前移-rc2--rc4零代码改动) |
 | nvim-tui v0.4.14（宿主 0.2.1-rc.2） | [v0.4.14 → v0.5.0（功能批次，宿主不变；零破坏）](#v0414--v050功能批次宿主不变零破坏) |
@@ -42,6 +43,50 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.5.2 → v0.6.0（宿主 0.2.1-rc.4 → 0.2.2-rc.1；Agent.model/投影/工具适配）
+
+> **结论先行**：宿主必须升到 **0.2.2-rc.1**，Node 必须 **>=24.9**。本版不兼容
+> 0.2.1 宿主：0.2.2 改了 Agent 模型选择、Session Projection 异步注册和 tools
+> 执行器，插件不能同时正确跑在两边。`engines.dsh` 声明整个 v0.2.2 系列：
+> `>=0.2.2-rc.1 <0.3.0`。
+
+```bash
+npm i -g @deepseek-ai/dsh@0.2.2-rc.1
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.6.0"
+dsh --profile <name>
+```
+
+### 这次改了什么
+
+- **Agent.model**：`installModelSelection(agentCtx)` 不再接收 ModelRef。TUI 的
+  `/model`、难度路由、识图临时切模与回合结束恢复改为调用
+  `agent.model.select()`，读取 `agent.model.current()`；选择会写入
+  `model/selection` 事件，resume 后仍保留。
+- **Session Projection**：注册改为异步；`cachedSnapshot(meta, keys)` 移除了旧的
+  `inheritedEventCount` 参数。TUI 读取优先用 `snapshot(session,[key])`，host-only
+  单元回退到 `stateOf`。
+- **tools 执行器**：native/PTC 拆成按 Agent 作用域选择的插件；`tui_command`
+  注册和 `/mcp` 工具清单继续工作，native executor 由 `dsh-base` 提供。
+- Cordis 升到 4.1；Node engine 升到 24.9。
+- 保留 `/schedule` 的 TUI `sessionController` 适配器。
+
+### 升级注意
+
+- 旧 profile 里的第三方插件若仍锚在 0.2.1，会被宿主按兼容性跳过；这是上游
+  版本约束，不是本插件的问题。
+- `/preset ptc` 是否可用取决于 v0.2.2 的 PTC overlay/preset；默认 native
+  executor 可用。
+- 可选宿主行（`/deps install`）不变：schedule/terminal/workspace-changes 等。
+
+### 验证与限制
+
+- `npm run build` / `check` / `smoke` 全绿。
+- 隔离 DSH_HOME + 本地 dsh 0.2.2-rc.1 启动：插件激活；运行时探针确认
+  `Agent.model`、26 个工具（含 `tui_command`）、`schedule`、投影读取均可用。
+- rc1 `evaluatePluginCompatibility`：0.2.2-rc.1 / 0.2.2 / 0.2.3 通过，0.3.0 拒绝。
+- 真机模型回合受上游 `No available channel for model deepseek-flash` 影响，
+  未作为模型成功证据；0.2.2 后续补丁版未逐一真机验证。
 
 ## v0.5.1 → v0.5.2（schedule 修复；宿主不变）
 
