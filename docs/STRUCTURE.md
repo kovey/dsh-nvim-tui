@@ -40,8 +40,8 @@ src/                          TypeScript 源码（strict；唯一手写源，根
     commands/                   55 个命令文件（一命令一文件，自注册）
   sessions/                   会话域（生命周期 / fork / 偏好持久化 + 10 个命令）
   subagents/                  子代理域（目录 / 对话窗）
-  transcript/                 转录域（修复 / 事件访问 / workflow + 4 个命令）
-  statusline/                 状态栏域（渲染 / 折叠统计 + 4 个命令）
+  transcript/                 转录域（修复 / 事件访问 / workflow + 6 个命令）
+  statusline/                 状态栏域（渲染 / 折叠统计 + 5 个命令）
   ext-api/                    EXT-API 实现（dsh-ext 总线 / 卡片 / 面板 / region）
   deps/                       依赖体检（/deps）
   market/                     插件市场与热启停（/market、/plugin）

@@ -3,6 +3,46 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.6.1] — 2026-11-06
+
+### Added · 0.2.2 新功能的 TUI 载体
+
+- **`/quote`**：读取聊天区当前行或可视选择，生成 `> ` Markdown 引用块插入
+  输入框并保持焦点；超过 3 行的引用在聊天区折叠为紧凑预览，原文仍完整发送。
+- **`/copy [history|last|raw]`**：把完整历史 Markdown、最后一条助手文本或
+  canonical JSONL 复制到系统剪贴板（macOS `pbcopy` / Linux `wl-copy`/`xclip`/
+  `xsel` / Windows `clip`）；`history` 头含会话 id、标题和原始日志路径。
+- **`/steps [all|final]`**：`final` 隐藏工具/子代理/工作流步骤卡，只保留用户与
+  助手正文、通知；偏好持久化，重开/重放后仍生效；`all` 恢复完整步骤。
+- **`/stats [回合号]`**：按轮次显示步骤数、工具调用数、token/缓存用量和耗时。
+
+### Changed
+
+- `/export md` 的 Markdown 头与 `/copy history` 共用出处：会话 id、标题、原始
+  日志路径。
+- 命令数 77 → 81；`docs/COMMANDS.md`、README、ARCHITECTURE、STRUCTURE 同步。
+- smoke 新增：引用压缩、clipboard argv、history Markdown、最后助手文本、
+  步骤 final 隐藏/正文保留、turn stats fold、quote 当前行。
+
+### 验证
+
+- `npm run build` / `npm run check` / `npm run smoke` 全绿。
+- rc1 隔离 profile 启动正常；0.6.1 构建后的 TUI 能渲染 welcome/session。
+- 版本与文档：命令表 81 条，版本五处一致。
+
+### 未覆盖（如实说明）
+
+- 0.2.2 的 Web 专属功能（统一右键菜单、文件预览侧栏树、插件管理富文本页、
+  开发者统计 Web 面板、Git worktree UI、个性化推荐、6 种新界面语言）不在
+  TUI 交付范围；TUI 提供的是上面对应能力的原生等价物。
+- `/quote` 的可视选择依赖 nvim 的缓冲区标记；smoke 固化的是“当前行”回退路径，
+  真实可视选择建议在交互 nvim 中手工复验一次。
+- 剪贴板后端只验证了命令选择矩阵；CI 不直接改写用户系统剪贴板。
+
+覆盖提交：
+[`b38a642`](https://github.com/kovey/dsh-nvim-tui/commit/b38a642) ·
+[`19b68f0`](https://github.com/kovey/dsh-nvim-tui/commit/19b68f0)
+
 ## [v0.6.0] — 2026-11-06
 
 宿主锚点前移到 **dsh 0.2.2-rc.1**，并声明支持整个 **v0.2.2** 系列
