@@ -3,7 +3,9 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [Unreleased] — `always` 改为真正的自动允许
+## [v0.6.4] — 2026-11-11
+
+### Fixed · `always` 改为真正的自动允许
 
 - 审批浮窗按 `a`（always）不再写宿主 `approval/policy = never`；改为在当前
   会话启用 TUI 层 auto-allow。宿主策略保持 `ask`，后续 `approval/request`
@@ -15,6 +17,16 @@
   历史。
 - auto-allow 是**会话级、内存态**：重启/重开后恢复逐项询问，避免跨会话
   静默放行。
+
+### 验证
+
+- `npm run build` / `npm run check` / `npm run smoke` 全绿。
+- smoke 覆盖 `/yolo on` 保持 `policy=ask` 并开启 autoAllow、`/yolo off`
+  关闭并恢复旧 `never`。
+- dsh 0.2.2-rc.1 隔离 profile 启动正常。
+
+覆盖提交：
+[`e518f45`](https://github.com/kovey/dsh-nvim-tui/commit/e518f45)
 
 ## [v0.6.3] — 2026-11-11
 
