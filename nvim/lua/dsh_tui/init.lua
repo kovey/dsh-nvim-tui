@@ -186,6 +186,7 @@ end
 -- dsh_tui.popup_core: the generic float family
 M.show_approval = PC.show_approval
 M.approval_decide = PC.approval_decide
+M.approval_close_silent = PC.approval_close_silent
 M.show_questions = PC.show_questions
 M.redraw_questions = PC.redraw_questions
 M.question_move = PC.question_move

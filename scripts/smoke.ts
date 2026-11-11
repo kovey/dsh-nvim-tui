@@ -27,7 +27,7 @@ import { readPatchRowIds, packageExists } from '../lib/deps/index.js'
 import { installRootCandidates } from '../lib/deps/services.js'
 import { checkSessionLog } from '../lib/kernel/session-health.js'
 import { sessionHealthLines } from '../lib/commands/commands/doctor.js'
-import { approvalHistoryLines } from '../lib/commands/commands/approvals.js'
+import { approvalHistoryLines, approvalsCommand } from '../lib/commands/commands/approvals.js'
 import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLines, APPROVAL_LOG_MAX, ensureApprovalHistory } from '../lib/kernel/approval-log.js'
 import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market/commands/plugin.js'
 import { COMMAND_ARGS } from '../lib/kernel/command-args.js'
@@ -1322,6 +1322,20 @@ description:
   await lua('require("dsh_tui").approval_decide("y")', [])
   hit = await waitNote('dsh-approval-decided')
   assert.equal(hit?.args?.[0], 'y', 'approval decision routed')
+  // Replacing an OPEN approval float must not emit a rejection for the new
+  // head. The old implementation called close_float(true), which sent
+  // dsh-approval-decided('n') and settled the freshly enqueued request.
+  drainNotes('dsh-approval-decided')
+  await lua('require("dsh_tui").show_approval(...)', [{ toolName: 'bash', reason: 'old approval' }])
+  await lua('require("dsh_tui").show_approval(...)', [{ toolName: 'bash', reason: 'new approval' }])
+  await new Promise((r) => setTimeout(r, 150))
+  assert.equal(notes.filter((n) => n.method === 'dsh-approval-decided').length, 0, 'replacing an approval float does not emit a decision')
+  const replacedFloat = await lua('return require("dsh_tui")._float', [])
+  const replacedCfg = await nvim.request('nvim_win_get_config', [replacedFloat.win])
+  assert.ok(replacedCfg.width <= (await lua('return vim.o.columns', [])) - 4, 'approval width fits the terminal')
+  await lua('require("dsh_tui").approval_decide("n")', [])
+  hit = await waitNote('dsh-approval-decided')
+  assert.equal(hit?.args?.[0], 'n', 'replacement approval still decides normally')
   // file-change diff block renders in the chat with whole-line groups
   feedA.pushDiff('✎ 修改 src/x.ts (+1 −1)', ['- old line', '+ new line', '  ctx'])
   await new Promise((r) => setTimeout(r, 200))
@@ -2018,6 +2032,16 @@ description:
     const iAllow = body.indexOf('bash')
     assert.ok(iReject >= 0 && iAllow > iReject, 'newest decision is listed first')
     assert.ok(body.includes('共 2 条'), 'count line present')
+    // `/approvals` must not swallow a failed float open: the user needs to
+    // know the history exists but could not be shown.
+    const notices: string[] = []
+    const fake = {
+      slices: { agent: { approvalHistory: [rec({ outcome: 'allow' })], approvalHistoryFor: 's' }, sessions: { activeId: 's' } },
+      luaCall: async () => { throw new Error('no ui') },
+      notice: (text: unknown) => { notices.push(String(text)) },
+    }
+    await approvalsCommand(fake as never)
+    assert.ok(notices.some((n) => n.includes('审批历史浮窗打开失败')), 'failed history float reports an error instead of silence')
     // 空历史由命令层处理（notice），格式化函数本身不该崩。
     assert.doesNotThrow(() => approvalHistoryLines([], 50), 'empty history does not throw')
   }

@@ -8,7 +8,7 @@
  */
 import type { AppSlices, WritableSlice, QuestionsEntry } from '../kernel/app.js'
 import type { ApprovalRequest } from '../kernel/types.js'
-import { locale } from '../kernel/i18n.js'
+import { locale, t } from '../kernel/i18n.js'
 import { drainPrompts } from '../kernel/prompt.js'
 const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 import type { App } from '../kernel/app.js'
@@ -114,8 +114,16 @@ export function installCommands(app: App): void {
     if (app.slices.runtime.disposed) return
     void app.luaCall('require("dsh_tui").show_approval(...)', [approvalDisplay(req)]).catch(() => {
       // Float failed to open for THIS head: settle it rejected and move on.
-      if (A.approvalReq === req) A.settleApproval('rejected')
+      if (A.approvalReq === req) {
+        A.settleApproval('rejected')
+        app.notice(t('⚠ 审批浮窗打开失败，本次审批已按拒绝处理'))
+      }
     })
+  }
+  /** Close the visible approval float without sending dsh-approval-decided:
+   *  a programmatic settle (abort/teardown) must not cancel the next head. */
+  const closeApprovalFloat = (): void => {
+    void app.luaCall('require("dsh_tui").approval_close_silent()').catch(() => {})
   }
   const advanceApproval = (): void => {
     while (A.approvalQueue.length > 0) {
@@ -147,12 +155,14 @@ export function installCommands(app: App): void {
     e.cancelled = true
     e.settle('cancelled')
     if (A.approvalReq === e.req) {
+      closeApprovalFloat()
       A.approvalReq = null
       A.approvalSettle = null
       advanceApproval()
     }
   }
   A.drainApprovals = (outcome) => {
+    if (A.approvalReq !== null || A.approvalQueue.length > 0) closeApprovalFloat()
     A.approvalSettle?.(outcome)
     A.approvalSettle = null
     A.approvalReq = null

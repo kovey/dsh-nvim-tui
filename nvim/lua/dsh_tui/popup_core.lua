@@ -258,7 +258,12 @@ function P.show_approval(entry)
     for _, line in ipairs(argLines) do table.insert(lines, line) end
   end
   table.insert(lines, '')
-  local buf = P.open_float(lines, { width = 84, title = '⚠ 审批请求' })
+  -- A previous approval float is already settled in the Node queue: closing
+  -- it with close_float(true) would emit dsh-approval-decided('n') and settle
+  -- the NEW head (the request we are about to show). Drop it silently.
+  if S.float.kind == 'approval' then P.close_float(false) end
+  local width = math.max(40, math.min(84, vim.o.columns - 4))
+  local buf = P.open_float(lines, { width = width, title = '⚠ 审批请求' })
   S.float.kind = 'approval'
   P.attach_footer(S.float.win, '[y] 允许一次  [a] 总是（自动模式）  [n] 拒绝  [Esc] 拒绝  [j/k] 滚动')
   P.float_key(buf, 'y', 'require("dsh_tui").approval_decide("y")')
@@ -275,6 +280,14 @@ function P.approval_decide(value)
   if S.channel then
     vim.rpcnotify(S.channel, 'dsh-approval-decided', value)
   end
+end
+
+--- Close an open approval float without emitting dsh-approval-decided.
+--- The Node side calls this when the request is aborted/settled
+--- programmatically; sending a decision there would settle the NEXT queue
+--- head, not the one being closed.
+function P.approval_close_silent()
+  if S.float.kind == 'approval' then P.close_float(false) end
 end
 
 --- User questions. questions: { {id, question, detail, header, options: {{label, description}}, multiSelect} }.

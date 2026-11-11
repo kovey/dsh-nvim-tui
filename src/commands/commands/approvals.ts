@@ -50,7 +50,11 @@ export const approvalsCommand = async (app: App): Promise<void> => {
     return
   }
   const lines = approvalHistoryLines(all, APPROVAL_HISTORY_MAX)
-  await app.luaCall('require("dsh_tui").show_lines_float(...)', [t('审批历史'), lines]).catch(() => {})
+  try {
+    await app.luaCall('require("dsh_tui").show_lines_float(...)', [t('审批历史'), lines])
+  } catch (err) {
+    app.notice(tf('⚠ 审批历史浮窗打开失败: {0}', [(err as Error).message]))
+  }
 }
 
 export function installApprovalsCommand(app: App): void {
