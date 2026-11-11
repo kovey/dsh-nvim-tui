@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.6.2（宿主 0.2.2-rc.1） | [v0.6.2 → v0.6.3（审批浮窗替换修复；宿主不变）](#v062--v063审批浮窗替换修复宿主不变) |
 | nvim-tui v0.6.1（宿主 0.2.2-rc.1） | [v0.6.1 → v0.6.2（审批接缝 approval.pick；宿主不变）](#v061--v062审批接缝-approvalpick宿主不变) |
 | nvim-tui v0.6.0（宿主 0.2.2-rc.1） | [v0.6.0 → v0.6.1（TUI 新功能；宿主不变）](#v060--v061tui-新功能宿主不变) |
 | nvim-tui v0.5.2（宿主 0.2.1-rc.4） | [v0.5.2 → v0.6.0（**宿主 0.2.1-rc.4 → 0.2.2-rc.1**；Agent.model/投影/工具适配）](#v052--v060宿主-021-rc4--022-rc1agentmodel投影工具适配) |
@@ -45,6 +46,32 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.6.2 → v0.6.3（审批浮窗替换修复；宿主不变）
+
+> **结论先行**：宿主不变（dsh 0.2.2-rc.1；Node ≥24.9）。这是审批路径的
+> bugfix，不新增接口。
+
+```bash
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.6.3"
+dsh --profile <name>
+```
+
+### 修了什么
+
+- 旧审批浮窗存在时打开新审批，原先 `close_float(true)` 会发
+  `dsh-approval-decided('n')`，把**新队列头**误结算成 `rejected`；现在静默
+  关闭旧浮窗。
+- `signal` abort / teardown 关闭审批浮窗时不再发送决定。
+- 审批浮窗宽度按终端列数收敛；窄终端不再打不开。
+- 审批浮窗和 `/approvals` 打开失败不再静默，给出可见错误提示。
+
+### 需要留意
+
+- 如果你在旧版本遇到过“审批通知出现、浮窗没出现、很快被拒绝”，升级后应
+  消失；如果仍出现，请抓 `approval/asked` / `approval/decided` 与
+  `nvim-tui-errors.log`，那说明还有另一条 answerer 在 TUI 之前接管。
+- `/approvals` 仍然只显示**当前会话**的历史。
 
 ## v0.6.1 → v0.6.2（审批接缝 approval.pick；宿主不变）
 

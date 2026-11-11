@@ -3,6 +3,30 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.6.3] — 2026-11-11
+
+### Fixed · 审批浮窗被旧浮窗误结算
+
+- `show_approval()` 打开新审批时，若旧 `approval` 浮窗仍在，改为
+  `close_float(false)` **静默关闭**。原先 `close_float(true)` 会发
+  `dsh-approval-decided('n')`，而 Node 队列头已经是新请求，导致新审批被
+  立刻记成 `rejected`、浮窗来不及显示。
+- 新增 `approval_close_silent()`：signal abort / teardown 关闭审批浮窗时不再
+  发送决定，不会误伤下一个队列项。
+- 审批浮窗宽度按当前列数收敛（窄终端不再因固定 84 列打不开）。
+- 审批浮窗打开失败不再只静默 settle：写入可见 notice，说明已按拒绝处理。
+- `/approvals` 的 `show_lines_float` 失败不再被 `catch {}` 吞掉，改为可见错误。
+
+### 验证
+
+- `npm run build` / `npm run check` / `npm run smoke` 全绿。
+- smoke 覆盖：旧审批浮窗存在时打开新审批不产生 `dsh-approval-decided`、
+  浮窗宽度不超列数、replacement 仍可正常决定、`/approvals` 失败有提示。
+- dsh 0.2.2-rc.1 隔离 profile 启动正常。
+
+覆盖提交：
+[`d29a7be`](https://github.com/kovey/dsh-nvim-tui/commit/d29a7be)
+
 ## [v0.6.2] — 2026-11-11
 
 ### Added · 插件审批接缝 `approval.pick`
