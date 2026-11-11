@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.6.1（宿主 0.2.2-rc.1） | [v0.6.1 → v0.6.2（审批接缝 approval.pick；宿主不变）](#v061--v062审批接缝-approvalpick宿主不变) |
 | nvim-tui v0.6.0（宿主 0.2.2-rc.1） | [v0.6.0 → v0.6.1（TUI 新功能；宿主不变）](#v060--v061tui-新功能宿主不变) |
 | nvim-tui v0.5.2（宿主 0.2.1-rc.4） | [v0.5.2 → v0.6.0（**宿主 0.2.1-rc.4 → 0.2.2-rc.1**；Agent.model/投影/工具适配）](#v052--v060宿主-021-rc4--022-rc1agentmodel投影工具适配) |
 | nvim-tui v0.5.1（宿主 0.2.1-rc.4） | [v0.5.1 → v0.5.2（schedule 修复；宿主不变）](#v051--v052schedule-修复宿主不变) |
@@ -44,6 +45,47 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.6.1 → v0.6.2（审批接缝 approval.pick；宿主不变）
+
+> **结论先行**：宿主不变（dsh 0.2.2-rc.1；Node ≥24.9）。本版新增**公开扩展
+> 接口** `TuiExtApi.approval.pick()`，`EXT_API_VERSION` 从 `0.1.0` 升到
+> `0.2.0`；这是 additive change，已有插件不需要改。
+
+```bash
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.6.2"
+dsh --profile <name>
+```
+
+### 另一个插件怎么接管审批
+
+```ts
+ctx.on('approval/request', async (request, next) => {
+  const tui = ctx.get('nvim-tui') as TuiExtApi | undefined
+  if (!tui || tui.capabilities().headless === true) return next()
+
+  const outcome = await tui.approval.pick(request)
+  return outcome === 'unavailable' ? next() : outcome
+}, { prepend: true })
+```
+
+- **必须 `prepend`**：TUI 内置审批浮窗已经占着链，后注册的 answerer 不会执行。
+- `headless` 时 `pick()` 返回 `'unavailable'` 且不弹窗，才允许 `next()`；一旦
+  显示过窗口，就不能再转给下一条链。
+- TUI 的 `approval/request` 内置浮窗保持不变；外部不接管时仍由它兜底。
+
+### 行为变化：picker 队列
+
+`ui.picker` 从「新 picker 顶掉旧 picker」改为**串行队列**（与 approval picker
+共享）。这修复了并发审批互相取消的问题；依赖“后开即取消前一个”的扩展需要
+改为等待/关闭自己的 picker。`signal` abort 会静默关闭 picker 并返回
+`'cancelled'`，不会用迟到的 `dsh-picker-cancelled` 取消下一个 picker。
+
+### 验证
+
+- `npm run build` / `check` / `smoke` 全绿；smoke 覆盖 headless 不弹窗、
+  已 abort 不弹窗、四词返回值、未知值 fail-closed。
+- dsh 0.2.2-rc.1 隔离 profile 启动正常。
 
 ## v0.6.0 → v0.6.1（TUI 新功能；宿主不变）
 

@@ -3,14 +3,36 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [Unreleased] — 插件审批接缝 `approval.pick`
+## [v0.6.2] — 2026-11-11
 
-- `TuiExtApi` 新增 `approval.pick(request)`（EXT_API_VERSION 0.1.0 → 0.2.0）：
-  另一个插件可在 `approval/request` waterfall 里用 `{ prepend: true }` 接管，
-  复用 TUI picker；headless 返回 `'unavailable'` 且不弹窗，调用方据此 `next()`。
-- picker 从「后来的顶掉前一个」改为**串行队列**；`signal` abort 会静默关闭
-  picker 并返回 `'cancelled'`，不会误伤下一个审批；teardown 会 drain 队列。
-- 不改变 TUI 自带审批浮窗：外部 answerer 返回 `next()` 时仍由 TUI 兜底。
+### Added · 插件审批接缝 `approval.pick`
+
+- `TuiExtApi` 新增 `approval.pick(request)`；`EXT_API_VERSION` `0.1.0 → 0.2.0`。
+  另一个插件可在宿主 `approval/request` waterfall 里用 `{ prepend: true }` 接管，
+  复用 TUI picker；headless 返回 `'unavailable'` 且**不弹窗**，调用方据此 `next()`。
+- 返回值严格使用宿主四词：`allowed-once` / `rejected` / `cancelled` / `unavailable`；
+  未知 picker 值 fail-closed 为 `cancelled`。
+- 不改变 TUI 自带审批浮窗：外部 answerer 返回 `next()` 时仍由 TUI 兜底；TUI 的
+  内置 answerer 不会重复弹窗。
+
+### Changed · picker 串行化
+
+- picker 从「后来的顶掉前一个」改为**串行队列**；`ui.picker` 与 approval picker
+  共享同一队列，后到的排队而不是取消前一个。
+- `signal` 在排队/展示期间 abort：静默关闭 picker（新增内部
+  `picker_close_silent`，不发 `dsh-picker-cancelled`）并返回 `'cancelled'`；
+  不会误伤下一个审批。
+- teardown 会 drain 活动 + 排队 picker，避免 host 等待悬空 promise。
+
+### 验证
+
+- `npm run build` / `npm run check` / `npm run smoke` 全绿。
+- smoke 覆盖：headless 不弹窗、已 abort 不弹窗、允许/拒绝/取消词表、未知值
+  fail-closed、picker 标题与 active 默认项。
+- dsh 0.2.2-rc.1 隔离 profile 启动正常，`dsh-nvim-tui 0.6.2` 构建可加载。
+
+覆盖提交：
+[`8367d78`](https://github.com/kovey/dsh-nvim-tui/commit/8367d78)
 
 ## [v0.6.1] — 2026-11-06
 
