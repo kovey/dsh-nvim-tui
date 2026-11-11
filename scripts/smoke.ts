@@ -47,6 +47,7 @@ import { lastAssistantText, parseCopyMode } from '../lib/commands/commands/copy.
 import { historyMarkdown } from '../lib/kernel/session-log.js'
 import { clipboardCommands } from '../lib/kernel/clipboard.js'
 import { collectTurnStats } from '../lib/transcript/commands/stats.js'
+import { approvalPickerItems, approvalPickerTitle, pickApproval } from '../lib/ext-api/index.js'
 import { modelRefFor } from '../lib/sessions/services.js'
 import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
@@ -2726,6 +2727,31 @@ description:
     assert.equal(provided?.name, 'sessionController')
     const resolved = await provided?.value.resolveAgent('session-live') as { agent?: unknown }
     assert.equal(resolved.agent, agent, 'live session resolves to its agent')
+  }
+
+  // Approval bridge: outcome vocabulary/title are stable before exposing it
+  // to other plugins; the picker queue itself is exercised in the TUI.
+  {
+    const items = approvalPickerItems()
+    assert.deepEqual(items.map((i) => i.value), ['allowed-once', 'rejected', 'cancelled'])
+    assert.equal(items[0]?.active, true)
+    const title = approvalPickerTitle({ toolName: 'bash', reason: '执行 rm -rf /tmp/x' })
+    assert.ok(title.startsWith('bash 需要你的决定'))
+    assert.ok(title.includes('rm -rf'))
+    assert.equal(approvalPickerTitle({ toolName: 'bash' }, '自定义标题'), '自定义标题')
+    let called = false
+    const headless = await pickApproval({ headless: true, openPicker: async () => { called = true; return null } } as never, {})
+    assert.equal(headless, 'unavailable', 'headless approval returns unavailable before UI')
+    assert.equal(called, false, 'headless approval never opens a picker')
+    const aborted = new AbortController()
+    aborted.abort()
+    const cancelled = await pickApproval({ headless: false, openPicker: async () => { called = true; return 'allowed-once' } } as never, { signal: aborted.signal })
+    assert.equal(cancelled, 'cancelled', 'already-aborted request is cancelled')
+    assert.equal(called, false, 'aborted request never opens a picker')
+    const rejected = await pickApproval({ headless: false, openPicker: async () => 'rejected' } as never, { toolName: 'bash' })
+    assert.equal(rejected, 'rejected', 'picker choice maps to the host outcome vocabulary')
+    const escalated = await pickApproval({ headless: false, openPicker: async () => 'bogus' } as never, { toolName: 'bash' })
+    assert.equal(escalated, 'cancelled', 'an unknown picker value fails closed')
   }
 
   // 0.2.2 TUI features: quote compaction, copy payloads, step folding, stats.

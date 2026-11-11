@@ -200,6 +200,7 @@ M.picker_move = PC.picker_move
 M.picker_jump = PC.picker_jump
 M.picker_confirm = PC.picker_confirm
 M.picker_cancel = PC.picker_cancel
+M.picker_close_silent = PC.picker_close_silent
 
 -- dsh_tui.popups: the dedicated popups
 M.show_skill = PP.show_skill

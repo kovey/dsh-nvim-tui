@@ -527,6 +527,9 @@ export interface AppSlices {
         abortQuestions: (e: QuestionsEntry) => void;
         drainQuestions: () => void;
         readonly pickerSettle: ((value: string | null) => void) | null;
+        /** Pickers waiting for the single nvim picker float (approval requests
+         *  must not cancel an unrelated picker). */
+        readonly pickerQueue: PickerStarter[];
         readonly dirSettle: ((picked: string | null) => void) | null;
         readonly subagentView: {
             childId: string;
@@ -550,6 +553,8 @@ export interface AppSlices {
         settleApproval: (outcome: string) => void;
         setPickerSettle: (fn: ((value: string | null) => void) | null) => void;
         settlePicker: (value: string | null) => void;
+        /** Teardown: settle the active picker and every queued one as cancelled. */
+        drainPickers: () => void;
         setQuestions: (r: {
             resolve: (v: {
                 answers: unknown[];
@@ -610,6 +615,14 @@ export type WritableSlice<T> = {
 };
 /** The complete cross-module surface: kernel primitives + the domain
  *  slices. Nothing else may live on the root (check-arch.mjs guards). */
+export interface PickerOptions {
+    /** Abort closes the open picker and resolves null; a queued picker is
+     *  skipped. Used by the approval bridge. */
+    signal?: AbortSignal;
+}
+/** One queued picker starter; kept as a closure so a queued picker can still
+ *  observe its signal before opening. */
+export type PickerStarter = () => void;
 export interface App {
     ctx: Context;
     runtimeCtx: RuntimeCtx;
@@ -639,7 +652,7 @@ export interface App {
         label: string;
         value: string;
         active?: boolean;
-    }>) => Promise<string | null>;
+    }>, opts?: PickerOptions) => Promise<string | null>;
     /** Live picker: same float, but `update` re-renders the OPEN popup in
      *  place (jobs/todo lists refresh their statuses without closing). */
     openLivePicker: (title: string, items: Array<{

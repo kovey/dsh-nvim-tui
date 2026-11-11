@@ -600,6 +600,14 @@ function P.update_picker(items)
   end
 end
 
+--- Close the picker without emitting dsh-picker-cancelled. The runner uses
+--- this when an external signal aborts an approval picker: it already settles
+--- the promise and advances the queue, and a late cancel notification would
+--- settle the NEXT picker.
+function P.picker_close_silent()
+  P.close_float()
+end
+
 function P.picker_cancel()
   P.close_float()
   if S.channel then

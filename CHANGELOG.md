@@ -3,6 +3,15 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [Unreleased] — 插件审批接缝 `approval.pick`
+
+- `TuiExtApi` 新增 `approval.pick(request)`（EXT_API_VERSION 0.1.0 → 0.2.0）：
+  另一个插件可在 `approval/request` waterfall 里用 `{ prepend: true }` 接管，
+  复用 TUI picker；headless 返回 `'unavailable'` 且不弹窗，调用方据此 `next()`。
+- picker 从「后来的顶掉前一个」改为**串行队列**；`signal` abort 会静默关闭
+  picker 并返回 `'cancelled'`，不会误伤下一个审批；teardown 会 drain 队列。
+- 不改变 TUI 自带审批浮窗：外部 answerer 返回 `next()` 时仍由 TUI 兜底。
+
 ## [v0.6.1] — 2026-11-06
 
 ### Added · 0.2.2 新功能的 TUI 载体

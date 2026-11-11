@@ -21,7 +21,7 @@ import type { App, AppSlices, WritableSlice } from '../kernel/app.js'
 import { registerNvimNotification } from '../kernel/rpc.js'
 
 /** Extension API version (semver, independent of the bundle version). */
-export const EXT_API_VERSION = '0.1.0'
+export const EXT_API_VERSION = '0.2.0'
 
 /** Default upper bound for one dsh-ext handler execution (both directions).
  *  vim.rpcrequest blocks nvim uninterruptibly and cannot be cancelled from
@@ -30,10 +30,12 @@ export const EXT_API_VERSION = '0.1.0'
  *  results are discarded). */
 export const EXT_HANDLER_TIMEOUT_MS = 30_000
 
-import type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardHandle, TuiExtApi } from '../kernel/ext-types.js'
+import type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardHandle, TuiExtApi, ExtApprovalRequest, ExtApprovalOutcome } from '../kernel/ext-types.js'
 import { t, tf } from '../kernel/i18n.js'
+import { pickApproval } from './approval.js'
+export { approvalPickerItems, approvalPickerTitle, pickApproval } from './approval.js'
 // Public contract re-exports: the type definitions moved to kernel/ext-types.ts
-export type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult, ExtPickerOpts, ExtPanelOpts, ExtPanelHandles, ExtRegionOpts, ExtRegionHandles, ExtCommandSpec, ExtLuaLayer, ExtUiLayer, TuiExtApi } from '../kernel/ext-types.js'
+export type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult, ExtPickerOpts, ExtPanelOpts, ExtPanelHandles, ExtRegionOpts, ExtRegionHandles, ExtCommandSpec, ExtLuaLayer, ExtUiLayer, TuiExtApi, ExtApprovalRequest, ExtApprovalOutcome } from '../kernel/ext-types.js'
 
 /** Pure filter match (exported for unit tests). */
 export function matchSessionEventFilter(
@@ -270,6 +272,10 @@ export function installExtApi(app: App): void {
       // execution layer — declared so installers can warn, never implied.
       unrestrictedExec: true,
     }),
+    approval: {
+      pick: (request: ExtApprovalRequest, opts?: { title?: string }): Promise<ExtApprovalOutcome> =>
+        pickApproval(app, request, opts),
+    },
     nvim: nvimLayer,
     on: (event, cb) => {
       let set = listeners.get(event)

@@ -128,7 +128,37 @@ await t.release()                      // 只释放 top 这块
 await tui.ui.regionRelease('dsh-build') // 释放槽的全部边
 ```
 
-### 2.3 事件 / 会话 / 命令
+### 2.3 审批接缝 `tui.approval`
+
+TUI 自己已经注册了 `approval/request`（内置审批浮窗 + 并发队列）。另一个插件
+如果要**优先**接管审批（例如 IM/远程审批），应该用 `{ prepend: true }` 注册
+宿主 waterfall；当远程通道不可用时返回 `next()`，由 TUI 的浮窗兜底。
+
+不要用 `ui.card` 做裁决：它把内容写进聊天流，并且动作会被截断。用
+`tui.approval.pick()`，它复用 nvim picker，内部串行化、尊重 `signal`，且在
+headless 下返回 `'unavailable'` **不会弹窗**：
+
+```ts
+const tui = ctx.get('nvim-tui') as TuiExtApi | undefined
+if (!tui || tui.capabilities().headless === true) return next()
+
+const outcome = await tui.approval.pick(request) // 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
+if (outcome === 'unavailable') return next()     // 没弹过窗，才允许回落
+return outcome
+```
+
+配套规则：
+
+- `pick()` 返回 `'unavailable'` 时**没有显示任何 UI**，可以安全 `next()`；
+  其余三个值表示已经裁决，不能再转给下一条链。
+- `signal` 在排队/展示期间 abort：关闭 picker 并返回 `'cancelled'`；不会把
+  下一个审批的 picker 顶掉。
+- 同一时刻只有一个 nvim picker；`tui.ui.picker` 与 approval picker 现在共享
+  串行队列，后到的排队而不是取消前一个。
+- 不 `prepend` 时 TUI 已经先消费了请求，你的 answerer 不会运行；要接管必须
+  `prepend: true`，并自己负责在不可用时 `next()`。
+
+### 2.4 事件 / 会话 / 命令
 
 ```ts
 const off = tui.on('tui:active-session', (payload) => { /* { id } */ })
@@ -153,7 +183,7 @@ const offCmd = tui.registerCommands([{
 offCmd()  // 注销
 ```
 
-### 2.4 扩展总线 `tui.luaExt`（与 nvim 插件互调）
+### 2.5 扩展总线 `tui.luaExt`（与 nvim 插件互调）
 
 ```ts
 // 调 nvim 插件注册的方法（api.rpc_register）；失败 reject 远端错误，
@@ -169,7 +199,7 @@ const offRpc = tui.luaExt.on('git-panel', async (method, args) => {
 }, { timeoutMs: 10_000 })
 ```
 
-### 2.5 TuiExtApi 类型摘要
+### 2.6 TuiExtApi 类型摘要
 
 ```ts
 export interface TuiExtApi {
@@ -178,6 +208,7 @@ export interface TuiExtApi {
   capabilities(): Record<string, boolean>        // headless/card/float/picker/panel/region/rpc
   nvim: { request; call; lua; ex }
   ui: { card; float; floatClose; picker; notice; statuslineSegment; panel; panelRelease }
+  approval: { pick(request): Promise<'allowed-once'|'rejected'|'cancelled'|'unavailable'> }
   on(event: ExtEventName, cb): () => void
   onSessionEvent(filter, cb): () => void
   getActiveSessionId(): string | null

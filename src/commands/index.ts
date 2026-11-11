@@ -160,7 +160,20 @@ export function installCommands(app: App): void {
     A.approvalQueue.length = 0
   }
   A.setPickerSettle = (fn) => { A.pickerSettle = fn }
-  A.settlePicker = (value) => { const fn = A.pickerSettle; A.pickerSettle = null; fn?.(value) }
+  A.settlePicker = (value) => {
+    const fn = A.pickerSettle
+    A.pickerSettle = null
+    fn?.(value)
+    const next = A.pickerQueue.shift()
+    if (next !== undefined) next()
+  }
+  A.drainPickers = () => {
+    const pending = A.pickerQueue.splice(0)
+    const active = A.pickerSettle
+    A.pickerSettle = null
+    active?.(null)
+    for (const start of pending) start()
+  }
   A.setQuestions = (r) => { A.questionsResolve = r }
   const showQuestionsFloat = (e: QuestionsEntry): void => {
     if (app.slices.runtime.disposed) return
@@ -279,6 +292,7 @@ export function installCommands(app: App): void {
     approvalReq: null,
     questionsResolve: null,
     pickerSettle: null,
+    pickerQueue: [],
     dirSettle: null,
   })
 

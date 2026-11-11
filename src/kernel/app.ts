@@ -437,6 +437,9 @@ export interface AppSlices {
     abortQuestions: (e: QuestionsEntry) => void
     drainQuestions: () => void
     readonly pickerSettle: ((value: string | null) => void) | null
+    /** Pickers waiting for the single nvim picker float (approval requests
+     *  must not cancel an unrelated picker). */
+    readonly pickerQueue: PickerStarter[]
     readonly dirSettle: ((picked: string | null) => void) | null
     readonly subagentView: { childId: string; feed: FeedRenderer } | null
     readonly subagentChat: { childId: string; parentId: string; label: string; feed: FeedRenderer } | null
@@ -449,6 +452,8 @@ export interface AppSlices {
     settleApproval: (outcome: string) => void
     setPickerSettle: (fn: ((value: string | null) => void) | null) => void
     settlePicker: (value: string | null) => void
+    /** Teardown: settle the active picker and every queued one as cancelled. */
+    drainPickers: () => void
     setQuestions: (r: { resolve: (v: { answers: unknown[] }) => void; reject: (e: Error) => void } | null) => void
     settleQuestions: (answers: unknown[]) => void
     rejectQuestions: (reason?: string) => void
@@ -474,6 +479,16 @@ export type WritableSlice<T> = { -readonly [K in keyof T]: T[K] }
 
 /** The complete cross-module surface: kernel primitives + the domain
  *  slices. Nothing else may live on the root (check-arch.mjs guards). */
+export interface PickerOptions {
+  /** Abort closes the open picker and resolves null; a queued picker is
+   *  skipped. Used by the approval bridge. */
+  signal?: AbortSignal
+}
+
+/** One queued picker starter; kept as a closure so a queued picker can still
+ *  observe its signal before opening. */
+export type PickerStarter = () => void
+
 export interface App {
   // -- kernel (REAL properties; the only thing P1 leaves on the root) --------
   ctx: Context
@@ -498,7 +513,7 @@ export interface App {
   /** Drain notices buffered before any session was active into `feed`. */
   flushPendingNotices: (feed: { appendNotice: (t: unknown) => void }) => void
   notice: (text: unknown) => void
-  openPicker: (title: string, items: Array<{ label: string; value: string; active?: boolean }>) => Promise<string | null>
+  openPicker: (title: string, items: Array<{ label: string; value: string; active?: boolean }>, opts?: PickerOptions) => Promise<string | null>
   /** Live picker: same float, but `update` re-renders the OPEN popup in
    *  place (jobs/todo lists refresh their statuses without closing). */
   openLivePicker: (title: string, items: Array<{ label: string; value: string }>) => {
@@ -780,21 +795,47 @@ export function createApp(ctx: Context, runtimeCtx: RuntimeCtx, config: RunnerCo
     for (const t of q.splice(0, q.length)) feed.appendNotice(t)
   }
 
-  app.openPicker = (title: string, items: Array<{ label: string; value: string; active?: boolean }>) =>
+  app.openPicker = (title: string, items: Array<{ label: string; value: string; active?: boolean }>, opts: PickerOptions = {}) =>
     new Promise<string | null>((resolve) => {
-      // Single-slot semantics: a second picker supersedes the first — settle
-      // the previous one as cancelled so its awaiter can never hang forever
-      // (the tui_command tool can open two pickers back-to-back).
-      if (app.slices.agent.pickerSettle !== null) app.slices.agent.settlePicker(null)
-      app.slices.agent.setPickerSettle(resolve)
-      void luaCall('require("dsh_tui").show_picker(...)', [title, items])
-        .catch(() => {
-          // Identity-checked failure settle: a STALE picker's failed open
-          // must not cancel its successor (pre-review: the unconditional
-          // settlePicker(null) settled picker #2 when picker #1's luaCall
-          // rejected late — the user's #2 choice was silently discarded).
-          if (app.slices.agent.pickerSettle === resolve) app.slices.agent.settlePicker(null)
-        })
+      const signal = opts.signal
+      if (signal?.aborted === true) { resolve(null); return }
+      const start = (): void => {
+        if (app.slices.runtime.disposed) { resolve(null); return }
+        if (signal?.aborted === true) {
+          resolve(null)
+          // No picker is active at this point (this starter runs from the
+          // queue); settlePicker advances any later waiter.
+          app.slices.agent.settlePicker(null)
+          return
+        }
+        let settled = false
+        const settle = (value: string | null): void => {
+          if (settled) return
+          settled = true
+          try { signal?.removeEventListener('abort', onAbort) } catch {}
+          resolve(value)
+        }
+        const onAbort = (): void => {
+          if (app.slices.agent.pickerSettle !== settle) return
+          // Close the visible float before advancing: otherwise the next
+          // picker would replace it while the aborted caller already moved on.
+          void luaCall('require("dsh_tui").picker_close_silent()').catch(() => {})
+          app.slices.agent.settlePicker(null)
+        }
+        signal?.addEventListener('abort', onAbort, { once: true })
+        app.slices.agent.setPickerSettle(settle)
+        void luaCall('require("dsh_tui").show_picker(...)', [title, items])
+          .catch(() => {
+            if (app.slices.agent.pickerSettle === settle) app.slices.agent.settlePicker(null)
+          })
+      }
+      // Single nvim float: queue instead of superseding. A second picker used
+      // to cancel the first — fatal when an approval picker raced a command.
+      if (app.slices.agent.pickerSettle !== null || app.slices.agent.pickerQueue.length > 0) {
+        app.slices.agent.pickerQueue.push(start)
+        return
+      }
+      start()
     })
 
   app.openLivePicker = (title: string, items: Array<{ label: string; value: string }>) => ({

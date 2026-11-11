@@ -1,6 +1,6 @@
 import type { App } from '../kernel/app.js';
 /** Extension API version (semver, independent of the bundle version). */
-export declare const EXT_API_VERSION = "0.1.0";
+export declare const EXT_API_VERSION = "0.2.0";
 /** Default upper bound for one dsh-ext handler execution (both directions).
  *  vim.rpcrequest blocks nvim uninterruptibly and cannot be cancelled from
  *  Lua — the bounded answer is the ONLY freeze protection, so the runner
@@ -8,7 +8,8 @@ export declare const EXT_API_VERSION = "0.1.0";
  *  results are discarded). */
 export declare const EXT_HANDLER_TIMEOUT_MS = 30000;
 import type { ExtSessionEventFilter } from '../kernel/ext-types.js';
-export type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult, ExtPickerOpts, ExtPanelOpts, ExtPanelHandles, ExtRegionOpts, ExtRegionHandles, ExtCommandSpec, ExtLuaLayer, ExtUiLayer, TuiExtApi } from '../kernel/ext-types.js';
+export { approvalPickerItems, approvalPickerTitle, pickApproval } from './approval.js';
+export type { ExtNvimLayer, ExtSessionEventFilter, ExtEventName, ExtCardOpts, ExtCardHandle, ExtFloatOpts, ExtFloatResult, ExtPickerOpts, ExtPanelOpts, ExtPanelHandles, ExtRegionOpts, ExtRegionHandles, ExtCommandSpec, ExtLuaLayer, ExtUiLayer, TuiExtApi, ExtApprovalRequest, ExtApprovalOutcome } from '../kernel/ext-types.js';
 /** Pure filter match (exported for unit tests). */
 export declare function matchSessionEventFilter(filter: ExtSessionEventFilter, sessionId: string, eventType: string): boolean;
 /** Install the extension API onto the App (runs before boot; index.ts then

@@ -95,7 +95,7 @@ export function installLifecycle(app: App): void {
     // not just the heads (concurrent parent+subagent requests).
     app.slices.agent.drainApprovals('cancelled')
     app.slices.agent.drainQuestions()
-    app.slices.agent.settlePicker(null)
+    app.slices.agent.drainPickers()
     if (app.slices.sessions.activeId !== null) app.slices.sessions.recordState(app.slices.sessions.activeId)
     // Persist every live session before disposing its agents. Bounded: an
     // active turn holds the session's append boundary open, and the flush /

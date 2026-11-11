@@ -192,6 +192,24 @@ export interface ExtLuaLayer {
         timeoutMs?: number;
     }): () => void;
 }
+/** Approval outcome vocabulary (dsh-user-approval). */
+export type ExtApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable';
+/** Structural approval request another plugin may pass to approval.pick(). */
+export interface ExtApprovalRequest {
+    toolName?: string;
+    reason?: string;
+    callId?: string;
+    displayReason?: Record<string, string>;
+    signal?: AbortSignal;
+}
+/** Headless-safe approval picker. Returns 'unavailable' before showing any
+ *  UI, so the caller can delegate with next(); a shown picker always settles
+ *  one of the other three outcomes. */
+export interface ExtApprovalLayer {
+    pick(request: ExtApprovalRequest, opts?: {
+        title?: string;
+    }): Promise<ExtApprovalOutcome>;
+}
 /** Managed UI primitives (headless degrades to no-ops where flagged). */
 export interface ExtUiLayer {
     /** Render a plugin card into a session feed. */
@@ -251,6 +269,8 @@ export interface TuiExtApi {
     insertInput(text: string): void;
     /** Managed UI primitives. */
     ui: ExtUiLayer;
+    /** Approval answerer helper for plugins that prepend the host waterfall. */
+    approval: ExtApprovalLayer;
     /** Register slash commands (name WITHOUT '/') into the completion
      *  catalog + /help. Duplicate names are rejected. Returns a disposer. */
     registerCommands(cmds: ExtCommandSpec[]): () => void;
