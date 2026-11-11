@@ -265,7 +265,7 @@ function P.show_approval(entry)
   local width = math.max(40, math.min(84, vim.o.columns - 4))
   local buf = P.open_float(lines, { width = width, title = '⚠ 审批请求' })
   S.float.kind = 'approval'
-  P.attach_footer(S.float.win, '[y] 允许一次  [a] 总是（自动模式）  [n] 拒绝  [Esc] 拒绝  [j/k] 滚动')
+  P.attach_footer(S.float.win, '[y] 允许一次  [a] 自动允许后续  [n] 拒绝  [Esc] 拒绝  [j/k] 滚动')
   P.float_key(buf, 'y', 'require("dsh_tui").approval_decide("y")')
   P.float_key(buf, 'a', 'require("dsh_tui").approval_decide("always")')
   P.float_key(buf, 'n', 'require("dsh_tui").approval_decide("n")')

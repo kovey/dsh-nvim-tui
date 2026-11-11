@@ -76,6 +76,7 @@ export const attachSession = async (app: App, handle: AgentHandle, opts?: { back
     contextWindow: undefined,
     mode: undefined,
     policy: undefined,
+    autoAllow: false,
     provider: undefined,
     cacheReported: false,
     lastAssistantMessageId: null,

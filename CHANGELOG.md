@@ -3,6 +3,19 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [Unreleased] — `always` 改为真正的自动允许
+
+- 审批浮窗按 `a`（always）不再写宿主 `approval/policy = never`；改为在当前
+  会话启用 TUI 层 auto-allow。宿主策略保持 `ask`，后续 `approval/request`
+  仍进入 waterfall 并记录 `approval/asked` + `approval/decided`，只是不再弹窗，
+  直接返回 `allowed-once`。
+- `/yolo on|off` 现在控制同一 auto-allow；`/yolo off` 会把旧版本遗留的
+  `never` 策略恢复成 `ask`，避免继续自动拒绝。
+- 状态栏显示 `⚡auto`；每次自动允许在 feed 留一行通知，并写入 `/approvals`
+  历史。
+- auto-allow 是**会话级、内存态**：重启/重开后恢复逐项询问，避免跨会话
+  静默放行。
+
 ## [v0.6.3] — 2026-11-11
 
 ### Fixed · 审批浮窗被旧浮窗误结算

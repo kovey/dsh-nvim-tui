@@ -28,6 +28,7 @@ import { installRootCandidates } from '../lib/deps/services.js'
 import { checkSessionLog } from '../lib/kernel/session-health.js'
 import { sessionHealthLines } from '../lib/commands/commands/doctor.js'
 import { approvalHistoryLines, approvalsCommand } from '../lib/commands/commands/approvals.js'
+import { yoloCommand } from '../lib/commands/commands/yolo.js'
 import { appendApproval, loadApprovalHistory, approvalLogPath, parseApprovalLines, APPROVAL_LOG_MAX, ensureApprovalHistory } from '../lib/kernel/approval-log.js'
 import { installPluginCommand, parsePluginArgs, gitSpecRef } from '../lib/market/commands/plugin.js'
 import { COMMAND_ARGS } from '../lib/kernel/command-args.js'
@@ -2776,6 +2777,44 @@ description:
     assert.equal(rejected, 'rejected', 'picker choice maps to the host outcome vocabulary')
     const escalated = await pickApproval({ headless: false, openPicker: async () => 'bogus' } as never, { toolName: 'bash' })
     assert.equal(escalated, 'cancelled', 'an unknown picker value fails closed')
+  }
+
+  // Auto-allow ("always") must never fall back to the host's never policy:
+  // never is checked BEFORE the waterfall and auto-rejects.
+  {
+    const events: Array<{ type: string; data: unknown }> = []
+    const rec = {
+      autoAllow: false,
+      policy: 'never',
+      handle: { agent: { session: { append: (type: string, data: unknown) => events.push({ type, data }) } } },
+    }
+    const notices: string[] = []
+    const fake = {
+      slices: {
+        sessions: { activeId: 's', live: new Map([['s', rec]]) },
+        ui: { updateStatusline: () => {} },
+      },
+      notice: (text: unknown) => { notices.push(String(text)) },
+    }
+    yoloCommand(fake as never, 'on')
+    assert.equal(rec.autoAllow, true, 'yolo on enables TUI auto-allow')
+    assert.equal(rec.policy, 'ask', 'yolo on keeps the host policy at ask')
+    assert.deepEqual(events, [{ type: 'approval/policy', data: { policy: 'ask' } }], 'yolo on resets never to ask')
+    yoloCommand(fake as never, 'off')
+    assert.equal(rec.autoAllow, false, 'yolo off disables auto-allow')
+    assert.ok(notices.some((n) => n.includes('自动允许已开启')), 'turning auto-allow on is visible')
+    const legacyEvents: Array<{ type: string; data: unknown }> = []
+    const legacy = {
+      autoAllow: false,
+      policy: 'never',
+      handle: { agent: { session: { append: (type: string, data: unknown) => legacyEvents.push({ type, data }) } } },
+    }
+    yoloCommand({
+      slices: { sessions: { activeId: 'legacy', live: new Map([['legacy', legacy]]) }, ui: { updateStatusline: () => {} } },
+      notice: () => {},
+    } as never, 'off')
+    assert.equal(legacy.policy, 'ask', 'yolo off recovers a legacy never policy')
+    assert.deepEqual(legacyEvents, [{ type: 'approval/policy', data: { policy: 'ask' } }], 'legacy never is reset to ask')
   }
 
   // 0.2.2 TUI features: quote compaction, copy payloads, step folding, stats.

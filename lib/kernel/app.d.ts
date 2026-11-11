@@ -159,6 +159,10 @@ export interface SessionRec {
     contextWindow: number | undefined;
     mode: string | undefined;
     policy: string | undefined;
+    /** TUI-level auto-allow ("always"): subsequent approval/request calls for
+     *  this session resolve `allowed-once` without a float. The host policy
+     *  stays `ask` so the waterfall is still dispatched and audited. */
+    autoAllow: boolean;
     provider: string | undefined;
     cacheReported: boolean;
     /** Reset to undefined on /rewind replay (explicit undefined allowed). */

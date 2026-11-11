@@ -13,7 +13,8 @@ export const statusCommand = (app: App) => {
     return
   }
   app.notice(`${rec.id} · ${rec.title ?? t('（无标题）')} · ${rec.status ?? '○ idle'}`)
-  app.notice(tf('模型 {0} · 权限 {1} · 审批 {2}', [rec.model ?? '?', modeLabel(rec.mode), rec.policy ?? 'ask']))
+  const approval = rec.autoAllow === true ? '⚡auto（自动允许）' : rec.policy ?? 'ask'
+  app.notice(tf('模型 {0} · 权限 {1} · 审批 {2}', [rec.model ?? '?', modeLabel(rec.mode), approval]))
 }
 
 export function installStatusCommand(app: App): void {
