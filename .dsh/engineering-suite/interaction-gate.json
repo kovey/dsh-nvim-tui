@@ -1,0 +1,5 @@
+{
+  "askTimeoutMs": 900000,
+  "requireApproverList": false,
+  "preferredChannels": []
+}

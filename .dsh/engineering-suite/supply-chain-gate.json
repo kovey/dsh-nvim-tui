@@ -1,0 +1,7 @@
+{
+  "deps": {
+    "manifests": ["package.json"],
+    "auditCommands": []
+  },
+  "secretScan": { "scanWholeTree": false }
+}

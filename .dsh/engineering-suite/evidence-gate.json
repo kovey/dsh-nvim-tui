@@ -1,0 +1,6 @@
+{
+  "requireGate": true,
+  "gateSource": "dsh-quality-gate",
+  "requiredEvidenceKinds": ["command", "test"],
+  "requireCleanTree": true
+}

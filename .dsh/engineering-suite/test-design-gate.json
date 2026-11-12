@@ -1,0 +1,6 @@
+{
+  "strict": false,
+  "minTextLength": 4,
+  "allowDanglingCase": false,
+  "requireAllScenarios": true
+}

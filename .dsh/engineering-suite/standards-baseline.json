@@ -1,0 +1,2001 @@
+{
+  "version": 1,
+  "frozenAt": "2026-11-11T12:25:10.543Z",
+  "note": "nvim-tui 首次接入结构规范：冻结当前 332 项存量违规为基线，之后只挡新增/恶化；阈值与豁免来自 .dsh/engineering-suite/standards.json。",
+  "accepted": [
+    "cycle|src/kernel/app.ts|src/kernel/app.ts -> src/kernel/command-args.ts",
+    "maxDepth|examples/dsh-plugin/index.ts|apply",
+    "maxDepth|lib/boot/boot.js|boot",
+    "maxDepth|lib/boot/session-events.js|makeSessionEventHandler",
+    "maxDepth|lib/commands/commands/account.js|accountCommand",
+    "maxDepth|lib/commands/commands/context.js|contextCommand",
+    "maxDepth|lib/commands/commands/fb.js|feedbackCommand",
+    "maxDepth|lib/commands/commands/model.js|pickModel",
+    "maxDepth|lib/commands/commands/models.js|extract",
+    "maxDepth|lib/commands/commands/settings.js|settingsCommand",
+    "maxDepth|lib/commands/commands/terminal.js|installTerminalCommand",
+    "maxDepth|lib/commands/core.js|registerTool",
+    "maxDepth|lib/commands/job-tail.js|tick",
+    "maxDepth|lib/commands/nlcmd.js|matchOnce",
+    "maxDepth|lib/deps/services.js|findProfilePatchPath",
+    "maxDepth|lib/ext-api/index.js|dispatch",
+    "maxDepth|lib/feed/feed.js|FeedRenderer.applyEvent",
+    "maxDepth|lib/feed/images.js|readClipboardImage",
+    "maxDepth|lib/feed/table.js|transformTables",
+    "maxDepth|lib/feed/whale.js|rowsToBitmap",
+    "maxDepth|lib/kernel/app.js|createApp",
+    "maxDepth|lib/kernel/bridge.js|connectNvim",
+    "maxDepth|lib/kernel/clipboard.js|writeClipboardText",
+    "maxDepth|lib/kernel/difficulty.js|classifyViaLlm",
+    "maxDepth|lib/kernel/lifecycle.js|installLifecycle",
+    "maxDepth|lib/kernel/todo-guard.js|installTodoGuard",
+    "maxDepth|lib/market/commands/market.js|marketCommand",
+    "maxDepth|lib/market/progress.js|buildCatalog",
+    "maxDepth|lib/sessions/commands/sessions.js|sessionsCommand",
+    "maxDepth|lib/sessions/index.js|cleanSubagentChain",
+    "maxDepth|lib/sessions/services.js|doResumeSession",
+    "maxDepth|lib/sessions/session-controller.js|installSessionController",
+    "maxDepth|lib/statusline/index.js|installStatusline",
+    "maxDepth|lib/subagents/commands/subagents.js|subagentsCommand",
+    "maxDepth|lib/subagents/index.js|openSubagentView",
+    "maxDepth|lib/transcript/commands/outline.js|turnOutlineRows",
+    "maxDepth|lib/transcript/commands/queue.js|add",
+    "maxDepth|lib/transcript/index.js|repairOrphanToolCalls",
+    "maxDepth|scripts/app-ops-check.mjs|(file)",
+    "maxDepth|scripts/whale-gen.ts|rasterize",
+    "maxDepth|src/boot/boot.ts|boot",
+    "maxDepth|src/boot/session-events.ts|makeSessionEventHandler",
+    "maxDepth|src/commands/commands/account.ts|accountCommand",
+    "maxDepth|src/commands/commands/context.ts|contextCommand",
+    "maxDepth|src/commands/commands/fb.ts|feedbackCommand",
+    "maxDepth|src/commands/commands/model.ts|pickModel",
+    "maxDepth|src/commands/commands/models.ts|extract",
+    "maxDepth|src/commands/commands/permission.ts|spec",
+    "maxDepth|src/commands/commands/settings.ts|settingsCommand",
+    "maxDepth|src/commands/commands/terminal.ts|installTerminalCommand",
+    "maxDepth|src/commands/core.ts|registerTool",
+    "maxDepth|src/commands/job-tail.ts|tick",
+    "maxDepth|src/commands/nlcmd.ts|matchOnce",
+    "maxDepth|src/deps/services.ts|findProfilePatchPath",
+    "maxDepth|src/ext-api/index.ts|dispatch",
+    "maxDepth|src/feed/feed.ts|FeedRenderer.applyEvent",
+    "maxDepth|src/feed/images.ts|readClipboardImage",
+    "maxDepth|src/feed/table.ts|transformTables",
+    "maxDepth|src/feed/whale.ts|rowsToBitmap",
+    "maxDepth|src/kernel/app.ts|createApp",
+    "maxDepth|src/kernel/bridge.ts|connectNvim",
+    "maxDepth|src/kernel/clipboard.ts|writeClipboardText",
+    "maxDepth|src/kernel/difficulty.ts|classifyViaLlm",
+    "maxDepth|src/kernel/headless.ts|dumpAndQuit",
+    "maxDepth|src/kernel/lifecycle.ts|installLifecycle",
+    "maxDepth|src/kernel/todo-guard.ts|installTodoGuard",
+    "maxDepth|src/market/commands/market.ts|marketCommand",
+    "maxDepth|src/market/progress.ts|buildCatalog",
+    "maxDepth|src/sessions/commands/sessions.ts|sessionsCommand",
+    "maxDepth|src/sessions/index.ts|listSubagentChildren",
+    "maxDepth|src/sessions/services.ts|doResumeSession",
+    "maxDepth|src/sessions/session-controller.ts|installSessionController",
+    "maxDepth|src/statusline/index.ts|installStatusline",
+    "maxDepth|src/subagents/commands/subagents.ts|subagentsCommand",
+    "maxDepth|src/subagents/index.ts|openSubagentView",
+    "maxDepth|src/transcript/commands/outline.ts|turnOutlineRows",
+    "maxDepth|src/transcript/commands/queue.ts|add",
+    "maxDepth|src/transcript/index.ts|repairOrphanToolCalls",
+    "maxExports|lib/commands/core.js|(file)",
+    "maxExports|lib/ext-api/index.d.ts|(file)",
+    "maxExports|lib/index.d.ts|(file)",
+    "maxExports|lib/kernel/app.d.ts|(file)",
+    "maxExports|lib/kernel/ext-types.d.ts|(file)",
+    "maxExports|lib/kernel/types.d.ts|(file)",
+    "maxExports|lib/market/progress.js|(file)",
+    "maxExports|src/commands/core.ts|(file)",
+    "maxExports|src/ext-api/index.ts|(file)",
+    "maxExports|src/kernel/app.ts|(file)",
+    "maxExports|src/kernel/ext-types.ts|(file)",
+    "maxExports|src/kernel/types.ts|(file)",
+    "maxExports|src/market/progress.ts|(file)",
+    "maxFileLines|lib/boot/boot.js|(file)",
+    "maxFileLines|lib/boot/session-events.js|(file)",
+    "maxFileLines|lib/commands/commands/schedule.js|(file)",
+    "maxFileLines|lib/commands/core.js|(file)",
+    "maxFileLines|lib/commands/index.js|(file)",
+    "maxFileLines|lib/commands/nlcmd.js|(file)",
+    "maxFileLines|lib/deps/services.js|(file)",
+    "maxFileLines|lib/ext-api/index.js|(file)",
+    "maxFileLines|lib/feed/feed.d.ts|(file)",
+    "maxFileLines|lib/feed/feed.js|(file)",
+    "maxFileLines|lib/kernel/app.d.ts|(file)",
+    "maxFileLines|lib/kernel/app.js|(file)",
+    "maxFileLines|lib/kernel/difficulty.js|(file)",
+    "maxFileLines|lib/kernel/i18n.js|(file)",
+    "maxFileLines|lib/kernel/lifecycle.js|(file)",
+    "maxFileLines|lib/kernel/types.d.ts|(file)",
+    "maxFileLines|lib/market/progress.js|(file)",
+    "maxFileLines|lib/sessions/index.js|(file)",
+    "maxFileLines|lib/sessions/services.js|(file)",
+    "maxFileLines|lib/statusline/index.js|(file)",
+    "maxFileLines|lib/subagents/index.js|(file)",
+    "maxFileLines|lib/transcript/index.js|(file)",
+    "maxFileLines|scripts/whale-gen.ts|(file)",
+    "maxFileLines|src/boot/boot.ts|(file)",
+    "maxFileLines|src/boot/session-events.ts|(file)",
+    "maxFileLines|src/commands/core.ts|(file)",
+    "maxFileLines|src/commands/index.ts|(file)",
+    "maxFileLines|src/commands/nlcmd.ts|(file)",
+    "maxFileLines|src/deps/services.ts|(file)",
+    "maxFileLines|src/ext-api/index.ts|(file)",
+    "maxFileLines|src/feed/feed.ts|(file)",
+    "maxFileLines|src/kernel/app.ts|(file)",
+    "maxFileLines|src/kernel/difficulty.ts|(file)",
+    "maxFileLines|src/kernel/i18n.ts|(file)",
+    "maxFileLines|src/kernel/types.ts|(file)",
+    "maxFileLines|src/market/progress.ts|(file)",
+    "maxFileLines|src/sessions/index.ts|(file)",
+    "maxFileLines|src/sessions/services.ts|(file)",
+    "maxFileLines|src/statusline/index.ts|(file)",
+    "maxFileLines|src/subagents/index.ts|(file)",
+    "maxFileLines|src/transcript/index.ts|(file)",
+    "maxFunctionLines|examples/dsh-plugin/index.ts|apply",
+    "maxFunctionLines|lib/boot/boot.js|boot",
+    "maxFunctionLines|lib/boot/session-events.js|makeSessionEventHandler",
+    "maxFunctionLines|lib/commands/commands/account.js|accountCommand",
+    "maxFunctionLines|lib/commands/commands/changes.js|changesCommand",
+    "maxFunctionLines|lib/commands/commands/changes.js|showWorkspaceChanges",
+    "maxFunctionLines|lib/commands/commands/fb.js|feedbackCommand",
+    "maxFunctionLines|lib/commands/commands/mcp.js|mcpCommand",
+    "maxFunctionLines|lib/commands/commands/model.js|pickModel",
+    "maxFunctionLines|lib/commands/commands/official-commands.js|officialCommandsCommand",
+    "maxFunctionLines|lib/commands/commands/permission.js|permissionCommand",
+    "maxFunctionLines|lib/commands/commands/plugins.js|toggleCommand",
+    "maxFunctionLines|lib/commands/commands/schedule.js|createWizard",
+    "maxFunctionLines|lib/commands/commands/schedule.js|scheduleCommand",
+    "maxFunctionLines|lib/commands/commands/settings.js|settingsCommand",
+    "maxFunctionLines|lib/commands/core.js|followup",
+    "maxFunctionLines|lib/commands/core.js|onInput",
+    "maxFunctionLines|lib/commands/core.js|registerHostEventHandlers",
+    "maxFunctionLines|lib/commands/core.js|registerNotifications",
+    "maxFunctionLines|lib/commands/core.js|registerTool",
+    "maxFunctionLines|lib/commands/index.js|installCommands",
+    "maxFunctionLines|lib/commands/job-tail.js|jobTailCommand",
+    "maxFunctionLines|lib/deps/services.js|checkAll",
+    "maxFunctionLines|lib/deps/services.js|installCommand",
+    "maxFunctionLines|lib/ext-api/index.js|installExtApi",
+    "maxFunctionLines|lib/feed/diff.js|diffTexts",
+    "maxFunctionLines|lib/feed/feed.js|FeedRenderer.applyEvent",
+    "maxFunctionLines|lib/feed/feed.js|FeedRenderer.flush",
+    "maxFunctionLines|lib/feed/feed.js|FeedRenderer.flushReasoningBufferInner",
+    "maxFunctionLines|lib/feed/images.js|readClipboardImage",
+    "maxFunctionLines|lib/feed/table.js|renderTable",
+    "maxFunctionLines|lib/index.js|apply",
+    "maxFunctionLines|lib/kernel/app.js|createApp",
+    "maxFunctionLines|lib/kernel/bridge.js|spawnNvim",
+    "maxFunctionLines|lib/kernel/lifecycle.js|installLifecycle",
+    "maxFunctionLines|lib/kernel/todo-guard.js|installTodoGuard",
+    "maxFunctionLines|lib/market/commands/market.js|marketCommand",
+    "maxFunctionLines|lib/market/progress.js|installWithRepair",
+    "maxFunctionLines|lib/sessions/commands/sessions.js|sessionsCommand",
+    "maxFunctionLines|lib/sessions/commands/workspace.js|workspaceCommand",
+    "maxFunctionLines|lib/sessions/index.js|installSessions",
+    "maxFunctionLines|lib/sessions/services.js|attachSession",
+    "maxFunctionLines|lib/sessions/services.js|doResumeSession",
+    "maxFunctionLines|lib/sessions/services.js|forkSession",
+    "maxFunctionLines|lib/sessions/services.js|switchTo",
+    "maxFunctionLines|lib/statusline/index.js|installStatusline",
+    "maxFunctionLines|lib/statusline/index.js|refreshBgJobs",
+    "maxFunctionLines|lib/statusline/index.js|updateStatusline",
+    "maxFunctionLines|lib/subagents/commands/subagents.js|subagentsCommand",
+    "maxFunctionLines|lib/subagents/index.js|installSubagents",
+    "maxFunctionLines|lib/subagents/index.js|openSubagentChat",
+    "maxFunctionLines|lib/subagents/index.js|openSubagentView",
+    "maxFunctionLines|lib/transcript/commands/queue.js|queueCommand",
+    "maxFunctionLines|lib/transcript/commands/rewind.js|rewindCommand",
+    "maxFunctionLines|lib/transcript/commands/stats.js|collectTurnStats",
+    "maxFunctionLines|lib/transcript/index.js|installTranscript",
+    "maxFunctionLines|lib/transcript/index.js|repairOrphanToolCalls",
+    "maxFunctionLines|scripts/whale-gen.ts|flattenPath",
+    "maxFunctionLines|src/boot/boot.ts|boot",
+    "maxFunctionLines|src/boot/session-events.ts|makeSessionEventHandler",
+    "maxFunctionLines|src/commands/commands/account.ts|accountCommand",
+    "maxFunctionLines|src/commands/commands/changes.ts|changesCommand",
+    "maxFunctionLines|src/commands/commands/changes.ts|showWorkspaceChanges",
+    "maxFunctionLines|src/commands/commands/mcp.ts|mcpCommand",
+    "maxFunctionLines|src/commands/commands/model.ts|pickModel",
+    "maxFunctionLines|src/commands/commands/permission.ts|permissionCommand",
+    "maxFunctionLines|src/commands/commands/plugins.ts|toggleCommand",
+    "maxFunctionLines|src/commands/commands/schedule.ts|createWizard",
+    "maxFunctionLines|src/commands/commands/settings.ts|settingsCommand",
+    "maxFunctionLines|src/commands/core.ts|followup",
+    "maxFunctionLines|src/commands/core.ts|onInput",
+    "maxFunctionLines|src/commands/core.ts|registerHostEventHandlers",
+    "maxFunctionLines|src/commands/core.ts|registerNotifications",
+    "maxFunctionLines|src/commands/core.ts|registerTool",
+    "maxFunctionLines|src/commands/index.ts|installCommands",
+    "maxFunctionLines|src/commands/job-tail.ts|jobTailCommand",
+    "maxFunctionLines|src/deps/services.ts|checkAll",
+    "maxFunctionLines|src/deps/services.ts|installCommand",
+    "maxFunctionLines|src/ext-api/index.ts|installExtApi",
+    "maxFunctionLines|src/feed/diff.ts|diffTexts",
+    "maxFunctionLines|src/feed/feed.ts|FeedRenderer.applyEvent",
+    "maxFunctionLines|src/feed/feed.ts|FeedRenderer.constructor",
+    "maxFunctionLines|src/feed/feed.ts|FeedRenderer.flush",
+    "maxFunctionLines|src/feed/feed.ts|FeedRenderer.flushReasoningBufferInner",
+    "maxFunctionLines|src/feed/table.ts|renderTable",
+    "maxFunctionLines|src/index.ts|apply",
+    "maxFunctionLines|src/kernel/app.ts|createApp",
+    "maxFunctionLines|src/kernel/bridge.ts|connectNvim",
+    "maxFunctionLines|src/kernel/bridge.ts|spawnNvim",
+    "maxFunctionLines|src/kernel/lifecycle.ts|installLifecycle",
+    "maxFunctionLines|src/kernel/todo-guard.ts|installTodoGuard",
+    "maxFunctionLines|src/market/commands/market.ts|marketCommand",
+    "maxFunctionLines|src/market/progress.ts|installWithRepair",
+    "maxFunctionLines|src/sessions/commands/sessions.ts|sessionsCommand",
+    "maxFunctionLines|src/sessions/commands/workspace.ts|workspaceCommand",
+    "maxFunctionLines|src/sessions/index.ts|installSessions",
+    "maxFunctionLines|src/sessions/services.ts|attachSession",
+    "maxFunctionLines|src/sessions/services.ts|switchTo",
+    "maxFunctionLines|src/statusline/index.ts|installStatusline",
+    "maxFunctionLines|src/statusline/index.ts|refreshBgJobs",
+    "maxFunctionLines|src/statusline/index.ts|updateStatusline",
+    "maxFunctionLines|src/subagents/commands/subagents.ts|subagentsCommand",
+    "maxFunctionLines|src/subagents/index.ts|installSubagents",
+    "maxFunctionLines|src/subagents/index.ts|openSubagentChat",
+    "maxFunctionLines|src/subagents/index.ts|openSubagentView",
+    "maxFunctionLines|src/transcript/commands/rewind.ts|rewindCommand",
+    "maxFunctionLines|src/transcript/commands/stats.ts|collectTurnStats",
+    "maxFunctionLines|src/transcript/index.ts|installTranscript",
+    "maxFunctionLines|src/transcript/index.ts|repairOrphanToolCalls",
+    "maxIfBlockLines|lib/boot/session-events.js|makeSessionEventHandler",
+    "maxIfBlockLines|lib/commands/commands/account.js|accountCommand",
+    "maxIfBlockLines|lib/commands/commands/attach.js|attachCommand",
+    "maxIfBlockLines|lib/commands/commands/mcp.js|mcpCommand",
+    "maxIfBlockLines|lib/commands/commands/memory.js|memoryCommand",
+    "maxIfBlockLines|lib/commands/commands/model.js|pickModel",
+    "maxIfBlockLines|lib/commands/commands/settings.js|settingsCommand",
+    "maxIfBlockLines|lib/commands/core.js|followup",
+    "maxIfBlockLines|lib/commands/core.js|followup#L81",
+    "maxIfBlockLines|lib/commands/core.js|onInput",
+    "maxIfBlockLines|lib/commands/core.js|onInput#L374",
+    "maxIfBlockLines|lib/commands/core.js|onInput#L430",
+    "maxIfBlockLines|lib/commands/core.js|onInput#L431",
+    "maxIfBlockLines|lib/commands/core.js|registerNotifications",
+    "maxIfBlockLines|lib/commands/core.js|registerNotifications#L716",
+    "maxIfBlockLines|lib/commands/core.js|registerTool",
+    "maxIfBlockLines|lib/ext-api/index.js|dispatch",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.applyEvent",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.applyEvent#L708",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1409",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1459",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1503",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1510",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1603",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1642",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flushReasoningBufferInner",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flushReasoningBufferInner#L1816",
+    "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flushReasoningBufferInner#L1859",
+    "maxIfBlockLines|lib/kernel/difficulty.js|routeDifficultyForTurn",
+    "maxIfBlockLines|lib/kernel/headless.js|dumpAndQuit",
+    "maxIfBlockLines|lib/kernel/lifecycle.js|installLifecycle",
+    "maxIfBlockLines|lib/market/commands/market.js|marketCommand",
+    "maxIfBlockLines|lib/market/commands/market.js|marketCommand#L206",
+    "maxIfBlockLines|lib/market/commands/market.js|marketCommand#L239",
+    "maxIfBlockLines|lib/sessions/commands/sessions.js|sessionsCommand",
+    "maxIfBlockLines|lib/sessions/commands/sessions.js|sessionsCommand#L125",
+    "maxIfBlockLines|lib/sessions/commands/sessions.js|sessionsCommand#L171",
+    "maxIfBlockLines|lib/sessions/commands/sessions.js|sessionsCommand#L173",
+    "maxIfBlockLines|lib/sessions/index.js|resumeOrCreate",
+    "maxIfBlockLines|lib/statusline/index.js|foldEvent",
+    "maxIfBlockLines|lib/statusline/index.js|installStatusline",
+    "maxIfBlockLines|lib/subagents/index.js|installSubagents",
+    "maxIfBlockLines|lib/subagents/index.js|openSubagentChat",
+    "maxIfBlockLines|lib/subagents/index.js|openSubagentView",
+    "maxIfBlockLines|lib/transcript/index.js|installTranscript",
+    "maxIfBlockLines|lib/transcript/index.js|repairOrphanToolCalls",
+    "maxIfBlockLines|scripts/e2e-judge.ts|(file)",
+    "maxIfBlockLines|scripts/e2e.ts|(file)",
+    "maxIfBlockLines|scripts/whale-gen.ts|(file)",
+    "maxIfBlockLines|src/boot/session-events.ts|makeSessionEventHandler",
+    "maxIfBlockLines|src/commands/commands/account.ts|accountCommand",
+    "maxIfBlockLines|src/commands/commands/memory.ts|memoryCommand",
+    "maxIfBlockLines|src/commands/commands/model.ts|pickModel",
+    "maxIfBlockLines|src/commands/commands/settings.ts|settingsCommand",
+    "maxIfBlockLines|src/commands/core.ts|followup",
+    "maxIfBlockLines|src/commands/core.ts|followup#L82",
+    "maxIfBlockLines|src/commands/core.ts|onInput",
+    "maxIfBlockLines|src/commands/core.ts|onInput#L377",
+    "maxIfBlockLines|src/commands/core.ts|onInput#L418",
+    "maxIfBlockLines|src/commands/core.ts|registerNotifications",
+    "maxIfBlockLines|src/commands/core.ts|registerNotifications#L684",
+    "maxIfBlockLines|src/commands/core.ts|registerTool",
+    "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.applyEvent",
+    "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush",
+    "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush#L1498",
+    "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush#L1542",
+    "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush#L1549",
+    "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush#L1636",
+    "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush#L1678",
+    "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flushReasoningBufferInner",
+    "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flushReasoningBufferInner#L1849",
+    "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flushReasoningBufferInner#L1893",
+    "maxIfBlockLines|src/kernel/difficulty.ts|routeDifficultyForTurn",
+    "maxIfBlockLines|src/kernel/headless.ts|dumpAndQuit",
+    "maxIfBlockLines|src/kernel/lifecycle.ts|installLifecycle",
+    "maxIfBlockLines|src/market/commands/market.ts|marketCommand",
+    "maxIfBlockLines|src/market/commands/market.ts|marketCommand#L206",
+    "maxIfBlockLines|src/sessions/commands/sessions.ts|sessionsCommand",
+    "maxIfBlockLines|src/sessions/commands/sessions.ts|sessionsCommand#L122",
+    "maxIfBlockLines|src/sessions/commands/sessions.ts|sessionsCommand#L165",
+    "maxIfBlockLines|src/sessions/commands/sessions.ts|sessionsCommand#L167",
+    "maxIfBlockLines|src/statusline/index.ts|foldEvent",
+    "maxIfBlockLines|src/statusline/index.ts|installStatusline",
+    "maxIfBlockLines|src/subagents/index.ts|installSubagents",
+    "maxIfBlockLines|src/subagents/index.ts|openSubagentChat",
+    "maxIfBlockLines|src/subagents/index.ts|openSubagentView",
+    "maxIfBlockLines|src/transcript/index.ts|installTranscript",
+    "maxParams|lib/commands/commands/changes.js|showWorkspaceChanges",
+    "maxParams|scripts/whale-gen.ts|cubic",
+    "maxParams|src/commands/commands/changes.ts|showWorkspaceChanges"
+  ],
+  "entries": [
+    {
+      "key": "cycle|src/kernel/app.ts|src/kernel/app.ts -> src/kernel/command-args.ts",
+      "actual": 2,
+      "limit": 0
+    },
+    {
+      "key": "maxDepth|examples/dsh-plugin/index.ts|apply",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/boot/boot.js|boot",
+      "actual": 7,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/boot/session-events.js|makeSessionEventHandler",
+      "actual": 8,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/commands/commands/account.js|accountCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/commands/commands/context.js|contextCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/commands/commands/fb.js|feedbackCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/commands/commands/model.js|pickModel",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/commands/commands/models.js|extract",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/commands/commands/settings.js|settingsCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/commands/commands/terminal.js|installTerminalCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/commands/core.js|registerTool",
+      "actual": 8,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/commands/job-tail.js|tick",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/commands/nlcmd.js|matchOnce",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/deps/services.js|findProfilePatchPath",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/ext-api/index.js|dispatch",
+      "actual": 8,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/feed/feed.js|FeedRenderer.applyEvent",
+      "actual": 7,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/feed/images.js|readClipboardImage",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/feed/table.js|transformTables",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/feed/whale.js|rowsToBitmap",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/kernel/app.js|createApp",
+      "actual": 7,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/kernel/bridge.js|connectNvim",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/kernel/clipboard.js|writeClipboardText",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/kernel/difficulty.js|classifyViaLlm",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/kernel/lifecycle.js|installLifecycle",
+      "actual": 9,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/kernel/todo-guard.js|installTodoGuard",
+      "actual": 7,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/market/commands/market.js|marketCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/market/progress.js|buildCatalog",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/sessions/commands/sessions.js|sessionsCommand",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/sessions/index.js|cleanSubagentChain",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/sessions/services.js|doResumeSession",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/sessions/session-controller.js|installSessionController",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/statusline/index.js|installStatusline",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/subagents/commands/subagents.js|subagentsCommand",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/subagents/index.js|openSubagentView",
+      "actual": 7,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/transcript/commands/outline.js|turnOutlineRows",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/transcript/commands/queue.js|add",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/transcript/index.js|repairOrphanToolCalls",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|scripts/app-ops-check.mjs|(file)",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|scripts/whale-gen.ts|rasterize",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/boot/boot.ts|boot",
+      "actual": 7,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/boot/session-events.ts|makeSessionEventHandler",
+      "actual": 8,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/commands/account.ts|accountCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/commands/context.ts|contextCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/commands/fb.ts|feedbackCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/commands/model.ts|pickModel",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/commands/models.ts|extract",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/commands/permission.ts|spec",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/commands/settings.ts|settingsCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/commands/terminal.ts|installTerminalCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/core.ts|registerTool",
+      "actual": 8,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/job-tail.ts|tick",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/nlcmd.ts|matchOnce",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/deps/services.ts|findProfilePatchPath",
+      "actual": 7,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/ext-api/index.ts|dispatch",
+      "actual": 8,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/feed/feed.ts|FeedRenderer.applyEvent",
+      "actual": 7,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/feed/images.ts|readClipboardImage",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/feed/table.ts|transformTables",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/feed/whale.ts|rowsToBitmap",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/kernel/app.ts|createApp",
+      "actual": 7,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/kernel/bridge.ts|connectNvim",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/kernel/clipboard.ts|writeClipboardText",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/kernel/difficulty.ts|classifyViaLlm",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/kernel/headless.ts|dumpAndQuit",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/kernel/lifecycle.ts|installLifecycle",
+      "actual": 9,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/kernel/todo-guard.ts|installTodoGuard",
+      "actual": 7,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/market/commands/market.ts|marketCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/market/progress.ts|buildCatalog",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/sessions/commands/sessions.ts|sessionsCommand",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/sessions/index.ts|listSubagentChildren",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/sessions/services.ts|doResumeSession",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/sessions/session-controller.ts|installSessionController",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/statusline/index.ts|installStatusline",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/subagents/commands/subagents.ts|subagentsCommand",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/subagents/index.ts|openSubagentView",
+      "actual": 7,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/transcript/commands/outline.ts|turnOutlineRows",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/transcript/commands/queue.ts|add",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/transcript/index.ts|repairOrphanToolCalls",
+      "actual": 6,
+      "limit": 4
+    },
+    {
+      "key": "maxExports|lib/commands/core.js|(file)",
+      "actual": 17,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|lib/ext-api/index.d.ts|(file)",
+      "actual": 23,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|lib/index.d.ts|(file)",
+      "actual": 23,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|lib/kernel/app.d.ts|(file)",
+      "actual": 20,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|lib/kernel/ext-types.d.ts|(file)",
+      "actual": 19,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|lib/kernel/types.d.ts|(file)",
+      "actual": 80,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|lib/market/progress.js|(file)",
+      "actual": 31,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|src/commands/core.ts|(file)",
+      "actual": 17,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|src/ext-api/index.ts|(file)",
+      "actual": 27,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|src/kernel/app.ts|(file)",
+      "actual": 21,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|src/kernel/ext-types.ts|(file)",
+      "actual": 19,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|src/kernel/types.ts|(file)",
+      "actual": 80,
+      "limit": 15
+    },
+    {
+      "key": "maxExports|src/market/progress.ts|(file)",
+      "actual": 37,
+      "limit": 15
+    },
+    {
+      "key": "maxFileLines|lib/boot/boot.js|(file)",
+      "actual": 320,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/boot/session-events.js|(file)",
+      "actual": 353,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/commands/commands/schedule.js|(file)",
+      "actual": 369,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/commands/core.js|(file)",
+      "actual": 893,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/commands/index.js|(file)",
+      "actual": 370,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/commands/nlcmd.js|(file)",
+      "actual": 307,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/deps/services.js|(file)",
+      "actual": 489,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/ext-api/index.js|(file)",
+      "actual": 712,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/feed/feed.d.ts|(file)",
+      "actual": 397,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/feed/feed.js|(file)",
+      "actual": 1909,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/kernel/app.d.ts|(file)",
+      "actual": 734,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/kernel/app.js|(file)",
+      "actual": 393,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/kernel/difficulty.js|(file)",
+      "actual": 386,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/kernel/i18n.js|(file)",
+      "actual": 835,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/kernel/lifecycle.js|(file)",
+      "actual": 322,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/kernel/types.d.ts|(file)",
+      "actual": 1295,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/market/progress.js|(file)",
+      "actual": 776,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/sessions/index.js|(file)",
+      "actual": 393,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/sessions/services.js|(file)",
+      "actual": 516,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/statusline/index.js|(file)",
+      "actual": 423,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/subagents/index.js|(file)",
+      "actual": 353,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|lib/transcript/index.js|(file)",
+      "actual": 429,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|scripts/whale-gen.ts|(file)",
+      "actual": 372,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/boot/boot.ts|(file)",
+      "actual": 315,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/boot/session-events.ts|(file)",
+      "actual": 351,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/commands/core.ts|(file)",
+      "actual": 848,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/commands/index.ts|(file)",
+      "actual": 386,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/commands/nlcmd.ts|(file)",
+      "actual": 335,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/deps/services.ts|(file)",
+      "actual": 504,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/ext-api/index.ts|(file)",
+      "actual": 715,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/feed/feed.ts|(file)",
+      "actual": 1942,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/kernel/app.ts|(file)",
+      "actual": 891,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/kernel/difficulty.ts|(file)",
+      "actual": 410,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/kernel/i18n.ts|(file)",
+      "actual": 847,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/kernel/types.ts|(file)",
+      "actual": 871,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/market/progress.ts|(file)",
+      "actual": 795,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/sessions/index.ts|(file)",
+      "actual": 385,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/sessions/services.ts|(file)",
+      "actual": 494,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/statusline/index.ts|(file)",
+      "actual": 411,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/subagents/index.ts|(file)",
+      "actual": 339,
+      "limit": 300
+    },
+    {
+      "key": "maxFileLines|src/transcript/index.ts|(file)",
+      "actual": 405,
+      "limit": 300
+    },
+    {
+      "key": "maxFunctionLines|examples/dsh-plugin/index.ts|apply",
+      "actual": 89,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/boot/boot.js|boot",
+      "actual": 245,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/boot/session-events.js|makeSessionEventHandler",
+      "actual": 321,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/account.js|accountCommand",
+      "actual": 94,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/changes.js|changesCommand",
+      "actual": 71,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/changes.js|showWorkspaceChanges",
+      "actual": 87,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/fb.js|feedbackCommand",
+      "actual": 62,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/mcp.js|mcpCommand",
+      "actual": 88,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/model.js|pickModel",
+      "actual": 72,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/official-commands.js|officialCommandsCommand",
+      "actual": 61,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/permission.js|permissionCommand",
+      "actual": 64,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/plugins.js|toggleCommand",
+      "actual": 65,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/schedule.js|createWizard",
+      "actual": 97,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/schedule.js|scheduleCommand",
+      "actual": 86,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/settings.js|settingsCommand",
+      "actual": 118,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/core.js|followup",
+      "actual": 110,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/core.js|onInput",
+      "actual": 127,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/core.js|registerHostEventHandlers",
+      "actual": 89,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/core.js|registerNotifications",
+      "actual": 140,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/core.js|registerTool",
+      "actual": 65,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/index.js|installCommands",
+      "actual": 305,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/job-tail.js|jobTailCommand",
+      "actual": 89,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/deps/services.js|checkAll",
+      "actual": 99,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/deps/services.js|installCommand",
+      "actual": 91,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/ext-api/index.js|installExtApi",
+      "actual": 607,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/feed/diff.js|diffTexts",
+      "actual": 155,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/feed/feed.js|FeedRenderer.applyEvent",
+      "actual": 405,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/feed/feed.js|FeedRenderer.flush",
+      "actual": 484,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/feed/feed.js|FeedRenderer.flushReasoningBufferInner",
+      "actual": 137,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/feed/images.js|readClipboardImage",
+      "actual": 69,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/feed/table.js|renderTable",
+      "actual": 134,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/index.js|apply",
+      "actual": 66,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/kernel/app.js|createApp",
+      "actual": 299,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/kernel/bridge.js|spawnNvim",
+      "actual": 74,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/kernel/lifecycle.js|installLifecycle",
+      "actual": 309,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/kernel/todo-guard.js|installTodoGuard",
+      "actual": 112,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/market/commands/market.js|marketCommand",
+      "actual": 254,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/market/progress.js|installWithRepair",
+      "actual": 90,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/sessions/commands/sessions.js|sessionsCommand",
+      "actual": 222,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/sessions/commands/workspace.js|workspaceCommand",
+      "actual": 112,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/sessions/index.js|installSessions",
+      "actual": 157,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/sessions/services.js|attachSession",
+      "actual": 80,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/sessions/services.js|doResumeSession",
+      "actual": 61,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/sessions/services.js|forkSession",
+      "actual": 64,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/sessions/services.js|switchTo",
+      "actual": 61,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/statusline/index.js|installStatusline",
+      "actual": 79,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/statusline/index.js|refreshBgJobs",
+      "actual": 84,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/statusline/index.js|updateStatusline",
+      "actual": 124,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/subagents/commands/subagents.js|subagentsCommand",
+      "actual": 96,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/subagents/index.js|installSubagents",
+      "actual": 99,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/subagents/index.js|openSubagentChat",
+      "actual": 89,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/subagents/index.js|openSubagentView",
+      "actual": 91,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/transcript/commands/queue.js|queueCommand",
+      "actual": 79,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/transcript/commands/rewind.js|rewindCommand",
+      "actual": 88,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/transcript/commands/stats.js|collectTurnStats",
+      "actual": 67,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/transcript/index.js|installTranscript",
+      "actual": 206,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/transcript/index.js|repairOrphanToolCalls",
+      "actual": 114,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|scripts/whale-gen.ts|flattenPath",
+      "actual": 65,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/boot/boot.ts|boot",
+      "actual": 236,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/boot/session-events.ts|makeSessionEventHandler",
+      "actual": 318,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/commands/account.ts|accountCommand",
+      "actual": 83,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/commands/changes.ts|changesCommand",
+      "actual": 67,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/commands/changes.ts|showWorkspaceChanges",
+      "actual": 89,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/commands/mcp.ts|mcpCommand",
+      "actual": 71,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/commands/model.ts|pickModel",
+      "actual": 69,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/commands/permission.ts|permissionCommand",
+      "actual": 62,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/commands/plugins.ts|toggleCommand",
+      "actual": 66,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/commands/schedule.ts|createWizard",
+      "actual": 62,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/commands/settings.ts|settingsCommand",
+      "actual": 114,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/core.ts|followup",
+      "actual": 104,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/core.ts|onInput",
+      "actual": 106,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/core.ts|registerHostEventHandlers",
+      "actual": 78,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/core.ts|registerNotifications",
+      "actual": 123,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/core.ts|registerTool",
+      "actual": 63,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/index.ts|installCommands",
+      "actual": 304,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/commands/job-tail.ts|jobTailCommand",
+      "actual": 91,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/deps/services.ts|checkAll",
+      "actual": 100,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/deps/services.ts|installCommand",
+      "actual": 80,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/ext-api/index.ts|installExtApi",
+      "actual": 571,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/feed/diff.ts|diffTexts",
+      "actual": 126,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/feed/feed.ts|FeedRenderer.applyEvent",
+      "actual": 372,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/feed/feed.ts|FeedRenderer.constructor",
+      "actual": 63,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/feed/feed.ts|FeedRenderer.flush",
+      "actual": 470,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/feed/feed.ts|FeedRenderer.flushReasoningBufferInner",
+      "actual": 139,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/feed/table.ts|renderTable",
+      "actual": 131,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/index.ts|apply",
+      "actual": 62,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/kernel/app.ts|createApp",
+      "actual": 294,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/kernel/bridge.ts|connectNvim",
+      "actual": 65,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/kernel/bridge.ts|spawnNvim",
+      "actual": 83,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/kernel/lifecycle.ts|installLifecycle",
+      "actual": 276,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/kernel/todo-guard.ts|installTodoGuard",
+      "actual": 102,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/market/commands/market.ts|marketCommand",
+      "actual": 237,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/market/progress.ts|installWithRepair",
+      "actual": 84,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/sessions/commands/sessions.ts|sessionsCommand",
+      "actual": 202,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/sessions/commands/workspace.ts|workspaceCommand",
+      "actual": 104,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/sessions/index.ts|installSessions",
+      "actual": 162,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/sessions/services.ts|attachSession",
+      "actual": 77,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/sessions/services.ts|switchTo",
+      "actual": 61,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/statusline/index.ts|installStatusline",
+      "actual": 79,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/statusline/index.ts|refreshBgJobs",
+      "actual": 78,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/statusline/index.ts|updateStatusline",
+      "actual": 116,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/subagents/commands/subagents.ts|subagentsCommand",
+      "actual": 90,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/subagents/index.ts|installSubagents",
+      "actual": 99,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/subagents/index.ts|openSubagentChat",
+      "actual": 81,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/subagents/index.ts|openSubagentView",
+      "actual": 83,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/transcript/commands/rewind.ts|rewindCommand",
+      "actual": 85,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/transcript/commands/stats.ts|collectTurnStats",
+      "actual": 62,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/transcript/index.ts|installTranscript",
+      "actual": 190,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|src/transcript/index.ts|repairOrphanToolCalls",
+      "actual": 100,
+      "limit": 60
+    },
+    {
+      "key": "maxIfBlockLines|lib/boot/session-events.js|makeSessionEventHandler",
+      "actual": 30,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/commands/account.js|accountCommand",
+      "actual": 49,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/commands/attach.js|attachCommand",
+      "actual": 21,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/commands/mcp.js|mcpCommand",
+      "actual": 24,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/commands/memory.js|memoryCommand",
+      "actual": 25,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/commands/model.js|pickModel",
+      "actual": 41,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/commands/settings.js|settingsCommand",
+      "actual": 46,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/core.js|followup",
+      "actual": 76,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/core.js|followup#L81",
+      "actual": 22,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/core.js|onInput",
+      "actual": 22,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/core.js|onInput#L374",
+      "actual": 49,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/core.js|onInput#L430",
+      "actual": 27,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/core.js|onInput#L431",
+      "actual": 21,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/core.js|registerNotifications",
+      "actual": 22,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/core.js|registerNotifications#L716",
+      "actual": 26,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/core.js|registerTool",
+      "actual": 62,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/ext-api/index.js|dispatch",
+      "actual": 21,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.applyEvent",
+      "actual": 47,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.applyEvent#L708",
+      "actual": 23,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush",
+      "actual": 30,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1409",
+      "actual": 21,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1459",
+      "actual": 22,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1503",
+      "actual": 49,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1510",
+      "actual": 38,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1603",
+      "actual": 28,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flush#L1642",
+      "actual": 39,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flushReasoningBufferInner",
+      "actual": 26,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flushReasoningBufferInner#L1816",
+      "actual": 38,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/feed/feed.js|FeedRenderer.flushReasoningBufferInner#L1859",
+      "actual": 25,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/kernel/difficulty.js|routeDifficultyForTurn",
+      "actual": 23,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/kernel/headless.js|dumpAndQuit",
+      "actual": 23,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/kernel/lifecycle.js|installLifecycle",
+      "actual": 78,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/market/commands/market.js|marketCommand",
+      "actual": 22,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/market/commands/market.js|marketCommand#L206",
+      "actual": 28,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/market/commands/market.js|marketCommand#L239",
+      "actual": 25,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/sessions/commands/sessions.js|sessionsCommand",
+      "actual": 95,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/sessions/commands/sessions.js|sessionsCommand#L125",
+      "actual": 44,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/sessions/commands/sessions.js|sessionsCommand#L171",
+      "actual": 55,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/sessions/commands/sessions.js|sessionsCommand#L173",
+      "actual": 35,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/sessions/index.js|resumeOrCreate",
+      "actual": 21,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/statusline/index.js|foldEvent",
+      "actual": 26,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/statusline/index.js|installStatusline",
+      "actual": 23,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/subagents/index.js|installSubagents",
+      "actual": 25,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/subagents/index.js|openSubagentChat",
+      "actual": 30,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/subagents/index.js|openSubagentView",
+      "actual": 32,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/transcript/index.js|installTranscript",
+      "actual": 38,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/transcript/index.js|repairOrphanToolCalls",
+      "actual": 21,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|scripts/e2e-judge.ts|(file)",
+      "actual": 29,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|scripts/e2e.ts|(file)",
+      "actual": 36,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|scripts/whale-gen.ts|(file)",
+      "actual": 52,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/boot/session-events.ts|makeSessionEventHandler",
+      "actual": 30,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/commands/account.ts|accountCommand",
+      "actual": 47,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/commands/memory.ts|memoryCommand",
+      "actual": 24,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/commands/model.ts|pickModel",
+      "actual": 40,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/commands/settings.ts|settingsCommand",
+      "actual": 44,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/core.ts|followup",
+      "actual": 74,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/core.ts|followup#L82",
+      "actual": 22,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/core.ts|onInput",
+      "actual": 21,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/core.ts|onInput#L377",
+      "actual": 35,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/core.ts|onInput#L418",
+      "actual": 23,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/core.ts|registerNotifications",
+      "actual": 21,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/core.ts|registerNotifications#L684",
+      "actual": 25,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/commands/core.ts|registerTool",
+      "actual": 60,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.applyEvent",
+      "actual": 42,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush",
+      "actual": 28,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush#L1498",
+      "actual": 21,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush#L1542",
+      "actual": 43,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush#L1549",
+      "actual": 33,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush#L1636",
+      "actual": 29,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flush#L1678",
+      "actual": 39,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flushReasoningBufferInner",
+      "actual": 27,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flushReasoningBufferInner#L1849",
+      "actual": 39,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/feed/feed.ts|FeedRenderer.flushReasoningBufferInner#L1893",
+      "actual": 25,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/kernel/difficulty.ts|routeDifficultyForTurn",
+      "actual": 22,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/kernel/headless.ts|dumpAndQuit",
+      "actual": 24,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/kernel/lifecycle.ts|installLifecycle",
+      "actual": 68,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/market/commands/market.ts|marketCommand",
+      "actual": 22,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/market/commands/market.ts|marketCommand#L206",
+      "actual": 27,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/sessions/commands/sessions.ts|sessionsCommand",
+      "actual": 90,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/sessions/commands/sessions.ts|sessionsCommand#L122",
+      "actual": 41,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/sessions/commands/sessions.ts|sessionsCommand#L165",
+      "actual": 49,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/sessions/commands/sessions.ts|sessionsCommand#L167",
+      "actual": 30,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/statusline/index.ts|foldEvent",
+      "actual": 26,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/statusline/index.ts|installStatusline",
+      "actual": 23,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/subagents/index.ts|installSubagents",
+      "actual": 24,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/subagents/index.ts|openSubagentChat",
+      "actual": 24,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/subagents/index.ts|openSubagentView",
+      "actual": 26,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|src/transcript/index.ts|installTranscript",
+      "actual": 36,
+      "limit": 20
+    },
+    {
+      "key": "maxParams|lib/commands/commands/changes.js|showWorkspaceChanges",
+      "actual": 6,
+      "limit": 5
+    },
+    {
+      "key": "maxParams|scripts/whale-gen.ts|cubic",
+      "actual": 6,
+      "limit": 5
+    },
+    {
+      "key": "maxParams|src/commands/commands/changes.ts|showWorkspaceChanges",
+      "actual": 6,
+      "limit": 5
+    }
+  ]
+}

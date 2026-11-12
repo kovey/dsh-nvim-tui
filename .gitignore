@@ -14,8 +14,17 @@ node_modules/
 .scratch-host/
 .rt-home/
 
-# project-local dsh memory (per-machine notes, not project source)
-.dsh/
+# project-local dsh memory / runtime state
+.dsh/*
+# gate configs are repo-owned and reviewed; only the JSON configs are tracked
+!.dsh/engineering-suite/
+!.dsh/engineering-suite/*.json
+.dsh/engineering-suite/missions/
+.dsh/engineering-suite/audit/
+.dsh/engineering-suite/state/
+.dsh/engineering-suite/kb/
+.dsh/engineering-suite/specs/
+.dsh/engineering-suite/*.jsonl
 
 # logs
 *.log

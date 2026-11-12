@@ -1,0 +1,36 @@
+{
+  "languages": {
+    "ts": {
+      "maxFileLines": 300,
+      "maxFunctionLines": 60,
+      "maxDepth": 4,
+      "maxIfBlockLines": 20,
+      "maxParams": 5,
+      "maxExports": 15
+    },
+    "js": {
+      "maxFileLines": 300,
+      "maxFunctionLines": 60,
+      "maxDepth": 4,
+      "maxIfBlockLines": 20,
+      "maxParams": 5,
+      "maxExports": 15
+    }
+  },
+  "forbidCycles": true,
+  "exempt": [
+    "**/*_test.go",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/testdata/**",
+    "**/vendor/**",
+    "**/*.pb.go",
+    "**/*_gen.go",
+    "**/*.gen.go",
+    "**/*.generated.*",
+    "**/mocks/**",
+    "**/__mocks__/**",
+    "**/dist/**",
+    "**/build/**"
+  ]
+}
