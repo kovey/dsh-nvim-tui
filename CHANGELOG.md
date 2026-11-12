@@ -3,12 +3,28 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [Unreleased] — dsh 0.2.2-rc.2
+## [v0.6.5] — 2026-11-12
+
+### Changed · 工程标准化（npm 脚本 / 门禁配置）
+
+- `package.json` 新增标准脚本 `test`（= `npm run smoke`）与 `lint`（= `npm run check`），
+  与上游工程套件的 quality-gate 命令集合对齐；原有 `build` / `check` / `smoke` / `e2e`
+  语义不变，`test` / `lint` 只是别名，不产生递归调用。
+- 版本统一为 `0.6.5`：`package.json`、`package-lock.json`、`src/kernel/app.ts` 的
+  `BUILD_VERSION` 与 CHANGELOG / UPGRADE 同步。
+- 门禁配置随上游 0.8.8 套件标准化：interaction-gate 与 quality-gate 已对齐
+  （interaction 只保留项目级允许键，本工程 `unmappedWorkspace=local`，不启用
+  IM 审批；quality 使用 `npm test` / `npm run lint` / standards）。supply-chain-gate
+  仍为上游 scaffold：`deps.manifests` 含尚未生成的 `pnpm-lock.yaml`、
+  `auditCommands` 为空，本流程**未**配置 `npm audit`；审计命令需宿主用
+  `/suite set` 人工写入（当前未配置）。
+- 内置命令表保持 **83** 条，`docs/COMMANDS.md` 与 README 同步（由 smoke 断言）。
 
 ### Added · rc.2 适配
 
-- `/subagents` 在 rc.2 下优先使用 `subagents.listDescendants`，展示具名/多层子代理的
-  `name` / `path` / `depth`；rc.1 的 `listChildren` 与会话头扫描仍为回退路径。
+- `/subagents` 在 rc.2 下先取非递归的 `subagents.listChildren`，再用
+  `subagents.listDescendants` **有界补齐**具名/多层子代理的 `name` / `path` / `depth`；
+  rc.1 的 `listChildren` 与会话头扫描始终是可用回退（递归目录超时/抛错即降级）。
 - `subagent/start` 使用 rc.2 的 `parentSessionId` 路由；有 `name` 时用它作为标签。
 - 新增 `/team [on|off|tasks]`：切换 rc.2 AgentTeam、查看共享任务板；宿主未装配
   `agentTeams` 时明确提示。
@@ -19,6 +35,42 @@
   `mcpManager`；配置增删仍由 loader/插件负责。
 - `/files search <关键词>`：有界文件名/路径搜索 picker，选中直接在新 tab 打开。
 
+### Fixed · rc.1 上 /subagents 因递归目录挂起
+
+- 根因：`listSubagentChildren` 无条件先 `await subagents.listDescendants`；rc.1 的递归
+  目录会逐个 `observe` 子会话，子会话 query 未就绪时该 Promise 永不 settle，
+  `/subagents`（以及会话切换时的 `seedRunningSubagents`）随之挂死。
+- 修法：先取**非递归**的 `listChildren`；rc.2 的递归目录只作为**有界补齐**
+  （`name`/`path`/`depth`），且只在有 direct 行可补齐、或 direct 面失败时才尝试。
+  两次宿主调用都传 `AbortSignal.timeout(1500ms)`，并用 deadline race 兜底（宿主完全
+  忽略 signal 时也会释放），最坏路径约 3s；超时/抛错降级为 direct 列表，再降级为
+  持久化 header 扫描。`/subagents` 的选择、清理、续聊语义未改。
+- smoke 回归：`listDescendants` 监听 abort 后 reject（永不 resolve），断言在 1.5s 内
+  降级到 direct、pending 调用被 abort、总耗时 <3s；另有一条宿主完全忽略 signal 的
+  用例，断言经 header 回退在 3s 内返回，且 `listChildren` 也收到 `AbortSignal`。
+
+### Fixed · rc.1 直接目录行（无 `kind`）被整批丢弃
+
+- 根因：rc.1 的 `listChildren` 返回的是**原始 catalog 行** `{ id, createdAt, mode, label? }`
+  （宿主自己的 `SubagentCatalogEntry` 类型），**没有 `kind` 字段**；`childOf` 用
+  `e.kind !== 'child'` 直接丢弃，于是 rc.1 上 catalog 行永远进不了 `/subagents`，
+  列表只能靠持久化 header 兜底（丢 `mode`、丢 catalog 顺序，`continuable` 的孩子
+  也因此不给续聊选项）。
+- 修法：判定收敛到 `isChildRow` —— `kind === 'diagnostic'` 一律丢弃，`kind === 'child'`
+  照旧，**无 `kind` 但带合法 `id` + catalog `mode`**（`one-shot` / `external` /
+  `continuable` / `unknown`）的行按 direct child 映射；`fromCatalog` 的「宿主给了
+  child 行」判断同步改为 `isChildRow`，因此 raw 行不会再被误判成"这一面没有答案"
+  而穿透到 header 扫描。`mode: 'unknown'` 仍是真实直系子会话（宿主只是读不到它的
+  descriptor），照常列出，但不会出现"继续对话"选项。
+- `createdAt` 优先取行内 `entry.createdAt`（rc.1 raw 行带），否则回退
+  `createdAtOf(id)`（rc.2 递归行把该字段丢掉了）——TTL 清理与年龄标签都依赖它。
+- smoke 回归：真实 rc.1 形状（无 `kind`、含 `label`/`mode`/`createdAt`，另有 tagged
+  与 untagged 两条 diagnostic）必须逐行列出且保留 `label`/`mode`/`createdAt`、
+  且**不得**回落到 header；另断言 `createdAt` 的优先级（行内优先、header 兜底）。
+  已用临时回退验证断言有效：改回 `kind === 'child'` 时实际得到 `['hdr-only']`
+  而非 `['raw-1','raw-2','raw-3','raw-4']`；改成只读 header 时四行 `createdAt`
+  全变 `undefined`。
+
 ### 说明
 
 - rc.2 目前只有 GitHub release，npm registry 仍无 `0.2.2-rc.2`。本次以 rc.2 源码
@@ -28,8 +80,10 @@
 
 ### 验证
 
-- `npm run build` / `check` / `smoke` / `standards-check.sh` 全绿；smoke 新增 rc.2
-  结构用例：子代理目录（listDescendants/name/path/depth 与 rc.1/会话头回退）、
+- `npm test`（= `npm run smoke`）/ `npm run lint`（= `npm run check`）/ `npm run build` /
+  `npm run smoke` 全部 exit 0；smoke 覆盖 rc.2
+  结构用例：子代理目录（listChildren 先行 + listDescendants 有界补齐/name/path/depth、
+  rc.1 递归目录永不 settle 的 1.5s 降级与会话头回退）、
   `subagent/start` 的 parentSessionId 路由、AgentTeam、worktree new/list/restore/diff、
   MCP status/restart/probe、`/files search` picker+新 tab，以及 83 条命令表与
   `docs/COMMANDS.md` 的一致性断言。
@@ -37,7 +91,9 @@
   版本），只按 `dsh-v0.2.2-rc.2` tag 源码核对服务/类型形状。
 - rc.1 隔离 profile 启动本次未执行：当前沙箱禁止写
   `~/.dsh/profiles/<name>/cordis.yml`（EPERM，workspace-write 限制）；
-  真实终端可跑 `npm run e2e` 复核。
+  smoke 内置的等价 headless nvim 启动通过，真实终端可跑 `npm run e2e` 复核。
+- `scripts/standards-check.sh` 为 WARN（扫描达 4000 文件上限，结论不完整；无新增/
+  恶化违规，不阻断）。
 
 ## [v0.6.4] — 2026-11-11
 

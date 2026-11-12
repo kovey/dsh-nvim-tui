@@ -2,13 +2,19 @@
  *
  *  Kept out of sessions/index so the already-large lifecycle module does not
  *  grow a second responsibility (and the standards ratchet stays honest).
- *  rc.2 exposes only the recursive named catalog; rc.1's direct catalog and
- *  the persisted-header scan remain fallbacks.
+ *  The non-recursive `listChildren` is the backbone: rc.1's `listDescendants`
+ *  recursively observes every descendant session and never settles while a
+ *  child's query is not ready, so it may only ever be a BOUNDED enrichment
+ *  (name/path/depth). The persisted-header scan stays the last fallback.
  */
 import { persistedHeader } from '../kernel/app.js'
 import { readCleanedIds } from '../kernel/subagent-clean.js'
 import type { App } from '../kernel/app.js'
 import type { SubagentListEntry } from '../kernel/agent-extra-types.js'
+
+/** Deadline for ONE host catalog call. Two calls at worst (direct + the rc.2
+ *  enrichment) keep /subagents at ~3s even when the host never answers. */
+const CATALOG_TIMEOUT_MS = 1500
 
 export interface SubagentChild {
   id: string
@@ -19,6 +25,31 @@ export interface SubagentChild {
   running: boolean
   mode: string | undefined
   createdAt?: number | undefined
+}
+
+/** Persisted-session header fields the directory needs. */
+interface Header {
+  createdAt?: number
+  origin?: string
+  parentSession?: string
+}
+
+type HeaderMap = Map<string, Header>
+
+/** What one catalog face needs to turn host rows into directory rows. */
+interface ListingContext {
+  hidden: Set<string>
+  createdAtOf: (id: string) => number | undefined
+}
+
+/** One catalog attempt. `failed` is deliberately not the same as "no rows":
+ *  only a failed call may fall through to the next fallback face, while an
+ *  empty answer means there is nothing deeper for a recursive walk to reach. */
+interface CatalogAttempt {
+  failed: boolean
+  /** The host returned at least one row (diagnostic rows included). */
+  answered: boolean
+  rows?: SubagentChild[] | undefined
 }
 
 /** Is one child session actually driving a turn right now? The host's listing
@@ -34,13 +65,33 @@ const childRunning = (app: App, id: string): boolean => {
   }
 }
 
+/** Modes rc.1's catalog reports for a direct child (`SubagentCatalogEntry`'s
+ *  own union). A row without a `kind` still says what it is by carrying one. */
+const CHILD_MODES: ReadonlySet<string> = new Set(['one-shot', 'external', 'continuable', 'unknown'])
+
+/** Is one catalog row a directory child? rc.2's recursive catalog tags every
+ *  row with `kind`, but rc.1's NON-recursive `listChildren` returns the raw
+ *  `{ id, createdAt, mode, label? }` catalog rows with NO `kind` at all —
+ *  requiring `kind === 'child'` silently dropped every rc.1 row, so the
+ *  directory could only ever come from the persisted-header fallback.
+ *  Diagnostics are never children: rc.2 tags them, and an untagged row that
+ *  carries no catalog `mode` is not a live child either. `mode: 'unknown'` IS a
+ *  real direct child (the host merely could not read its descriptor), so it
+ *  stays listed — viewable, never offered "continue". */
+const isChildRow = (e: SubagentListEntry | null | undefined): e is SubagentListEntry => {
+  if (e === null || e === undefined) return false
+  if (e.kind === 'diagnostic') return false
+  if (e.kind === 'child') return true
+  return typeof e.id === 'string' && e.id !== '' && typeof e.mode === 'string' && CHILD_MODES.has(e.mode)
+}
+
 const childOf = (
   app: App,
   e: SubagentListEntry,
   hidden: Set<string>,
   createdAtOf: (id: string) => number | undefined,
 ): SubagentChild | undefined => {
-  if (e.kind !== 'child' || hidden.has(e.id)) return undefined
+  if (!isChildRow(e) || hidden.has(e.id)) return undefined
   return {
     id: e.id,
     label: e.label ?? e.path ?? e.name ?? e.id.slice(0, 8),
@@ -49,7 +100,10 @@ const childOf = (
     depth: e.depth,
     running: childRunning(app, e.id),
     mode: e.mode,
-    createdAt: createdAtOf(e.id),
+    // rc.1's direct rows carry their own createdAt; rc.2's recursive rows drop
+    // it, so the persisted header stays the fallback. The TTL cleanup and the
+    // age label both read this field.
+    createdAt: e.createdAt ?? createdAtOf(e.id),
   }
 }
 
@@ -63,46 +117,74 @@ const fromCatalog = (
     .map((e) => childOf(app, e, hidden, createdAtOf))
     .filter((c): c is SubagentChild => c !== undefined)
     .filter((c) => c.running || !hidden.has(c.id))
-  return children.length > 0 || entries.some((e) => e?.kind === 'child') ? children : undefined
+  // "The host answered with child rows" (even if every one of them was cleaned
+  // away) is what decides between an empty directory and the next fallback face
+  // — an rc.1 row counts here exactly like a kind-tagged rc.2 row.
+  return children.length > 0 || entries.some(isChildRow) ? children : undefined
 }
 
-export const listSubagentChildren = async (app: App, parentId: string): Promise<SubagentChild[]> => {
+/** Run one host catalog call under a hard deadline. `AbortSignal.timeout`
+ *  asks a cooperative host to stop; the race releases a caller that never
+ *  settles at all (rc.1's recursive observe). The race fires a beat later so
+ *  the abort — and the host's own rejection — is observed first. */
+const bounded = async <T>(load: (signal: AbortSignal) => Promise<T>): Promise<T | undefined> => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), CATALOG_TIMEOUT_MS + 10)
+  })
+  try {
+    return await Promise.race([load(AbortSignal.timeout(CATALOG_TIMEOUT_MS)), deadline])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+/** Run one catalog face: bounded, and mapped to directory rows. A timeout or
+ *  a host error becomes `failed` — never a thrown rejection, because
+ *  /subagents must always get an answer. */
+const attemptCatalog = async (
+  app: App,
+  ctx: ListingContext,
+  load: (signal: AbortSignal) => Promise<SubagentListEntry[]>,
+): Promise<CatalogAttempt> => {
+  try {
+    const entries = await bounded(load)
+    if (entries === undefined) return { failed: true, answered: false }
+    return { failed: false, answered: entries.length > 0, rows: fromCatalog(app, entries, ctx.hidden, ctx.createdAtOf) }
+  } catch {
+    return { failed: true, answered: false }
+  }
+}
+
+/** Persisted headers by id (best-effort: a missing/old persistence face is an
+ *  empty map, and the directory still lists live subagents). */
+const persistedHeaders = async (app: App): Promise<HeaderMap> => {
+  const map: HeaderMap = new Map()
   const persistence = app.svc('sessionPersistence')
-  const histMap = new Map<string, { createdAt?: number; origin?: string; parentSession?: string }>()
-  if (typeof persistence?.list === 'function') {
-    try {
-      for (const h of await persistence.list()) {
-        const hh = persistedHeader(h as { header?: unknown; id?: string } | null)
-        if (hh?.id !== undefined) histMap.set(hh.id, hh as { createdAt?: number; origin?: string; parentSession?: string })
-      }
-    } catch {}
-  }
-  const hidden = new Set(readCleanedIds()[parentId] ?? [])
-  const createdAtOf = (id: string): number | undefined => histMap.get(id)?.createdAt
-  const subagentsSvc = app.svc('subagents')
-  const catalogOf = async (load: () => Promise<SubagentListEntry[]>): Promise<SubagentChild[] | undefined> => {
-    try {
-      return fromCatalog(app, await load(), hidden, createdAtOf)
-    } catch {
-      return undefined
+  if (typeof persistence?.list !== 'function') return map
+  try {
+    for (const h of await persistence.list()) {
+      const hh = persistedHeader(h as { header?: unknown; id?: string } | null)
+      if (hh?.id !== undefined) map.set(hh.id, hh as Header)
     }
-  }
-  // rc.2: recursive catalog with names/paths/depths. It is the only listing
-  // face that preserves named multi-level teams.
-  if (typeof subagentsSvc?.listDescendants === 'function') {
-    const children = await catalogOf(() => subagentsSvc.listDescendants!(parentId))
-    if (children !== undefined) return children
-  }
-  if (typeof subagentsSvc?.listChildren === 'function') {
-    const children = await catalogOf(() => subagentsSvc.listChildren!(parentId))
-    if (children !== undefined) return children
-  }
+  } catch {}
+  return map
+}
+
+/** Last resort: rebuild the direct directory from persisted headers (rc.1
+ *  hosts without any catalog face, or every catalog call failed). */
+const scanHeaders = (
+  app: App,
+  parentId: string,
+  histMap: HeaderMap,
+  ctx: ListingContext,
+): SubagentChild[] => {
   const seen = new Set<string>()
   const children: SubagentChild[] = []
   const add = (id: string, label: string | undefined, running: boolean, mode: string | undefined) => {
-    if (seen.has(id) || (!running && hidden.has(id))) return
+    if (seen.has(id) || (!running && ctx.hidden.has(id))) return
     seen.add(id)
-    children.push({ id, label: label ?? id.slice(0, 8), running, mode, createdAt: createdAtOf(id) })
+    children.push({ id, label: label ?? id.slice(0, 8), running, mode, createdAt: ctx.createdAtOf(id) })
   }
   for (const s of app.liveSessions.list?.() ?? []) {
     if (s?.header?.parentSession === parentId && s.header.origin === 'subagent') {
@@ -115,4 +197,28 @@ export const listSubagentChildren = async (app: App, parentId: string): Promise<
     }
   }
   return children
+}
+
+export const listSubagentChildren = async (app: App, parentId: string): Promise<SubagentChild[]> => {
+  const histMap = await persistedHeaders(app)
+  const ctx: ListingContext = {
+    hidden: new Set(readCleanedIds()[parentId] ?? []),
+    createdAtOf: (id) => histMap.get(id)?.createdAt,
+  }
+  const host = app.svc('subagents')
+  // rc.1: the direct, NON-recursive directory is asked first — it cannot walk
+  // into an unready child session, so /subagents answers even when the host's
+  // recursive catalog never settles (AC-001, AC-003).
+  const direct: CatalogAttempt = typeof host?.listChildren === 'function'
+    ? await attemptCatalog(app, ctx, (signal) => host.listChildren!(parentId, signal))
+    : { failed: true, answered: false }
+  // rc.2: the recursive catalog is an ENRICHMENT of the direct rows (it adds
+  // name/path/depth for nested teams). It is only worth a deadline when there
+  // are rows to enrich — or when the direct face failed, where it is the only
+  // catalog left. An empty direct answer means nothing deeper exists (AC-002).
+  if ((direct.failed || direct.answered) && typeof host?.listDescendants === 'function') {
+    const deep = await attemptCatalog(app, ctx, (signal) => host.listDescendants!(parentId, signal))
+    if (deep.rows !== undefined) return deep.rows
+  }
+  return direct.rows ?? scanHeaders(app, parentId, histMap, ctx)
 }

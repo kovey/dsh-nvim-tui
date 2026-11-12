@@ -2853,9 +2853,11 @@ description:
     assert.ok(noSvc.some((n) => n.includes('未装配 AgentTeam')), 'missing team service is reported')
   }
 
-  // rc.2 subagent catalog: /subagents prefers listDescendants (name/path/depth,
-  // running/mode preserved) while rc.1 listChildren and the persisted-header
-  // scan remain usable fallbacks (AC-001, TC-001/TC-002).
+  // subagent catalog: /subagents asks the NON-recursive listChildren first and
+  // only then enriches with rc.2's recursive listDescendants (name/path/depth,
+  // running/mode preserved). A recursive catalog that throws or never settles
+  // degrades to the direct listing instead of hanging the command.
+  // (AC-001..AC-004, TC-001/TC-002/TC-004/TC-005/TC-006)
   {
     const descendants = [
       { kind: 'child' as const, id: 'child-1', label: '扫描仓库', name: 'scout', path: 'scout', depth: 1, mode: 'continuable', activity: 'running' },
@@ -2863,7 +2865,7 @@ description:
       { kind: 'diagnostic' as const, id: 'child-3', reason: 'unavailable', depth: 2 },
     ]
     const calls: string[] = []
-    let childrenCalls = 0
+    let directSignal: AbortSignal | undefined
     const catalogApp = (svc: unknown) => ({
       svc: (name: string) => name === 'subagents'
         ? svc
@@ -2873,11 +2875,16 @@ description:
       liveSessions: { list: () => [], get: () => undefined },
     })
     const rc2 = await listSubagentChildren(catalogApp({
-      listDescendants: async (root: string) => { calls.push(root); return descendants },
-      listChildren: async () => { childrenCalls++; return [] },
+      listChildren: async (_root: string, signal?: AbortSignal) => {
+        calls.push('children')
+        directSignal = signal
+        return [{ kind: 'child' as const, id: 'child-1', label: '扫描仓库', mode: 'continuable' }]
+      },
+      listDescendants: async (root: string) => { calls.push(`descendants:${root}`); return descendants },
     }) as never, 'parent-rc2')
-    assert.deepEqual(calls, ['parent-rc2'], 'rc.2 listing prefers subagents.listDescendants')
-    assert.equal(childrenCalls, 0, 'listChildren is not consulted when listDescendants answers')
+    assert.ok(directSignal instanceof AbortSignal, 'listChildren is called with an AbortSignal (AC-001)')
+    assert.deepEqual(calls, ['children', 'descendants:parent-rc2'],
+      'rc.2 asks the non-recursive listChildren first, then the recursive enrichment')
     assert.deepEqual(rc2.map((c) => c.id), ['child-1', 'child-2'], 'diagnostic rows are not listed as children')
     assert.deepEqual(
       { name: rc2[0]?.name, path: rc2[0]?.path, depth: rc2[0]?.depth, mode: rc2[0]?.mode, running: rc2[0]?.running },
@@ -2889,11 +2896,22 @@ description:
       { path: 'scout/worker', depth: 2, running: false },
       'nested descendants keep their path and depth',
     )
+    const rc1Calls: string[] = []
     const rc1 = await listSubagentChildren(catalogApp({
-      listChildren: async () => [{ kind: 'child' as const, id: 'legacy-1', label: '旧子代理', mode: 'one-shot' }],
+      listChildren: async () => {
+        rc1Calls.push('children')
+        return [{ kind: 'child' as const, id: 'legacy-1', label: '旧子代理', mode: 'one-shot' }]
+      },
     }) as never, 'parent-rc1')
+    assert.deepEqual(rc1Calls, ['children'], 'rc.1 never waits for a recursive catalog (AC-001/TC-001)')
     assert.deepEqual(rc1.map((c) => c.id), ['legacy-1'], 'rc.1 listChildren still fills the directory')
     assert.equal(rc1[0]?.label, '旧子代理', 'rc.1 label preserved without name/path/depth')
+    const thrown = await listSubagentChildren(catalogApp({
+      listChildren: async () => [{ kind: 'child' as const, id: 'legacy-2', label: '旧子代理2', mode: 'one-shot' }],
+      listDescendants: async () => { throw new Error('host catalog exploded') },
+    }) as never, 'parent-throw')
+    assert.deepEqual(thrown.map((c) => c.id), ['legacy-2'],
+      'a throwing listDescendants degrades to the direct listing (TC-005)')
     const headerApp = {
       svc: (name: string) => name === 'subagents' ? {}
         : name === 'sessionPersistence'
@@ -2905,6 +2923,143 @@ description:
     }
     const scanned = await listSubagentChildren(headerApp as never, 'parent-h')
     assert.deepEqual(scanned.map((c) => c.id), ['child-h'], 'persisted-header scan remains the last fallback')
+  }
+
+  // rc.1's direct face is the RAW catalog: `{ id, createdAt, mode, label? }` rows
+  // carry NO `kind` at all (that is the host's own `SubagentCatalogEntry` shape).
+  // Requiring `kind === 'child'` dropped every one of them, so the directory
+  // silently fell through to the persisted-header scan; untagged rows must be
+  // listed as ordinary children — label/mode/createdAt kept — while diagnostics
+  // still never become directory rows.
+  {
+    const app = {
+      svc: (name: string) => name === 'subagents'
+        ? {
+            listChildren: async () => [
+              { id: 'raw-1', createdAt: 1_000, mode: 'one-shot', label: '旧子代理甲' },
+              { id: 'raw-2', createdAt: 2_000, mode: 'continuable', label: '旧子代理乙' },
+              { id: 'raw-3', createdAt: 3_000, mode: 'external' },
+              { id: 'raw-4', createdAt: 4_000, mode: 'unknown' },
+              { kind: 'diagnostic' as const, id: 'raw-diag', reason: 'unavailable' },
+              { id: 'raw-no-mode', reason: 'unavailable' },
+            ],
+          }
+        : name === 'sessionPersistence'
+          ? { list: async () => [{ header: { id: 'hdr-only', parentSession: 'parent-raw', origin: 'subagent', createdAt: 9 } }] }
+          : undefined,
+      slices: { sessions: { runningSubagents: new Map([['raw-2', { parentId: 'parent-raw', label: '旧子代理乙', startedAt: 1 }]]) } },
+      runtimeCtx: { agents: { get: () => undefined } },
+      liveSessions: { list: () => [], get: () => undefined },
+    }
+    const raw = await listSubagentChildren(app as never, 'parent-raw')
+    assert.deepEqual(raw.map((c) => c.id), ['raw-1', 'raw-2', 'raw-3', 'raw-4'],
+      'untagged rc.1 catalog rows are listed; tagged and untagged diagnostics are not')
+    assert.deepEqual(
+      raw.map((c) => ({ label: c.label, mode: c.mode, createdAt: c.createdAt })),
+      [
+        { label: '旧子代理甲', mode: 'one-shot', createdAt: 1_000 },
+        { label: '旧子代理乙', mode: 'continuable', createdAt: 2_000 },
+        { label: 'raw-3', mode: 'external', createdAt: 3_000 },
+        { label: 'raw-4', mode: 'unknown', createdAt: 4_000 },
+      ],
+      'untagged rc.1 rows keep their label/mode/createdAt (id prefix when the host has no label)',
+    )
+    assert.deepEqual(raw.map((c) => c.running), [false, true, false, false],
+      'rc.1 rows still read running from the live subagent registry')
+    assert.ok(raw.every((c) => c.name === undefined && c.path === undefined && c.depth === undefined),
+      'rc.1 rows stay name/path/depth-free so the old label rendering is unchanged (TC-006)')
+    assert.ok(raw.every((c) => c.id !== 'hdr-only'),
+      'a raw catalog answer does not fall through to the persisted-header scan (the old kind check did)')
+    log(`subagents rc.1 raw catalog: ${raw.map((c) => `${c.id}:${c.mode}@${c.createdAt}`).join(',')}`)
+  }
+
+  // createdAt precedence: rc.2's recursive rows drop the field, so the persisted
+  // header supplies it; a row that carries its own createdAt wins over the header.
+  // (The TTL cleanup and the age label both read this field.)
+  {
+    const deepApp = (deepCreatedAt: number | undefined) => ({
+      svc: (name: string) => name === 'subagents'
+        ? {
+            listChildren: async () => [{ id: 'raw-x', createdAt: 7, mode: 'one-shot' }],
+            listDescendants: async () => [{
+              kind: 'child' as const, id: 'deep-1', label: '深', mode: 'one-shot', depth: 1,
+              ...deepCreatedAt === undefined ? {} : { createdAt: deepCreatedAt },
+            }],
+          }
+        : name === 'sessionPersistence'
+          ? { list: async () => [{ header: { id: 'deep-1', parentSession: 'parent-deep', origin: 'subagent', createdAt: 42 } }] }
+          : undefined,
+      slices: { sessions: { runningSubagents: new Map() } },
+      runtimeCtx: { agents: { get: () => undefined } },
+      liveSessions: { list: () => [], get: () => undefined },
+    })
+    const fromHeader = await listSubagentChildren(deepApp(undefined) as never, 'parent-deep')
+    assert.deepEqual(fromHeader.map((c) => [c.id, c.createdAt]), [['deep-1', 42]],
+      'a rc.2 row without createdAt falls back to its persisted header')
+    const ownStamp = await listSubagentChildren(deepApp(99) as never, 'parent-deep')
+    assert.deepEqual(ownStamp.map((c) => [c.id, c.createdAt]), [['deep-1', 99]],
+      'a catalog row createdAt wins over the persisted header')
+  }
+
+  // rc.1 regression: the recursive catalog never settles — listDescendants
+  // walks into a child session whose query is not ready and waits forever.
+  // /subagents must still answer from the direct listing, within one deadline,
+  // and the pending host walk must have been aborted (AC-002/AC-003, TC-004).
+  {
+    let aborted = false
+    let sawSignal = false
+    const app = {
+      svc: (name: string) => name === 'subagents'
+        ? {
+            listChildren: async () => [{ kind: 'child' as const, id: 'hung-1', label: '未就绪子代理', mode: 'one-shot' }],
+            listDescendants: (_root: string, signal?: AbortSignal) => {
+              sawSignal = signal instanceof AbortSignal
+              return new Promise<never>((_resolve, reject) => {
+                signal?.addEventListener('abort', () => { aborted = true; reject(new Error('aborted')) }, { once: true })
+              })
+            },
+          }
+        : name === 'sessionPersistence' ? { list: async () => [] } : undefined,
+      slices: { sessions: { runningSubagents: new Map() } },
+      runtimeCtx: { agents: { get: () => undefined } },
+      liveSessions: { list: () => [], get: () => undefined },
+    }
+    const started = Date.now()
+    const hung = await listSubagentChildren(app as never, 'parent-hung')
+    const elapsed = Date.now() - started
+    assert.deepEqual(hung.map((c) => c.id), ['hung-1'],
+      'a never-settling listDescendants degrades to the direct listing')
+    assert.ok(sawSignal, 'listDescendants is called WITH an AbortSignal so the host can stop (AC-002)')
+    assert.ok(aborted, 'the deadline aborts the pending recursive catalog (no orphan host walk)')
+    assert.ok(elapsed >= 1400, `the direct fallback waits for the deadline before degrading (took ${elapsed}ms)`)
+    assert.ok(elapsed < 3000, `/subagents answers in under 3s despite the hanging catalog (took ${elapsed}ms)`)
+    log(`subagents hang regression: aborted=${aborted} elapsed=${elapsed}ms (direct fallback)`)
+  }
+
+  // The direct face can fail too: then the recursive catalog is tried — still
+  // bounded — and the persisted-header scan is the last fallback, so the
+  // command answers instead of waiting on the host (AC-002). This host
+  // deliberately IGNORES the signal: the deadline race must release us.
+  {
+    const headers = [{ header: { id: 'child-h2', parentSession: 'parent-h2', origin: 'subagent', createdAt: 7 } }]
+    const app = {
+      svc: (name: string) => name === 'subagents'
+        ? {
+            listChildren: async () => { throw new Error('rc.1 direct face unavailable') },
+            listDescendants: () => new Promise<never>(() => {}),
+          }
+        : name === 'sessionPersistence' ? { list: async () => headers } : undefined,
+      slices: { sessions: { runningSubagents: new Map() } },
+      runtimeCtx: { agents: { get: () => undefined } },
+      liveSessions: { list: () => [], get: () => undefined },
+    }
+    const started = Date.now()
+    const fallback = await listSubagentChildren(app as never, 'parent-h2')
+    const elapsed = Date.now() - started
+    assert.deepEqual(fallback.map((c) => c.id), ['child-h2'],
+      'both catalog faces failing falls back to the persisted header')
+    assert.ok(elapsed < 3000, `the header fallback is reached in under 3s (took ${elapsed}ms)`)
+    log(`subagents fallback regression: elapsed=${elapsed}ms (header fallback, signal ignored)`)
   }
 
   // /subagents rows show the rc.2 path, name and depth (AC-001 display half).

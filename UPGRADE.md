@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.6.4（宿主 0.2.2-rc.1） | [v0.6.4 → v0.6.5（工程标准化与 npm test/lint；宿主不变）](#v064--v065工程标准化与-npm-testlint宿主不变) |
 | nvim-tui v0.6.3（宿主 0.2.2-rc.1） | [v0.6.3 → v0.6.4（`always` 改为自动允许；宿主不变）](#v063--v064always-改为自动允许宿主不变) |
 | nvim-tui v0.6.2（宿主 0.2.2-rc.1） | [v0.6.2 → v0.6.3（审批浮窗替换修复；宿主不变）](#v062--v063审批浮窗替换修复宿主不变) |
 | nvim-tui v0.6.1（宿主 0.2.2-rc.1） | [v0.6.1 → v0.6.2（审批接缝 approval.pick；宿主不变）](#v061--v062审批接缝-approvalpick宿主不变) |
@@ -47,6 +48,33 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.6.4 → v0.6.5（工程标准化与 npm test/lint；宿主不变）
+
+> **结论先行**：宿主不变（dsh 0.2.2-rc.1；Node ≥24.9）。本版只做工程标准化与
+> 版本收敛，不改变 TUI 行为；升级步骤与 v0.6.4 相同。
+
+```bash
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.6.5"
+dsh --profile <name>
+```
+
+### 变化
+
+- `npm test`（= `npm run smoke`）与 `npm run lint`（= `npm run check`）成为标准
+  入口，CI/本地门禁统一用这两条命令；原有 `build` / `check` / `smoke` / `e2e`
+  语义不变。
+- 发布版本统一为 `0.6.5`（`package.json`、`package-lock.json`、`BUILD_VERSION`）。
+- 门禁配置随上游 0.8.8 套件标准化：interaction-gate 与 quality-gate 已对齐
+  （interaction 保持本地审批、不走 IM；quality 使用 `npm test` / `npm run lint` /
+  standards）。supply-chain 仍为上游 scaffold：`auditCommands` 为空，本流程
+  **未**配置 `npm audit`；审计命令需宿主用 `/suite set` 人工写入（当前未配置）。
+- 内置命令数保持 83 条，`docs/COMMANDS.md` 与 README 同步。
+
+### 说明
+
+- rc.2 适配仍为结构适配（宿主 npm registry 无 `0.2.2-rc.2`）；本版**不声称**
+  rc.2 真机运行，真机验证仍只覆盖 rc.1。
 
 ## v0.6.3 → v0.6.4（`always` 改为自动允许；宿主不变）
 

@@ -41,7 +41,7 @@ export declare const persistedHeader: (item: {
     id?: string;
     [key: string]: unknown;
 } | null;
-export declare const BUILD_VERSION = "0.6.4";
+export declare const BUILD_VERSION = "0.6.5";
 export declare const BUILD_STAMP: string;
 export interface ServiceMap {
     appExit: (code?: number) => void;

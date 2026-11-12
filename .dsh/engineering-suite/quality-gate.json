@@ -3,14 +3,14 @@
     {
       "id": "test",
       "name": "单元测试",
-      "command": "npm run smoke",
+      "command": "npm test",
       "required": true,
       "phase": "gate"
     },
     {
       "id": "lint",
       "name": "lint",
-      "command": "npm run check",
+      "command": "npm run lint",
       "required": false,
       "phase": "lint"
     },

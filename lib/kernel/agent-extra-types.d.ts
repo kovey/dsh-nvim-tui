@@ -1,5 +1,10 @@
 /** rc.2-only host types kept out of kernel/types to avoid growing its already
- *  oversized export surface. Consumers import from here directly. */
+ *  oversized export surface. Consumers import from here directly.
+ *
+ *  `SubagentListEntry.kind` is NOT always present: rc.2's recursive
+ *  `listDescendants` tags every row, while rc.1's direct `listChildren` returns
+ *  the raw `{ id, createdAt, mode, label? }` catalog rows untagged. Consumers
+ *  must therefore treat "no kind + a catalog mode" as a child row. */
 export interface SubagentListEntry {
     kind?: 'child' | 'diagnostic';
     id: string;

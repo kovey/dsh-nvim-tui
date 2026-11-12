@@ -1,7 +1,14 @@
 {
   "deps": {
-    "manifests": ["package.json"],
-    "auditCommands": []
+    "manifests": [
+      "package.json",
+      "package-lock.json"
+    ],
+    "auditCommands": [
+      "npm audit --json"
+    ]
   },
-  "secretScan": { "scanWholeTree": false }
+  "secretScan": {
+    "scanWholeTree": false
+  }
 }
