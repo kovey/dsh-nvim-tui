@@ -37,7 +37,7 @@ src/                          TypeScript 源码（strict；唯一手写源，根
     index.ts                    本域命令装配 + 核心服务槽位（其余命令由各域 index 安装）
     core.ts                     followup/send/onInput/onCommand/@ 补全/模型切换 + 通知 + tui_command 工具
     nlcmd.ts                    自然语言命令路由（精确短语 → 命令）
-    commands/                   55 个命令文件（一命令一文件，自注册）
+    commands/                   56 个命令文件（一命令一文件，自注册）
   sessions/                   会话域（生命周期 / fork / 偏好持久化 + 10 个命令）
   subagents/                  子代理域（目录 / 对话窗）
   transcript/                 转录域（修复 / 事件访问 / workflow + 6 个命令）

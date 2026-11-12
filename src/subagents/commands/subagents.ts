@@ -4,6 +4,42 @@ import { ageLabel, isExpired, orderSubagentChildren } from '../../kernel/subagen
 import type { App, AppSlices, WritableSlice } from '../../kernel/app.js'
 const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
 
+type Child = Awaited<ReturnType<AppSlices['sessions']['listSubagentChildren']>>[number]
+
+/** TTL cleanup: settled chains past the retention window are truncated and
+ *  hidden. Kept out of the command body so the command stays reviewable. */
+const cleanExpiredChildren = async (app: App, parentId: string, children: Child[]): Promise<Child[]> => {
+  const ttlHours = Number(app.config['subagentTtlHours'] ?? 72)
+  const expired = children.filter((c) => !c.running && isExpired(c.createdAt, ttlHours))
+  if (expired.length === 0) return children
+  let cleaned = 0
+  for (const c of expired) {
+    if (await app.slices.sessions.cleanSubagentChain(parentId, c.id)) cleaned++
+  }
+  if (cleaned === 0) return children
+  app.notice(tf('🧹 已清理 {0} 条过期子代理思考链（>{1}h），列表不再显示', [cleaned, ttlHours]))
+  return await app.slices.sessions.listSubagentChildren(parentId)
+}
+
+/** Picker rows, newest/running order already applied by the caller. */
+const childRows = (children: Child[], settledCount: number): Array<{ label: string; value: string }> => {
+  const rows: Array<{ label: string; value: string }> = []
+  let cleanRowInserted = false
+  for (const c of children) {
+    if (!c.running && !cleanRowInserted) {
+      cleanRowInserted = true
+      if (settledCount > 0) rows.push({ label: tf('🧹 清理全部已结束思考链（{0} 条）', [settledCount]), value: 'act:clean' })
+    }
+    const display = c.path ?? c.name ?? c.label
+    const detail = c.path !== undefined && c.label !== c.path ? ` · ${c.label}` : ''
+    rows.push({
+      label: `${display}${detail}${c.running ? t(' · 运行中') : ` · 已结束${ageLabel(c.createdAt) !== '' ? ` · ${ageLabel(c.createdAt)}` : ''}`}`,
+      value: c.id,
+    })
+  }
+  return rows
+}
+
 export const subagentsCommand = async (app: App) => {
   // The confirmation notice promises "/subagents 可取消" — a second
   // invocation with a pending followup CANCELS it instead of silently
@@ -15,48 +51,17 @@ export const subagentsCommand = async (app: App) => {
     return
   }
   const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
-  if (!rec || app.slices.sessions.activeId === null) {
-    app.notice(t('无活跃会话'))
-    return
-  }
+  if (!rec || app.slices.sessions.activeId === null) { app.notice(t('无活跃会话')); return }
   try {
     let children = await app.slices.sessions.listSubagentChildren(app.slices.sessions.activeId)
-    // TTL cleanup: settled chains past the retention window are truncated
-    // (only the first event survives) and hidden from the list.
-    const ttlHours = Number(app.config['subagentTtlHours'] ?? 72)
-    const expired = children.filter((c) => !c.running && isExpired(c.createdAt, ttlHours))
-    if (expired.length > 0) {
-      let cleaned = 0
-      for (const c of expired) {
-        if (await app.slices.sessions.cleanSubagentChain(app.slices.sessions.activeId, c.id)) cleaned++
-      }
-      if (cleaned > 0) {
-        app.notice(tf('🧹 已清理 {0} 条过期子代理思考链（>{1}h），列表不再显示', [cleaned, ttlHours]))
-        children = await app.slices.sessions.listSubagentChildren(app.slices.sessions.activeId)
-      }
-    }
+    children = await cleanExpiredChildren(app, app.slices.sessions.activeId, children)
     if (children.length === 0) {
       app.notice(t('该会话没有子代理（workflow/subagent 运行后此处可回放其思考链）'))
       return
     }
-    // Running children first, then newest-first — the live work leads.
     children = orderSubagentChildren(children)
     const settledCount = children.filter((c) => !c.running).length
-    const rows: Array<{ label: string; value: string }> = []
-    let cleanRowInserted = false
-    for (const c of children) {
-      if (!c.running && !cleanRowInserted) {
-        cleanRowInserted = true
-        if (settledCount > 0) {
-          rows.push({ label: tf('🧹 清理全部已结束思考链（{0} 条）', [settledCount]), value: 'act:clean' })
-        }
-      }
-      rows.push({
-        label: `${c.label}${c.running ? t(' · 运行中') : ` · 已结束${ageLabel(c.createdAt) !== '' ? ` · ${ageLabel(c.createdAt)}` : ''}`}`,
-        value: c.id,
-      })
-    }
-    const sel = await app.openPicker(t('子代理（选择查看思考链）'), rows)
+    const sel = await app.openPicker(t('子代理（选择查看思考链）'), childRows(children, settledCount))
     if (sel === null) return
     if (sel === 'act:clean') {
       const ok = await app.openPicker(t('清理思考链'), [
@@ -86,15 +91,14 @@ export const subagentsCommand = async (app: App) => {
     }
     if (action === null) return
     if (action === 'chat') {
-      await app.slices.agent.openSubagentChat( sel, child?.label ?? sel.slice(0, 8))
+      await app.slices.agent.openSubagentChat(sel, child?.label ?? sel.slice(0, 8))
       return
     }
-    await app.slices.agent.openSubagentView( sel, child?.label ?? sel.slice(0, 8))
+    await app.slices.agent.openSubagentView(sel, child?.label ?? sel.slice(0, 8))
   } catch (err) {
     app.notice(tf('subagents 失败: {0}', [(err as Error).message]))
   }
 }
-
 
 export function installSubagentsCommand(app: App): void {
   app.registerCommands([{ name: '/subagents', desc: t('子代理目录（回放/续聊思考链）'), usage: t(''), group: t('会话'), fn: () => subagentsCommand(app) }])

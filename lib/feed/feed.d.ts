@@ -343,6 +343,7 @@ export declare class FeedRenderer {
         runId?: string;
         provider?: string;
         id?: string;
+        name?: string;
     }): void;
     subagentEnd(info: {
         runId?: string;

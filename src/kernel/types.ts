@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type { SubagentListEntry } from './agent-extra-types.js'
 
 /**
  * Shared type layer for the dsh-nvim-tui runner.
@@ -139,6 +140,10 @@ export interface SubagentInfo {
   runId?: string
   provider?: string
   id?: string
+  /** rc.2: model-facing name / direct creator for routing. */
+  name?: string
+  parentSessionId?: string
+  local?: boolean
   stopReason?: string
 }
 
@@ -405,15 +410,9 @@ export interface SubagentPromptRequest {
 
 /** dsh-subagent directory service. */
 export interface SubagentsService {
-  listChildren?: (parentSessionId: string, signal?: AbortSignal) => Promise<Array<{
-    kind?: string
-    id: string
-    label?: string
-    activity?: string
-    mode?: string
-    reason?: string
-    hasChildren?: boolean
-  }>>
+  listChildren?: (parentSessionId: string, signal?: AbortSignal) => Promise<SubagentListEntry[]>
+  /** rc.2: recursive named catalog; direct children have depth=1. */
+  listDescendants?: (rootSessionId: string, signal?: AbortSignal) => Promise<SubagentListEntry[]>
   /** 0.1.5: queue/steer one human prompt to a continuable child. */
   prompt?: (request: SubagentPromptRequest, signal: AbortSignal) => Promise<{ messageId?: unknown } | void>
   /** Host prompt queue + other symbol-keyed runtime faces. */

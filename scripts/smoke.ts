@@ -49,6 +49,7 @@ import { historyMarkdown } from '../lib/kernel/session-log.js'
 import { clipboardCommands } from '../lib/kernel/clipboard.js'
 import { collectTurnStats } from '../lib/transcript/commands/stats.js'
 import { approvalPickerItems, approvalPickerTitle, pickApproval } from '../lib/ext-api/index.js'
+import { teamCommand } from '../lib/commands/commands/team.js'
 import { modelRefFor } from '../lib/sessions/services.js'
 import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
@@ -2815,6 +2816,34 @@ description:
     } as never, 'off')
     assert.equal(legacy.policy, 'ask', 'yolo off recovers a legacy never policy')
     assert.deepEqual(legacyEvents, [{ type: 'approval/policy', data: { policy: 'ask' } }], 'legacy never is reset to ask')
+  }
+
+  // rc.2 AgentTeam command: optional service, toggle and task-board rendering.
+  {
+    let enabled = false
+    let float: unknown[] | null = null
+    const notices: string[] = []
+    const tasks = [{ id: 'T-1', subject: 'review worktree', status: 'in_progress', ownerName: 'scout', ready: true }]
+    const service = {
+      isEnabled: () => enabled,
+      setEnabled: async (_agent: unknown, next: boolean) => { enabled = next },
+      listTasks: () => tasks,
+    }
+    const rec = { handle: { agent: {} } }
+    const fake = {
+      slices: { sessions: { activeId: 's', live: new Map([['s', rec]]) } },
+      svc: (name: string) => name === 'agentTeams' ? service : undefined,
+      notice: (text: unknown) => { notices.push(String(text)) },
+      luaCall: async (_code: string, args?: unknown[]) => { float = args ?? [] },
+    }
+    await teamCommand(fake as never, 'on')
+    assert.equal(enabled, true, '/team on enables the team')
+    assert.ok(notices.some((n) => n.includes('AgentTeam 已开启')), 'team enable is visible')
+    await teamCommand(fake as never, 'tasks')
+    assert.ok(Array.isArray(float) && String((float as unknown[])[1]).includes('review worktree'), 'team task board renders subjects')
+    const noSvc: string[] = []
+    await teamCommand({ slices: { sessions: { activeId: 's', live: new Map([['s', rec]]) } }, svc: () => undefined, notice: (x: unknown) => noSvc.push(String(x)) } as never, 'on')
+    assert.ok(noSvc.some((n) => n.includes('未装配 AgentTeam')), 'missing team service is reported')
   }
 
   // 0.2.2 TUI features: quote compaction, copy payloads, step folding, stats.

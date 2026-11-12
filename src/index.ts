@@ -44,6 +44,7 @@ import { installStatusline } from './statusline/index.js'
 import { installSessions } from './sessions/index.js'
 import { installSessionController } from './sessions/session-controller.js'
 import { installSubagents } from './subagents/index.js'
+import { installTeamCommand } from './commands/commands/team.js'
 import { installTranscript } from './transcript/index.js'
 import { installCommands } from './commands/index.js'
 import { installMarketInstall } from './market/index.js'
@@ -127,11 +128,9 @@ export function apply(ctx: Context, config: RunnerConfig = {}): void {
     installRuntime(app) // runtime defaults first: installs push hostDisposers
     installExtApi(app)
     installStatusline(app)
-    installSessions(app)
-    installSessionController(app, ctx)
-    installSubagents(app)
-    installTranscript(app)
-    installCommands(app)
+    installSessions(app); installSessionController(app, ctx)
+    installSubagents(app); installTeamCommand(app)
+    installTranscript(app); installCommands(app)
     installMarketInstall(app)
     installDeps(app, app.slices.agent)
     // Publish the extension surface: other dsh plugins consume it via

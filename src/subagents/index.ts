@@ -261,7 +261,7 @@ export function installSubagents(app: App): void {
   app.slices.ui.feedForSubagent = (info: SubagentInfo) => {
     if (!info?.id) return undefined
     const child = app.liveSessions.get(info.id)
-    const parentId = child?.header?.parentSession
+    const parentId = info.parentSessionId ?? child?.header?.parentSession
     const rec = parentId !== undefined ? app.slices.sessions.live.get(parentId) : undefined
     if (rec) return rec
     // Fallback: subagents usually spawn while their parent is the active session.
@@ -302,7 +302,7 @@ export function installSubagents(app: App): void {
     parent?.feed.subagentStart(payload)
     const key = payload?.id ?? payload?.runId
     if (parent && key) {
-      const label = `${payload?.provider ?? 'subagent'} ${FeedRenderer.truncate(String(payload?.id ?? ''), 8)}`
+      const label = `${payload?.name ?? payload?.provider ?? 'subagent'} ${FeedRenderer.truncate(String(payload?.id ?? ''), 8)}`
       app.slices.sessions.runningSubagents.set(String(key), {
         parentId: parent.id,
         label,

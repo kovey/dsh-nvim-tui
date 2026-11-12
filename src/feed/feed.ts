@@ -1128,10 +1128,10 @@ export class FeedRenderer {
 
   // -- subagent / workflow cards (host events routed by the runner) ---------
 
-  subagentStart(info: { runId?: string; provider?: string; id?: string }): void {
+  subagentStart(info: { runId?: string; provider?: string; id?: string; name?: string }): void {
     const now = Date.now()
     this.subagents.set(FeedRenderer.subagentKey(info), { provider: info.provider ?? '?', startedAt: now })
-    this.pushSubagent(tf('◇ subagent {provider} · {id}', { provider: info.provider ?? '?', id: FeedRenderer.truncate(String(info.id ?? ''), 16) }))
+    this.pushSubagent(tf('◇ subagent {name} · {id}', { name: info.name ?? info.provider ?? '?', id: FeedRenderer.truncate(String(info.id ?? ''), 16) }))
   }
 
   subagentEnd(info: { runId?: string; provider?: string; id?: string; stopReason?: string }): void {

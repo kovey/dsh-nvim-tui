@@ -5,16 +5,17 @@
  *
  * @module dsh-nvim-tui/sessions
  */
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, appendFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { appendFileSync } from 'node:fs'
 import { t, tf } from '../kernel/i18n.js'
-import { encodeHeaderOnlyLog, readCleanedIds, writeCleanedIds } from '../kernel/subagent-clean.js'
+import { readCleanedIds, writeCleanedIds } from '../kernel/subagent-clean.js'
 import { persistedHeader } from '../kernel/app.js'
 import type { App, AppSlices, WritableSlice } from '../kernel/app.js'
 import { registerNvimNotification } from '../kernel/rpc.js'
 import { saveUiPref, uiPref } from './prefs.js'
+import { listSubagentChildren } from './subagent-list.js'
+import { truncateStoredRaw } from './subagent-cleanup.js'
 import {
   createSession, resumeSession, switchTo, selectSession,
   forkSession, welcomeLines, updateTitle, disposeLiveSession,
@@ -32,71 +33,6 @@ import { installLayoutCommand } from './commands/layout.js'
 const WSS = (d: AppSlices['sessions']) => d as WritableSlice<AppSlices['sessions']>
 
 /** Fill the sessions module's App slots and register its commands. */
-/** Is one child session actually driving a turn right now? The host's
- *  listChildren `activity` field only reports residency, so prefer the TUI's
- *  subagent event registry and fall back to the live agent's own status. */
-const childRunning = (app: App, id: string): boolean => {
-  if (app.slices.sessions.runningSubagents.has(id)) return true
-  try {
-    const agent = (app.runtimeCtx.agents as { get?: (i: string) => { status?: unknown } | undefined }).get?.(id)
-    return agent?.status === 'running'
-  } catch {
-    return false
-  }
-}
-
-/** Children of one parent session (live + history, TTL-cleaned chains
- *  hidden) — the /subagents directory source. */
-const listSubagentChildren = async (app: App, parentId: string): Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number | undefined }>> => {
-  const persistence = app.svc('sessionPersistence')
-  let histMap = new Map<string, { createdAt?: number; origin?: string; parentSession?: string }>()
-  if (typeof persistence?.list === 'function') {
-    try {
-      for (const h of await persistence.list()) {
-        const hh = persistedHeader(h as { header?: unknown; id?: string } | null)
-        if (hh?.id !== undefined) histMap.set(hh.id, hh as { createdAt?: number; origin?: string; parentSession?: string })
-      }
-    } catch {}
-  }
-  const cleaned = readCleanedIds()[parentId] ?? []
-  const hidden = new Set(cleaned) // TTL-cleaned chains stay hidden
-  const createdAtOf = (id: string): number | undefined => histMap.get(id)?.createdAt
-  const subagentsSvc = app.svc('subagents')
-  if (typeof subagentsSvc?.listChildren === 'function') {
-    try {
-      const entries = await subagentsSvc.listChildren(parentId)
-      const children = entries.filter((e) => e?.kind === 'child').map((e) => ({
-        id: e.id,
-        label: e.label ?? e.id.slice(0, 8),
-        // The host's `activity` only means "resident in the session store",
-        // NOT "driving a turn" — a settled child stays resident. Live truth
-        // is the TUI's subagent event registry or the agent's own status.
-        running: childRunning(app, e.id),
-        mode: e.mode,
-        createdAt: createdAtOf(e.id),
-      })).filter((c) => c.running || !hidden.has(c.id))
-      if (children.length > 0 || entries.some((e) => e?.kind === 'child')) return children
-    } catch {}
-  }
-  const seen = new Set<string>()
-  const children: Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number | undefined }> = []
-  const add = (id: string, label: string | undefined, running: boolean, mode: string | undefined) => {
-    if (seen.has(id) || (!running && hidden.has(id))) return
-    seen.add(id)
-    children.push({ id, label: label ?? id.slice(0, 8), running, mode, createdAt: createdAtOf(id) })
-  }
-  for (const s of app.liveSessions.list?.() ?? []) {
-    if (s?.header?.parentSession === parentId && s.header.origin === 'subagent') {
-      add(s.id, undefined, true, undefined)
-    }
-  }
-  for (const [id, h] of histMap) {
-    if (h?.parentSession === parentId && h.origin === 'subagent') {
-      add(id, undefined, false, undefined)
-    }
-  }
-  return children
-}
 
 /** Seed the running-subagents registry from the host (children may have
  *  started before the TUI attached). Best-effort. */
@@ -117,15 +53,6 @@ const seedRunningSubagents = async (app: App, parentId: string) => {
   } catch { /* best-effort */ }
 }
 
-/** Zstandard frame magic (0xFD2FB528 little-endian). */
-const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
-const isZstdArtifact = (path: string): boolean => {
-  try {
-    const head = readFileSync(path).subarray(0, 4)
-    return head.length === 4 && head.every((b, i) => b === ZSTD_MAGIC[i])
-  } catch { return false }
-}
-
 /** Clean one settled chain: hide it (ledger + workspace archive) and, on
  *  pre-0.1.5 hosts, free the stored bulk via the raw-artifact rewrite.
  *  0.1.5 owns its storage (no raw artifacts / no truncate API) — hiding is
@@ -133,21 +60,7 @@ const isZstdArtifact = (path: string): boolean => {
 const cleanSubagentChain = async (app: App, parentId: string, childId: string): Promise<boolean> => {
   const persistence = app.svc('sessionPersistence')
   try {
-    if (persistence?.supportsRawArtifacts === true &&
-      app.liveSessions.get(childId) === undefined) {
-      const inspection = await persistence.inspect?.(childId)
-      const meta = inspection?.meta
-      if (meta?.id === childId) {
-        const loc = persistence.locate?.(meta)
-        const path = typeof loc?.path === 'string' ? loc.path : undefined
-        const raw = await persistence.readRaw?.(childId)
-        const headerLine = (raw?.content ?? '').split('\n', 1)[0] ?? ''
-        if (path !== undefined && headerLine !== '' && isZstdArtifact(path)) {
-          writeFileSync(path + '.tmp', encodeHeaderOnlyLog(headerLine))
-          renameSync(path + '.tmp', path)
-        }
-      }
-    }
+    if (app.liveSessions.get(childId) === undefined) await truncateStoredRaw(persistence, childId)
   } catch {}
   const ws = app.svc('workspaceRegistry')
   if (typeof ws?.archiveSession === 'function') {
@@ -248,12 +161,10 @@ export function installSessions(app: App): void {
       const cachedTitle = (h: { id: string; inheritedEventCount?: number }): string | undefined => {
         if (typeof projections?.cachedSnapshot !== 'function') return undefined
         try {
-          const snap = projections.cachedSnapshot(h, ['title'])
-          const title = snap?.values?.['title']
-          return typeof title === 'string' && title !== '' ? title : undefined
-        } catch {
-          return undefined
-        }
+          const title = projections.cachedSnapshot(h, ['title'])?.values?.['title']
+          if (typeof title === 'string' && title !== '') return title
+        } catch {}
+        return undefined
       }
       const toRow = (h: { id: string; [key: string]: unknown }) => ({
         id: h.id,

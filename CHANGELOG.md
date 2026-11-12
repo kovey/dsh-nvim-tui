@@ -3,6 +3,23 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [Unreleased] — dsh 0.2.2-rc.2
+
+### Added · rc.2 适配
+
+- `/subagents` 在 rc.2 下优先使用 `subagents.listDescendants`，展示具名/多层子代理的
+  `name` / `path` / `depth`；rc.1 的 `listChildren` 与会话头扫描仍为回退路径。
+- `subagent/start` 使用 rc.2 的 `parentSessionId` 路由；有 `name` 时用它作为标签。
+- 新增 `/team [on|off|tasks]`：切换 rc.2 AgentTeam、查看共享任务板；宿主未装配
+  `agentTeams` 时明确提示。
+
+### 说明
+
+- rc.2 目前只有 GitHub release，npm registry 仍无 `0.2.2-rc.2`。本次以 rc.2 源码
+  /发布说明做结构适配，**真机验证仍只能覆盖 rc.1**；等 rc.2 可安装后再跑隔离 profile。
+- 其余 rc.2 功能（Git worktree 审阅、桌面更新渠道、Web 侧栏/右键/定位等）属于
+  Web/桌面专属，未伪装成 TUI 支持。
+
 ## [v0.6.4] — 2026-11-11
 
 ### Fixed · `always` 改为真正的自动允许

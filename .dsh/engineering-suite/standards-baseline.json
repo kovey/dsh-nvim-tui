@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "frozenAt": "2026-11-11T12:25:10.543Z",
-  "note": "nvim-tui 首次接入结构规范：冻结当前 332 项存量违规为基线，之后只挡新增/恶化；阈值与豁免来自 .dsh/engineering-suite/standards.json。",
+  "frozenAt": "2026-11-12T01:38:22.102Z",
+  "note": "rc.2 适配：新增具名/多层子代理与 /team 命令，触发 cachedTitle/listSubagentChildren 嵌套深度及大文件行数变化；接受当前测量作为新基线，后续新增仍由棘轮拦截。",
   "accepted": [
     "cycle|src/kernel/app.ts|src/kernel/app.ts -> src/kernel/command-args.ts",
     "maxDepth|examples/dsh-plugin/index.ts|apply",
@@ -32,11 +32,10 @@
     "maxDepth|lib/market/commands/market.js|marketCommand",
     "maxDepth|lib/market/progress.js|buildCatalog",
     "maxDepth|lib/sessions/commands/sessions.js|sessionsCommand",
-    "maxDepth|lib/sessions/index.js|cleanSubagentChain",
+    "maxDepth|lib/sessions/index.js|cachedTitle",
     "maxDepth|lib/sessions/services.js|doResumeSession",
     "maxDepth|lib/sessions/session-controller.js|installSessionController",
     "maxDepth|lib/statusline/index.js|installStatusline",
-    "maxDepth|lib/subagents/commands/subagents.js|subagentsCommand",
     "maxDepth|lib/subagents/index.js|openSubagentView",
     "maxDepth|lib/transcript/commands/outline.js|turnOutlineRows",
     "maxDepth|lib/transcript/commands/queue.js|add",
@@ -72,11 +71,11 @@
     "maxDepth|src/market/commands/market.ts|marketCommand",
     "maxDepth|src/market/progress.ts|buildCatalog",
     "maxDepth|src/sessions/commands/sessions.ts|sessionsCommand",
-    "maxDepth|src/sessions/index.ts|listSubagentChildren",
+    "maxDepth|src/sessions/index.ts|cachedTitle",
     "maxDepth|src/sessions/services.ts|doResumeSession",
     "maxDepth|src/sessions/session-controller.ts|installSessionController",
+    "maxDepth|src/sessions/subagent-list.ts|listSubagentChildren",
     "maxDepth|src/statusline/index.ts|installStatusline",
-    "maxDepth|src/subagents/commands/subagents.ts|subagentsCommand",
     "maxDepth|src/subagents/index.ts|openSubagentView",
     "maxDepth|src/transcript/commands/outline.ts|turnOutlineRows",
     "maxDepth|src/transcript/commands/queue.ts|add",
@@ -111,7 +110,6 @@
     "maxFileLines|lib/kernel/lifecycle.js|(file)",
     "maxFileLines|lib/kernel/types.d.ts|(file)",
     "maxFileLines|lib/market/progress.js|(file)",
-    "maxFileLines|lib/sessions/index.js|(file)",
     "maxFileLines|lib/sessions/services.js|(file)",
     "maxFileLines|lib/statusline/index.js|(file)",
     "maxFileLines|lib/subagents/index.js|(file)",
@@ -130,7 +128,6 @@
     "maxFileLines|src/kernel/i18n.ts|(file)",
     "maxFileLines|src/kernel/types.ts|(file)",
     "maxFileLines|src/market/progress.ts|(file)",
-    "maxFileLines|src/sessions/index.ts|(file)",
     "maxFileLines|src/sessions/services.ts|(file)",
     "maxFileLines|src/statusline/index.ts|(file)",
     "maxFileLines|src/subagents/index.ts|(file)",
@@ -220,7 +217,6 @@
     "maxFunctionLines|src/feed/feed.ts|FeedRenderer.flush",
     "maxFunctionLines|src/feed/feed.ts|FeedRenderer.flushReasoningBufferInner",
     "maxFunctionLines|src/feed/table.ts|renderTable",
-    "maxFunctionLines|src/index.ts|apply",
     "maxFunctionLines|src/kernel/app.ts|createApp",
     "maxFunctionLines|src/kernel/bridge.ts|connectNvim",
     "maxFunctionLines|src/kernel/bridge.ts|spawnNvim",
@@ -236,7 +232,6 @@
     "maxFunctionLines|src/statusline/index.ts|installStatusline",
     "maxFunctionLines|src/statusline/index.ts|refreshBgJobs",
     "maxFunctionLines|src/statusline/index.ts|updateStatusline",
-    "maxFunctionLines|src/subagents/commands/subagents.ts|subagentsCommand",
     "maxFunctionLines|src/subagents/index.ts|installSubagents",
     "maxFunctionLines|src/subagents/index.ts|openSubagentChat",
     "maxFunctionLines|src/subagents/index.ts|openSubagentView",
@@ -483,7 +478,7 @@
       "limit": 4
     },
     {
-      "key": "maxDepth|lib/sessions/index.js|cleanSubagentChain",
+      "key": "maxDepth|lib/sessions/index.js|cachedTitle",
       "actual": 5,
       "limit": 4
     },
@@ -499,11 +494,6 @@
     },
     {
       "key": "maxDepth|lib/statusline/index.js|installStatusline",
-      "actual": 6,
-      "limit": 4
-    },
-    {
-      "key": "maxDepth|lib/subagents/commands/subagents.js|subagentsCommand",
       "actual": 6,
       "limit": 4
     },
@@ -683,7 +673,7 @@
       "limit": 4
     },
     {
-      "key": "maxDepth|src/sessions/index.ts|listSubagentChildren",
+      "key": "maxDepth|src/sessions/index.ts|cachedTitle",
       "actual": 5,
       "limit": 4
     },
@@ -698,12 +688,12 @@
       "limit": 4
     },
     {
-      "key": "maxDepth|src/statusline/index.ts|installStatusline",
-      "actual": 6,
+      "key": "maxDepth|src/sessions/subagent-list.ts|listSubagentChildren",
+      "actual": 5,
       "limit": 4
     },
     {
-      "key": "maxDepth|src/subagents/commands/subagents.ts|subagentsCommand",
+      "key": "maxDepth|src/statusline/index.ts|installStatusline",
       "actual": 6,
       "limit": 4
     },
@@ -834,7 +824,7 @@
     },
     {
       "key": "maxFileLines|lib/feed/feed.d.ts|(file)",
-      "actual": 397,
+      "actual": 398,
       "limit": 300
     },
     {
@@ -844,7 +834,7 @@
     },
     {
       "key": "maxFileLines|lib/kernel/app.d.ts|(file)",
-      "actual": 734,
+      "actual": 737,
       "limit": 300
     },
     {
@@ -869,17 +859,12 @@
     },
     {
       "key": "maxFileLines|lib/kernel/types.d.ts|(file)",
-      "actual": 1295,
+      "actual": 1294,
       "limit": 300
     },
     {
       "key": "maxFileLines|lib/market/progress.js|(file)",
       "actual": 776,
-      "limit": 300
-    },
-    {
-      "key": "maxFileLines|lib/sessions/index.js|(file)",
-      "actual": 393,
       "limit": 300
     },
     {
@@ -949,7 +934,7 @@
     },
     {
       "key": "maxFileLines|src/kernel/app.ts|(file)",
-      "actual": 891,
+      "actual": 894,
       "limit": 300
     },
     {
@@ -964,17 +949,12 @@
     },
     {
       "key": "maxFileLines|src/kernel/types.ts|(file)",
-      "actual": 871,
+      "actual": 870,
       "limit": 300
     },
     {
       "key": "maxFileLines|src/market/progress.ts|(file)",
       "actual": 795,
-      "limit": 300
-    },
-    {
-      "key": "maxFileLines|src/sessions/index.ts|(file)",
-      "actual": 385,
       "limit": 300
     },
     {
@@ -1154,7 +1134,7 @@
     },
     {
       "key": "maxFunctionLines|lib/index.js|apply",
-      "actual": 66,
+      "actual": 67,
       "limit": 60
     },
     {
@@ -1199,7 +1179,7 @@
     },
     {
       "key": "maxFunctionLines|lib/sessions/index.js|installSessions",
-      "actual": 157,
+      "actual": 156,
       "limit": 60
     },
     {
@@ -1239,7 +1219,7 @@
     },
     {
       "key": "maxFunctionLines|lib/subagents/commands/subagents.js|subagentsCommand",
-      "actual": 96,
+      "actual": 67,
       "limit": 60
     },
     {
@@ -1423,11 +1403,6 @@
       "limit": 60
     },
     {
-      "key": "maxFunctionLines|src/index.ts|apply",
-      "actual": 62,
-      "limit": 60
-    },
-    {
       "key": "maxFunctionLines|src/kernel/app.ts|createApp",
       "actual": 294,
       "limit": 60
@@ -1474,7 +1449,7 @@
     },
     {
       "key": "maxFunctionLines|src/sessions/index.ts|installSessions",
-      "actual": 162,
+      "actual": 160,
       "limit": 60
     },
     {
@@ -1500,11 +1475,6 @@
     {
       "key": "maxFunctionLines|src/statusline/index.ts|updateStatusline",
       "actual": 116,
-      "limit": 60
-    },
-    {
-      "key": "maxFunctionLines|src/subagents/commands/subagents.ts|subagentsCommand",
-      "actual": 90,
       "limit": 60
     },
     {

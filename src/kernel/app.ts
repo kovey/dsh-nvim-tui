@@ -332,7 +332,10 @@ export interface AppSlices {
     switchTo: (id: string) => Promise<void>
     selectSession: (id: string) => Promise<void>
     forkSession: (directive: string | undefined) => Promise<string | undefined>
-    listSubagentChildren: (parentId: string) => Promise<Array<{ id: string; label: string; running: boolean; mode: string | undefined; createdAt?: number | undefined }>>
+    listSubagentChildren: (parentId: string) => Promise<Array<{
+      id: string; label: string; name?: string | undefined; path?: string | undefined; depth?: number | undefined
+      running: boolean; mode: string | undefined; createdAt?: number | undefined
+    }>>
     seedRunningSubagents: (parentId: string) => Promise<void>
     cleanSubagentChain: (parentId: string, childId: string) => Promise<boolean>
     runningSubagentsOf: (parentId: string | null) => Array<{ parentId: string; label: string; startedAt: number }>

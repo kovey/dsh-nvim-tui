@@ -46,7 +46,7 @@ dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"
 
 | 依赖 | 要求 | 说明 |
 |---|---|---|
-| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | `>=0.2.2-rc.1 <0.3.0` | 已实测 0.2.2-rc.1（类型面、启动、Agent.model/tools/schedule/投影探针）；整个 0.2.2 系列按稳定接口声明；0.3.0 未验证，故意不声明兼容 |
+| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | `>=0.2.2-rc.1 <0.3.0` | 已实测 0.2.2-rc.1；rc.2 按 GitHub release 源码做结构适配（npm 尚未发布 rc.2，未真机验证）；整个 0.2.2 系列按稳定接口声明；0.3.0 未验证，故意不声明兼容 |
 | [Neovim](https://neovim.io) | 0.9+（推荐 0.10+） | 0.10+ 完整体验（输入框四边框、弹窗提示嵌入边框）；0.9 可运行但降级 |
 | Node.js | 24.9+ | 跟随 dsh 0.2.2 的 `engines` 要求；旧 Node 需先升级 |
 
@@ -114,13 +114,13 @@ dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"
 
 | 分组 | 命令 |
 |---|---|
-| 会话 | `/sessions` `/new` `/fork` `/btw` `/queue` `/compact` `/cwd` `/search` `/schedule` `/terminal` `/upload` `/quote` |
+| 会话 | `/sessions` `/new` `/fork` `/btw` `/queue` `/compact` `/cwd` `/search` `/schedule` `/terminal` `/upload` `/quote` `/subagents` `/team` |
 | 模型 | `/model` `/models` `/effort` `/difficulty` |
 | 视图 | `/panel` `/theme` `/density` `/steps` `/layout` `/whale` `/locale` |
 | 运维 | `/settings` `/deps` `/doctor` `/plugins` `/market` `/plugin` `/mcp` |
 | 信息 | `/help` `/status` `/context` `/cost` `/changes` `/diff` `/export` `/copy` `/stats` `/outline` `/files` `/preview` |
 
-完整命令表（81 个内置命令，按分组）见 [docs/COMMANDS.md](./docs/COMMANDS.md)。
+完整命令表（82 个内置命令，按分组）见 [docs/COMMANDS.md](./docs/COMMANDS.md)。
 宿主与其他插件注册的命令也会进入补全目录，可用 `/commands` 查看。
 
 ## 配置

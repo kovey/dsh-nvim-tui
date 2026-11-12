@@ -361,6 +361,9 @@ export interface AppSlices {
         listSubagentChildren: (parentId: string) => Promise<Array<{
             id: string;
             label: string;
+            name?: string | undefined;
+            path?: string | undefined;
+            depth?: number | undefined;
             running: boolean;
             mode: string | undefined;
             createdAt?: number | undefined;
