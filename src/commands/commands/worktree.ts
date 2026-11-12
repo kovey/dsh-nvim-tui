@@ -69,15 +69,27 @@ const restoreAction = async (app: App, rec: Rec, svc: WorktreeService, tail: str
   app.notice(tf('已恢复 worktree {0}{1}', [restored.path, restored.branchRecreated ? t('（分支已重新创建）') : '']))
 }
 
+/** Review command for one checkout: `--stat` diff of the working tree against
+ *  the recorded base commit. Exported so the smoke suite can assert the exact
+ *  argv without shelling out to git. */
+export const worktreeDiffArgv = (path: string, baseCommit: string): string[] =>
+  ['-C', path, 'diff', '--stat', baseCommit]
+
+/** Float body for one `git diff --stat` output (empty → explicit placeholder). */
+export const worktreeDiffLines = (stat: string): string[] => {
+  const trimmed = stat.trim()
+  return trimmed === '' ? [t('（相对 base 没有差异）')] : ['```diff', ...trimmed.split('\n'), '```']
+}
+
 const diffAction = async (app: App, rec: Rec, tail: string): Promise<void> => {
   const rows = rowsOf(app, rec).filter((r) => r.owned)
   const target = await targetOf(app, rows, tail, t('审阅 worktree'))
   if (target === undefined) { app.notice(t('找不到该 worktree 记录')); return }
   try {
-    const stat = execFileSync('git', ['-C', target.worktree.path, 'diff', '--stat', target.worktree.baseCommit], {
+    const stat = execFileSync('git', worktreeDiffArgv(target.worktree.path, target.worktree.baseCommit), {
       encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024,
-    }).trim()
-    const lines = stat === '' ? [t('（相对 base 没有差异）')] : ['```diff', ...stat.split('\n'), '```']
+    })
+    const lines = worktreeDiffLines(stat)
     await app.luaCall('require("dsh_tui").show_lines_float(...)', [tf('Worktree diff: {0}', [target.worktree.branch]), lines])
   } catch (err) {
     app.notice(tf('Worktree diff 失败: {0}', [(err as Error).message]))

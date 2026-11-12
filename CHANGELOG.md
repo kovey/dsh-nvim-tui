@@ -23,8 +23,21 @@
 
 - rc.2 目前只有 GitHub release，npm registry 仍无 `0.2.2-rc.2`。本次以 rc.2 源码
   /发布说明做结构适配，**真机验证仍只能覆盖 rc.1**；等 rc.2 可安装后再跑隔离 profile。
-- 其余 rc.2 功能（Git worktree 审阅、桌面更新渠道、Web 侧栏/右键/定位等）属于
-  Web/桌面专属，未伪装成 TUI 支持。
+- 其余 rc.2 功能（Web 侧栏的 Git worktree 审阅面板、桌面更新渠道、Web 侧栏/右键/
+  定位等）属于 Web/桌面专属，未伪装成 TUI 支持。
+
+### 验证
+
+- `npm run build` / `check` / `smoke` / `standards-check.sh` 全绿；smoke 新增 rc.2
+  结构用例：子代理目录（listDescendants/name/path/depth 与 rc.1/会话头回退）、
+  `subagent/start` 的 parentSessionId 路由、AgentTeam、worktree new/list/restore/diff、
+  MCP status/restart/probe、`/files search` picker+新 tab，以及 83 条命令表与
+  `docs/COMMANDS.md` 的一致性断言。
+- 宿主为 `dsh 0.2.2-rc.1`（`dsh --version`）；**rc.2 真机未运行**（npm registry 无该
+  版本），只按 `dsh-v0.2.2-rc.2` tag 源码核对服务/类型形状。
+- rc.1 隔离 profile 启动本次未执行：当前沙箱禁止写
+  `~/.dsh/profiles/<name>/cordis.yml`（EPERM，workspace-write 限制）；
+  真实终端可跑 `npm run e2e` 复核。
 
 ## [v0.6.4] — 2026-11-11
 

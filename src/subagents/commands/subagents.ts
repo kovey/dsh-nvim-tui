@@ -21,6 +21,22 @@ const cleanExpiredChildren = async (app: App, parentId: string, children: Child[
   return await app.slices.sessions.listSubagentChildren(parentId)
 }
 
+/** One picker row label: path (or name/label), display label, then the rc.2
+ *  name/depth. rc.1 rows have no name/path/depth and render exactly as before. */
+const childDisplay = (c: Child): string => {
+  const display = c.path ?? c.name ?? c.label
+  const detail = c.path !== undefined && c.label !== c.path ? ` · ${c.label}` : ''
+  // rc.2 addresses a child by `name`; a path like `agents/7` does not carry it,
+  // so keep the name visible (`agents/7 · reviewer`). Not repeated when the
+  // path or the display label already contains it.
+  const nameHidden = c.name !== undefined && c.name !== ''
+    && c.path !== undefined && !c.path.includes(c.name) && !c.label.includes(c.name)
+  // `L<n>` keeps the depth language-neutral (no new i18n dictionary entry in
+  // an already oversized table).
+  const depth = c.depth === undefined ? '' : ` · L${c.depth}`
+  return `${display}${detail}${nameHidden ? ` · ${c.name}` : ''}${depth}`
+}
+
 /** Picker rows, newest/running order already applied by the caller. */
 const childRows = (children: Child[], settledCount: number): Array<{ label: string; value: string }> => {
   const rows: Array<{ label: string; value: string }> = []
@@ -30,10 +46,8 @@ const childRows = (children: Child[], settledCount: number): Array<{ label: stri
       cleanRowInserted = true
       if (settledCount > 0) rows.push({ label: tf('🧹 清理全部已结束思考链（{0} 条）', [settledCount]), value: 'act:clean' })
     }
-    const display = c.path ?? c.name ?? c.label
-    const detail = c.path !== undefined && c.label !== c.path ? ` · ${c.label}` : ''
     rows.push({
-      label: `${display}${detail}${c.running ? t(' · 运行中') : ` · 已结束${ageLabel(c.createdAt) !== '' ? ` · ${ageLabel(c.createdAt)}` : ''}`}`,
+      label: `${childDisplay(c)}${c.running ? t(' · 运行中') : ` · 已结束${ageLabel(c.createdAt) !== '' ? ` · ${ageLabel(c.createdAt)}` : ''}`}`,
       value: c.id,
     })
   }

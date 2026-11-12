@@ -50,9 +50,13 @@ import { clipboardCommands } from '../lib/kernel/clipboard.js'
 import { collectTurnStats } from '../lib/transcript/commands/stats.js'
 import { approvalPickerItems, approvalPickerTitle, pickApproval } from '../lib/ext-api/index.js'
 import { teamCommand } from '../lib/commands/commands/team.js'
-import { worktreeCommand } from '../lib/commands/commands/worktree.js'
+import { worktreeCommand, worktreeDiffArgv, worktreeDiffLines } from '../lib/commands/commands/worktree.js'
 import { mcpCommand } from '../lib/commands/commands/mcp.js'
-import { searchWorkspaceFiles } from '../lib/commands/commands/files.js'
+import { filesCommand, searchWorkspaceFiles } from '../lib/commands/commands/files.js'
+import { listSubagentChildren } from '../lib/sessions/subagent-list.js'
+import { subagentsCommand } from '../lib/subagents/commands/subagents.js'
+import { installSubagents } from '../lib/subagents/index.js'
+import { wireHostEvents } from '../lib/kernel/host-events.js'
 import { modelRefFor } from '../lib/sessions/services.js'
 import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
@@ -2849,52 +2853,292 @@ description:
     assert.ok(noSvc.some((n) => n.includes('未装配 AgentTeam')), 'missing team service is reported')
   }
 
-  // rc.2 worktree/MCP/file-search surfaces (structural fakes; real rc.2 host
-  // is not installable from npm yet).
+  // rc.2 subagent catalog: /subagents prefers listDescendants (name/path/depth,
+  // running/mode preserved) while rc.1 listChildren and the persisted-header
+  // scan remain usable fallbacks (AC-001, TC-001/TC-002).
+  {
+    const descendants = [
+      { kind: 'child' as const, id: 'child-1', label: '扫描仓库', name: 'scout', path: 'scout', depth: 1, mode: 'continuable', activity: 'running' },
+      { kind: 'child' as const, id: 'child-2', label: '写测试', name: 'worker', path: 'scout/worker', depth: 2, mode: 'one-shot', activity: 'inactive' },
+      { kind: 'diagnostic' as const, id: 'child-3', reason: 'unavailable', depth: 2 },
+    ]
+    const calls: string[] = []
+    let childrenCalls = 0
+    const catalogApp = (svc: unknown) => ({
+      svc: (name: string) => name === 'subagents'
+        ? svc
+        : name === 'sessionPersistence' ? { list: async () => [] } : undefined,
+      slices: { sessions: { runningSubagents: new Map([['child-1', { parentId: 'parent-rc2', label: 'scout', startedAt: 1 }]]) } },
+      runtimeCtx: { agents: { get: () => undefined } },
+      liveSessions: { list: () => [], get: () => undefined },
+    })
+    const rc2 = await listSubagentChildren(catalogApp({
+      listDescendants: async (root: string) => { calls.push(root); return descendants },
+      listChildren: async () => { childrenCalls++; return [] },
+    }) as never, 'parent-rc2')
+    assert.deepEqual(calls, ['parent-rc2'], 'rc.2 listing prefers subagents.listDescendants')
+    assert.equal(childrenCalls, 0, 'listChildren is not consulted when listDescendants answers')
+    assert.deepEqual(rc2.map((c) => c.id), ['child-1', 'child-2'], 'diagnostic rows are not listed as children')
+    assert.deepEqual(
+      { name: rc2[0]?.name, path: rc2[0]?.path, depth: rc2[0]?.depth, mode: rc2[0]?.mode, running: rc2[0]?.running },
+      { name: 'scout', path: 'scout', depth: 1, mode: 'continuable', running: true },
+      'rc.2 name/path/depth/mode/running are preserved',
+    )
+    assert.deepEqual(
+      { path: rc2[1]?.path, depth: rc2[1]?.depth, running: rc2[1]?.running },
+      { path: 'scout/worker', depth: 2, running: false },
+      'nested descendants keep their path and depth',
+    )
+    const rc1 = await listSubagentChildren(catalogApp({
+      listChildren: async () => [{ kind: 'child' as const, id: 'legacy-1', label: '旧子代理', mode: 'one-shot' }],
+    }) as never, 'parent-rc1')
+    assert.deepEqual(rc1.map((c) => c.id), ['legacy-1'], 'rc.1 listChildren still fills the directory')
+    assert.equal(rc1[0]?.label, '旧子代理', 'rc.1 label preserved without name/path/depth')
+    const headerApp = {
+      svc: (name: string) => name === 'subagents' ? {}
+        : name === 'sessionPersistence'
+          ? { list: async () => [{ header: { id: 'child-h', parentSession: 'parent-h', origin: 'subagent', createdAt: 5 } }] }
+          : undefined,
+      slices: { sessions: { runningSubagents: new Map() } },
+      runtimeCtx: { agents: { get: () => undefined } },
+      liveSessions: { list: () => [], get: () => undefined },
+    }
+    const scanned = await listSubagentChildren(headerApp as never, 'parent-h')
+    assert.deepEqual(scanned.map((c) => c.id), ['child-h'], 'persisted-header scan remains the last fallback')
+  }
+
+  // /subagents rows show the rc.2 path, name and depth (AC-001 display half).
+  // A path that does not carry the name must not swallow it; rc.1 rows (no
+  // name/path/depth) keep their previous label.
+  {
+    const rows: Array<{ label: string; value: string }> = []
+    const fake = {
+      slices: {
+        agent: { pendingSubagentFollowup: null },
+        sessions: {
+          activeId: 'p',
+          live: new Map([['p', { handle: { agent: {} } }]]),
+          listSubagentChildren: async () => [
+            { id: 'child-1', label: '扫描仓库', name: 'scout', path: 'scout', depth: 1, running: true, mode: 'continuable', createdAt: Date.now() },
+            { id: 'child-2', label: '写测试', name: 'worker', path: 'scout/worker', depth: 2, running: false, mode: 'one-shot', createdAt: Date.now() },
+            { id: 'child-3', label: 'agents/7', name: 'reviewer', path: 'agents/7', depth: 3, running: true, mode: 'one-shot', createdAt: Date.now() },
+            { id: 'child-rc1', label: '旧子代理', running: true, mode: 'one-shot' },
+          ],
+        },
+      },
+      config: { subagentTtlHours: 0 },
+      notice: () => {},
+      openPicker: async (_title: string, items: Array<{ label: string; value: string }>) => { rows.push(...items); return null },
+    }
+    await subagentsCommand(fake as never)
+    const row1 = rows.find((r) => r.value === 'child-1')
+    const row2 = rows.find((r) => r.value === 'child-2')
+    const row3 = rows.find((r) => r.value === 'child-3')
+    assert.ok(row1?.label.includes('scout'), '/subagents shows the rc.2 path')
+    assert.ok(row1?.label.includes('L1'), '/subagents shows the rc.2 depth')
+    assert.ok(row2?.label.includes('scout/worker'), '/subagents shows nested paths')
+    assert.ok(row2?.label.includes('L2'), '/subagents shows nested depth')
+    assert.equal(row3?.label, 'agents/7 · reviewer · L3 · 运行中',
+      '/subagents keeps the rc.2 name when the path does not contain it')
+    assert.equal(rows.find((r) => r.value === 'child-rc1')?.label, '旧子代理 · 运行中',
+      'rc.1 rows (no name/path/depth) render exactly as before')
+  }
+
+  // rc.2 subagent/start: parentSessionId routes to the parent feed and `name`
+  // labels the run; a payload without the new fields keeps the old fallback
+  // (child header → active session) (AC-002, TC-003).
+  {
+    const started: Array<{ feed: string; name: string | undefined }> = []
+    const feedOf = (which: string) => ({
+      subagentStart: (info: { name?: string }) => { started.push({ feed: which, name: info.name }) },
+      subagentEnd: () => {},
+    })
+    const parentA = { id: 'parent-A', handle: { agent: {} }, feed: feedOf('A') }
+    const parentB = { id: 'parent-B', handle: { agent: {} }, feed: feedOf('B') }
+    const handlers = new Map<string, (...args: unknown[]) => unknown>()
+    const fake = {
+      slices: {
+        agent: {},
+        sessions: {
+          activeId: 'parent-A',
+          live: new Map([['parent-A', parentA], ['parent-B', parentB]]),
+          runningSubagents: new Map(),
+          childParent: new Map(),
+        },
+        ui: { ensureSpinner: () => {}, updateStatusline: () => {}, feedForSubagent: () => undefined },
+        runtime: { disposed: false, hostDisposers: [] as Array<() => void>, nvim: null },
+      },
+      liveSessions: {
+        get: (id: string) => id === 'child-2' ? { header: { parentSession: 'parent-A', origin: 'subagent' } } : undefined,
+        list: () => [],
+      },
+      runtimeCtx: { on: (name: string, fn: (...args: unknown[]) => unknown) => { handlers.set(name, fn); return () => {} } },
+      registerCommands: (specs: unknown[]) => specs,
+      svc: () => undefined,
+      notice: () => {},
+      luaCall: async () => {},
+    }
+    installSubagents(fake as never)
+    wireHostEvents(fake as never)
+    handlers.get('subagent/start')?.({ id: 'child-1', runId: 'run-1', parentSessionId: 'parent-B', name: 'scout' })
+    assert.deepEqual(started, [{ feed: 'B', name: 'scout' }], 'parentSessionId routes to the parent feed and name labels the card')
+    assert.ok(String(fake.slices.sessions.runningSubagents.get('child-1')?.label).includes('scout'), 'running registry label carries the rc.2 name')
+    assert.equal(fake.slices.sessions.childParent.get('child-1')?.parentId, 'parent-B', 'durable child routing uses the payload parent')
+    handlers.get('subagent/start')?.({ id: 'child-2', runId: 'run-2' })
+    assert.equal(started.at(-1)?.feed, 'A', 'missing parentSessionId falls back to the child header / active session')
+  }
+
+  // rc.2 worktree surface: new/list/restore/diff through `worktrees` and the
+  // `worktree` projection; diff is a `git diff --stat` review against the
+  // recorded base commit (AC-004, TC-005/TC-009). Structural fakes: the rc.2
+  // host is not installable from npm yet.
   {
     const notices: string[] = []
+    const floats: unknown[][] = []
     const created: unknown[] = []
+    const restored: unknown[] = []
     const wt = {
       path: '/tmp/wt-feature', branch: 'wt-feature', baseCommit: 'abcdef123456', repositoryRoot: '/tmp/repo',
     }
     const worktrees = {
       create: async (_agent: unknown, request: unknown) => { created.push(request); return wt },
-      restore: async () => ({ path: wt.path, branchRecreated: false }),
+      restore: async (_agent: unknown, request: unknown) => { restored.push(request); return { path: wt.path, branchRecreated: true } },
     }
     const projections = { snapshot: () => ({ values: { worktree: [{ worktree: wt, owned: true }] } }) }
+    let picks = 0
     const fakeWt = {
       slices: { sessions: { activeId: 's', live: new Map([['s', { handle: { agent: {} } }]]) } },
       svc: (name: string) => name === 'worktrees' ? worktrees : name === 'sessionProjections' ? projections : undefined,
       notice: (x: unknown) => notices.push(String(x)),
-      openPicker: async () => wt.path,
-      luaCall: async () => {},
+      openPicker: async () => { picks++; return wt.path },
+      luaCall: async (_code: string, args?: unknown[]) => { floats.push(args ?? []) },
     }
     await worktreeCommand(fakeWt as never, 'new feature main')
     assert.deepEqual(created, [{ name: 'feature', from: 'main' }], 'worktree new passes name/from')
-    await worktreeCommand(fakeWt as never, 'list')
     assert.ok(notices.some((n) => n.includes('已创建并进入 worktree')), 'worktree creation is visible')
-    assert.ok(searchWorkspaceFiles(process.cwd(), 'worktree.ts').some((p) => p.includes('src/commands/commands/worktree.ts')), 'file search finds the worktree command')
 
+    await worktreeCommand(fakeWt as never, 'list')
+    const listLines = (floats.at(-1)?.[1] ?? []) as string[]
+    assert.ok(listLines.some((l) => l.includes('wt-feature')), 'worktree list shows the branch')
+    assert.ok(listLines.some((l) => l.includes(wt.path)), 'worktree list shows the checkout path')
+
+    await worktreeCommand(fakeWt as never, 'restore')
+    assert.equal(picks, 1, 'worktree restore without a path opens the picker')
+    assert.deepEqual(restored, [wt], 'worktree restore passes the recorded checkout to the host')
+    assert.ok(notices.some((n) => n.includes('已恢复 worktree') && n.includes('分支已重新创建')), 'worktree restore is visible')
+    await worktreeCommand(fakeWt as never, `restore ${wt.path}`)
+    assert.equal(picks, 1, 'worktree restore with an exact path skips the picker')
+    assert.equal(restored.length, 2, 'worktree restore hits the host again')
+
+    assert.deepEqual(worktreeDiffArgv(wt.path, wt.baseCommit),
+      ['-C', wt.path, 'diff', '--stat', wt.baseCommit], 'worktree diff reviews with git diff --stat against the base commit')
+    assert.deepEqual(worktreeDiffLines('src/a.ts | 2 +-\n'),
+      ['```diff', 'src/a.ts | 2 +-', '```'], 'worktree diff renders the --stat output')
+    assert.deepEqual(worktreeDiffLines('  \n'), [t('（相对 base 没有差异）')], 'worktree diff renders an explicit empty state')
+
+    const noWt: string[] = []
+    await worktreeCommand({
+      slices: { sessions: { activeId: 's', live: new Map([['s', { handle: { agent: {} } }]]) } },
+      svc: () => undefined,
+      notice: (x: unknown) => noWt.push(String(x)),
+    } as never, 'list')
+    assert.ok(noWt.some((n) => n.includes('未装配 worktrees')), 'missing worktrees is reported')
+  }
+
+  // rc.2 MCP manager: status/restart/probe through the optional manager; a host
+  // without it reports the gap instead of failing (AC-005, TC-006/TC-010).
+  {
     let restarted = ''
     let probed = ''
+    const floats: unknown[][] = []
     const manager = {
       list: () => [{ name: 'srv', configured: true, status: { state: 'ready' } }],
       restart: async (name: string) => { restarted = name },
-      probe: async (name: string) => { probed = name; return { state: 'ready' } },
+      probe: async (name: string, options?: { signal?: AbortSignal }) => {
+        probed = name
+        assert.ok(options?.signal !== undefined, '/mcp probe passes an abort budget')
+        return { ok: true, toolNames: ['x'], truncated: false, durationMs: 1 }
+      },
     }
     const mcpNotices: string[] = []
     const fakeMcp = {
       slices: { sessions: { activeId: 's', live: new Map([['s', { handle: { agent: {} } }]]) } },
       svc: (name: string) => name === 'mcpManager' ? manager : name === 'tools' ? { schemas: () => [] } : undefined,
       notice: (x: unknown) => mcpNotices.push(String(x)),
-      luaCall: async () => {},
+      luaCall: async (_code: string, args?: unknown[]) => { floats.push(args ?? []) },
     }
     await mcpCommand(fakeMcp as never, 'status')
+    assert.ok(String(floats.at(-1)?.[1]).includes('srv'), '/mcp status lists managed servers')
     await mcpCommand(fakeMcp as never, 'restart srv')
     await mcpCommand(fakeMcp as never, 'probe srv')
     assert.equal(restarted, 'srv', '/mcp restart hits the manager')
     assert.equal(probed, 'srv', '/mcp probe hits the manager')
     assert.ok(mcpNotices.some((n) => n.includes('MCP server 已重启')), 'mcp restart is visible')
+    assert.ok(String(floats.at(-1)?.[1]).includes('toolNames'), '/mcp probe renders the probe result')
+
+    const noMcp: string[] = []
+    await mcpCommand({
+      slices: { sessions: { activeId: 's', live: new Map([['s', { handle: { agent: {} } }]]) } },
+      svc: (name: string) => name === 'tools' ? { schemas: () => [] } : undefined,
+      notice: (x: unknown) => noMcp.push(String(x)),
+    } as never, 'status')
+    assert.ok(noMcp.some((n) => n.includes('MCP manager 未装配')), 'missing mcpManager is reported')
+  }
+
+  // /files search: the bounded filename/path scan feeds the picker and the pick
+  // opens in a new tab (AC-006, TC-007).
+  {
+    const hits: string[] = []
+    let opened: unknown[] | null = null
+    const fake = {
+      slices: { sessions: { activeId: 's', live: new Map([['s', { handle: { agent: {} } }]]) } },
+      svc: (name: string) => name === 'workingDirectory' ? { get: () => process.cwd() } : undefined,
+      notice: () => {},
+      openPicker: async (_title: string, items: Array<{ label: string; value: string }>) => {
+        hits.push(...items.map((i) => i.value))
+        return items[0]?.value ?? null
+      },
+      luaCall: async (_code: string, args?: unknown[]) => { opened = args ?? []; return true },
+    }
+    await filesCommand(fake as never, 'search worktree.ts')
+    assert.ok(hits.some((p) => p.includes('src/commands/commands/worktree.ts')), '/files search fills the picker with matching paths')
+    assert.ok(String((opened as unknown[] | null)?.[0]).endsWith('src/commands/commands/worktree.ts'), '/files search opens the pick in a new tab')
+    const found = searchWorkspaceFiles(process.cwd(), 'worktree.ts')
+    assert.ok(found.length > 0 && found.length <= 200, 'file search stays bounded')
+
+    // Bare `search` and whitespace-only queries are the subcommand with no
+    // query: they report the usage instead of trying to browse a directory
+    // named `search`. Fake app on purpose — no real cwd/home access, and the
+    // picker/nvim path must stay untouched.
+    const usage: string[] = []
+    let offPathCalls = 0
+    const bareFake = {
+      slices: { sessions: { activeId: 's', live: new Map([['s', { handle: { agent: {} } }]]) } },
+      svc: () => { offPathCalls++; return undefined },
+      notice: (x: unknown) => usage.push(String(x)),
+      openPicker: async () => { offPathCalls++; return null },
+      luaCall: async () => { offPathCalls++; return true },
+    }
+    for (const arg of ['search', 'search   ', 'search\t']) await filesCommand(bareFake as never, arg)
+    assert.deepEqual(usage, Array(3).fill(t('用法: /files search <关键词>')),
+      'bare /files search reports the usage (whitespace-only query included)')
+    assert.equal(offPathCalls, 0, 'bare /files search never touches the session cwd, the picker or nvim')
+  }
+
+  // Built-in command table: 83 commands, and docs/COMMANDS.md + README agree
+  // (AC-007, TC-011). Reads the source tree, so this is a repo-only test.
+  {
+    const walk = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory()
+        ? walk(path.join(dir, e.name))
+        : e.isFile() && e.name.endsWith('.ts') ? [path.join(dir, e.name)] : [])
+    const registered = walk(path.join(process.cwd(), 'src'))
+      .flatMap((f) => [...fs.readFileSync(f, 'utf8').matchAll(/name: '(\/[^']*)'/g)].map((m) => String(m[1])))
+    const documented = [...fs.readFileSync(path.join(process.cwd(), 'docs/COMMANDS.md'), 'utf8')
+      .matchAll(/^\| `(\/[^` ]*)/gm)].map((m) => String(m[1]))
+    assert.equal(registered.length, 83, 'built-in command count is 83')
+    assert.deepEqual([...registered].sort(), [...documented].sort(), 'docs/COMMANDS.md lists every built-in command')
+    assert.ok(fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf8').includes('83 个内置命令'), 'README states the 83-command count')
   }
 
   // 0.2.2 TUI features: quote compaction, copy payloads, step folding, stats.

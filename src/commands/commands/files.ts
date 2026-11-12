@@ -37,10 +37,21 @@ export const searchWorkspaceFiles = (root: string, query: string, limit = SEARCH
   return out.sort()
 }
 
+/** `/files` arg classifier: `search [query]` vs a directory path. Bare `search`
+ *  (or `search` + whitespace) used to fall through to the directory branch and
+ *  try to browse `./search`; it is now the search subcommand with no query, so
+ *  the caller reports the usage instead. A directory literally named `search`
+ *  is still reachable as `./search` or `search/`. */
+const searchArg = (raw: string): { query: string } | undefined => {
+  const m = /^search(?:\s+([\s\S]*))?$/.exec(raw)
+  return m === null ? undefined : { query: (m[1] ?? '').trim() }
+}
+
 export const filesCommand = async (app: App, a: string | undefined) => {
   const raw = (a ?? '').trim()
-  if (raw.startsWith('search ')) {
-    const query = raw.slice('search '.length).trim()
+  const search = searchArg(raw)
+  if (search !== undefined) {
+    const query = search.query
     if (query === '') { app.notice(t('用法: /files search <关键词>')); return }
     const cwd = activeSessionCwd(app)
     const hits = searchWorkspaceFiles(cwd, query)

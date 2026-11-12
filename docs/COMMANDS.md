@@ -46,7 +46,7 @@
 | `/skills [技能名]` | 技能目录浏览（浮窗看详情） |
 | `/fb up\|down [备注] \| clear` | 对最后一条助手消息点赞 / 点踩 / 清除反馈（消息级） |
 | `/feedback [分类] <反馈内容>` | 会话级反馈：可选分类（任务结果 / 指令遵循 / 产品交互 / 服务稳定性 / 资源成本 / 安全隐私 / 其他）+ 文本；无参数弹分类选择器与输入框 |
-| `/subagents` | 子代理目录：思考链回放 + 对话窗（continuable 子代理可续聊）；rc.2 显示 name/path/depth |
+| `/subagents` | 子代理目录：思考链回放 + 对话窗（continuable 子代理可续聊）；rc.2 显示 name/path/depth（层级 `L1`/`L2`…） |
 | `/team [on\|off\|tasks]` | rc.2 AgentTeam：开关共享任务板 / 查看任务（服务未装配时提示） |
 | `/worktree [new [名称] [起点] \| list \| restore [路径] \| diff [路径]]` | rc.2 Git worktree 创建/列出/恢复/相对 base 的 diff（宿主未装配时提示） |
 | `/workflow` | 工作流运行视图（阶段树 + agent 序列 + 日志） |
