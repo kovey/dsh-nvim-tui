@@ -12,6 +12,12 @@
 - `subagent/start` 使用 rc.2 的 `parentSessionId` 路由；有 `name` 时用它作为标签。
 - 新增 `/team [on|off|tasks]`：切换 rc.2 AgentTeam、查看共享任务板；宿主未装配
   `agentTeams` 时明确提示。
+- 新增 `/worktree [new|list|restore|diff]`：调 rc.2 `worktrees` 创建/恢复 checkout，
+  `list` 读 `worktree` projection，`diff` 显示相对 base 的 git diff；不承诺 host
+  未公开的删除操作。
+- `/mcp` 增加 `status` / `restart <server>` / `probe <server>`，走 rc.2
+  `mcpManager`；配置增删仍由 loader/插件负责。
+- `/files search <关键词>`：有界文件名/路径搜索 picker，选中直接在新 tab 打开。
 
 ### 说明
 

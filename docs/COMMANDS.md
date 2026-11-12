@@ -4,7 +4,7 @@
 `Enter` 补全或执行）。命令目录由 runner 启动时推给 nvim，与 `/help`、命令分发
 表共用同一份注册表，不会漂移。
 
-本页是 **82 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
+本页是 **83 个内置命令** 的完整清单（含 `/quit`、`/branch` 两个别名）。宿主或其
 他插件经 `ctx.commands` 注册的命令也会进补全目录，用 `/commands` 查看；依赖的
 宿主服务未装配时，命令会给出明确提示，而不是静默失败。
 
@@ -48,6 +48,7 @@
 | `/feedback [分类] <反馈内容>` | 会话级反馈：可选分类（任务结果 / 指令遵循 / 产品交互 / 服务稳定性 / 资源成本 / 安全隐私 / 其他）+ 文本；无参数弹分类选择器与输入框 |
 | `/subagents` | 子代理目录：思考链回放 + 对话窗（continuable 子代理可续聊）；rc.2 显示 name/path/depth |
 | `/team [on\|off\|tasks]` | rc.2 AgentTeam：开关共享任务板 / 查看任务（服务未装配时提示） |
+| `/worktree [new [名称] [起点] \| list \| restore [路径] \| diff [路径]]` | rc.2 Git worktree 创建/列出/恢复/相对 base 的 diff（宿主未装配时提示） |
 | `/workflow` | 工作流运行视图（阶段树 + agent 序列 + 日志） |
 | `/history` | 输入历史浏览（`Enter` 回填输入框，多行条目原样恢复） |
 | `/queue` | 消息队列：查看 / 编辑 / 删除 / 清空（状态栏 ⏳ 计数） |
@@ -107,13 +108,13 @@
 | `/copy [history\|last\|raw]` | 复制完整历史 Markdown、最后一条助手文本或原始 JSONL 到系统剪贴板 |
 | `/lines [路径]` | 文件行视图（只读浮窗，`i` 打开编辑；无参弹目录选择器） |
 | `/market [关键词 \| refresh \| update-all]` | 插件市场：精选目录按 GitHub ★ 倒序，安装 / 更新 / 卸载 + 热启停（HMR 免重启），磁盘缓存可离线 |
-| `/mcp [tools\|config\|resources]` | MCP 汇总 / 工具清单 / server 配置行 / 资源能力说明 |
+| `/mcp [tools\|config\|resources\|status\|restart <server>\|probe <server>]` | MCP 汇总 / 工具清单 / 配置行 / 资源说明 / rc.2 server 状态、重启、探测 |
 | `/plugin [install\|update\|remove <spec> \| list]` | 市场目录之外的直装入口（npm 包名 / `owner/repo` / git URL）。更新 git/tag 依赖必须带新 ref，`--latest` 推不动 git ref |
 | `/plugins` | 宿主插件清单（loader 条目只读投影） |
 | `/plugins:set` | 启停本 profile `cordis.patch.yml` 里声明的插件条目（自动备份 `.bak`，重启生效） |
 | `/status` | 会话快照 |
 | `/outline` | 回合大纲：每回合首条提示 + 步数/工具数，Enter 跳到该回合轨迹 |
-| `/files [目录]` | nvim netrw 文件树（可新建/重命名/删除；缺 netrw 时提示 /dir） |
+| `/files [目录\|search <关键词>]` | nvim netrw 文件树（可新建/重命名/删除）；`search` 用有界文件名/路径搜索 picker，选中在新 tab 打开 |
 | `/preview <路径>` | 只读预览：文本/源码滚动浮窗；图片/PDF/Office/二进制用系统程序打开 |
 | `/cordis [inventory\|snapshot]` | 动态 Cordis 插件检查：本会话 snapshot / inventory / 插件详情（只读） |
 | `/trajectory [回合号]` | 回合步骤轨迹（无参显示最近一回合） |

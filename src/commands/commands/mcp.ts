@@ -6,6 +6,7 @@
  * host limitation too: McpResourceRuntime only exposes register() to servers,
  * not a query seam for the UI. */
 import { t, tf } from '../../kernel/i18n.js'
+import type { McpManagerService } from '../../kernel/agent-extra-types.js'
 import type { App } from '../../kernel/app.js'
 
 interface McpRow { id?: string; config?: Record<string, unknown>; name?: string }
@@ -30,12 +31,57 @@ const rowsOf = (app: App): McpRow[] => {
     }))
 }
 
-export const mcpCommand = (app: App, a?: string) => {
+export const mcpCommand = async (app: App, a?: string): Promise<void> => {
   const rec = app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   if (!rec) { app.notice(t('无活跃会话')); return }
   const tools = app.svc('tools')
   if (tools === undefined) { app.notice(t('tools 服务未装配')); return }
   const arg = (a ?? '').trim()
+  const manager = (app.svc as unknown as (name: string) => McpManagerService | undefined)('mcpManager')
+  if (arg === 'status') {
+    if (manager === undefined) { app.notice(t('MCP manager 未装配（需要 rc.2 dsh-mcp-manager）')); return }
+    try {
+      const rows = manager.list()
+      if (rows.length === 0) { app.notice(t('没有 MCP server')); return }
+      const lines = [t('MCP server 状态'), '', ...rows.map((row) => {
+        const status = row.status ?? {}
+        const state = typeof status['state'] === 'string' ? status['state'] : 'unknown'
+        const reason = typeof status['reason'] === 'string' ? ` · ${status['reason']}` : ''
+        const error = typeof status['lastError'] === 'string' ? ` · ${status['lastError']}` : ''
+        return `▸ ${row.name}${row.configured === false ? t('（已移除，保留清理记录）') : ''} · ${state}${reason}${error}`
+      })]
+      await app.luaCall('require("dsh_tui").show_lines_float(...)', [t('MCP server 状态'), lines])
+    } catch (err) {
+      app.notice(tf('读取 MCP 状态失败: {0}', [(err as Error).message]))
+    }
+    return
+  }
+  if (arg.startsWith('restart ')) {
+    if (manager === undefined) { app.notice(t('MCP manager 未装配（需要 rc.2 dsh-mcp-manager）')); return }
+    const name = arg.slice('restart '.length).trim()
+    if (name === '') { app.notice(t('用法: /mcp restart <server>')); return }
+    try {
+      await manager.restart(name)
+      app.notice(tf('MCP server 已重启: {0}', [name]))
+    } catch (err) {
+      app.notice(tf('MCP 重启失败: {0}', [(err as Error).message]))
+    }
+    return
+  }
+  if (arg.startsWith('probe ')) {
+    if (manager === undefined) { app.notice(t('MCP manager 未装配（需要 rc.2 dsh-mcp-manager）')); return }
+    const name = arg.slice('probe '.length).trim()
+    if (name === '') { app.notice(t('用法: /mcp probe <server>')); return }
+    try {
+      const result = await manager.probe(name, { signal: AbortSignal.timeout(30_000) })
+      const text = JSON.stringify(result, null, 2)
+      const lines = text === undefined ? [String(result)] : text.split('\n')
+      await app.luaCall('require("dsh_tui").show_lines_float(...)', [tf('MCP probe: {0}', [name]), lines])
+    } catch (err) {
+      app.notice(tf('MCP probe 失败: {0}', [(err as Error).message]))
+    }
+    return
+  }
   const names = new Set(tools.schemas(rec.handle.agent).map((s) => s.name))
   const byServer = new Map<string, string[]>()
   for (const name of names) {
@@ -105,10 +151,10 @@ export const mcpCommand = (app: App, a?: string) => {
 export function installMcpCommand(app: App): void {
   app.registerCommands([{
     name: '/mcp',
-    desc: t('MCP server 工具统计 / 配置 / 资源说明'),
-    usage: t('[tools|config|resources]'),
+    desc: t('MCP server 工具/配置/状态/重启/探测'),
+    usage: t('[tools|config|resources|status|restart <server>|probe <server>]'),
     group: t('信息'),
-    args: [{ kind: 'oneof', values: ['tools', 'config', 'resources'], hint: t('不填则汇总工具数') }],
+    args: [{ kind: 'oneof', values: ['tools', 'config', 'resources', 'status'], hint: t('restart/probe 后接 server 名') }],
     fn: (a?: string) => mcpCommand(app, a),
   }])
 }

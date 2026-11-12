@@ -50,6 +50,9 @@ import { clipboardCommands } from '../lib/kernel/clipboard.js'
 import { collectTurnStats } from '../lib/transcript/commands/stats.js'
 import { approvalPickerItems, approvalPickerTitle, pickApproval } from '../lib/ext-api/index.js'
 import { teamCommand } from '../lib/commands/commands/team.js'
+import { worktreeCommand } from '../lib/commands/commands/worktree.js'
+import { mcpCommand } from '../lib/commands/commands/mcp.js'
+import { searchWorkspaceFiles } from '../lib/commands/commands/files.js'
 import { modelRefFor } from '../lib/sessions/services.js'
 import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
@@ -2844,6 +2847,54 @@ description:
     const noSvc: string[] = []
     await teamCommand({ slices: { sessions: { activeId: 's', live: new Map([['s', rec]]) } }, svc: () => undefined, notice: (x: unknown) => noSvc.push(String(x)) } as never, 'on')
     assert.ok(noSvc.some((n) => n.includes('未装配 AgentTeam')), 'missing team service is reported')
+  }
+
+  // rc.2 worktree/MCP/file-search surfaces (structural fakes; real rc.2 host
+  // is not installable from npm yet).
+  {
+    const notices: string[] = []
+    const created: unknown[] = []
+    const wt = {
+      path: '/tmp/wt-feature', branch: 'wt-feature', baseCommit: 'abcdef123456', repositoryRoot: '/tmp/repo',
+    }
+    const worktrees = {
+      create: async (_agent: unknown, request: unknown) => { created.push(request); return wt },
+      restore: async () => ({ path: wt.path, branchRecreated: false }),
+    }
+    const projections = { snapshot: () => ({ values: { worktree: [{ worktree: wt, owned: true }] } }) }
+    const fakeWt = {
+      slices: { sessions: { activeId: 's', live: new Map([['s', { handle: { agent: {} } }]]) } },
+      svc: (name: string) => name === 'worktrees' ? worktrees : name === 'sessionProjections' ? projections : undefined,
+      notice: (x: unknown) => notices.push(String(x)),
+      openPicker: async () => wt.path,
+      luaCall: async () => {},
+    }
+    await worktreeCommand(fakeWt as never, 'new feature main')
+    assert.deepEqual(created, [{ name: 'feature', from: 'main' }], 'worktree new passes name/from')
+    await worktreeCommand(fakeWt as never, 'list')
+    assert.ok(notices.some((n) => n.includes('已创建并进入 worktree')), 'worktree creation is visible')
+    assert.ok(searchWorkspaceFiles(process.cwd(), 'worktree.ts').some((p) => p.includes('src/commands/commands/worktree.ts')), 'file search finds the worktree command')
+
+    let restarted = ''
+    let probed = ''
+    const manager = {
+      list: () => [{ name: 'srv', configured: true, status: { state: 'ready' } }],
+      restart: async (name: string) => { restarted = name },
+      probe: async (name: string) => { probed = name; return { state: 'ready' } },
+    }
+    const mcpNotices: string[] = []
+    const fakeMcp = {
+      slices: { sessions: { activeId: 's', live: new Map([['s', { handle: { agent: {} } }]]) } },
+      svc: (name: string) => name === 'mcpManager' ? manager : name === 'tools' ? { schemas: () => [] } : undefined,
+      notice: (x: unknown) => mcpNotices.push(String(x)),
+      luaCall: async () => {},
+    }
+    await mcpCommand(fakeMcp as never, 'status')
+    await mcpCommand(fakeMcp as never, 'restart srv')
+    await mcpCommand(fakeMcp as never, 'probe srv')
+    assert.equal(restarted, 'srv', '/mcp restart hits the manager')
+    assert.equal(probed, 'srv', '/mcp probe hits the manager')
+    assert.ok(mcpNotices.some((n) => n.includes('MCP server 已重启')), 'mcp restart is visible')
   }
 
   // 0.2.2 TUI features: quote compaction, copy payloads, step folding, stats.

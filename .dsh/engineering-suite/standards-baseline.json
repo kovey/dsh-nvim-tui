@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "frozenAt": "2026-11-12T01:38:22.102Z",
-  "note": "rc.2 适配：新增具名/多层子代理与 /team 命令，触发 cachedTitle/listSubagentChildren 嵌套深度及大文件行数变化；接受当前测量作为新基线，后续新增仍由棘轮拦截。",
+  "frozenAt": "2026-11-12T02:07:59.631Z",
+  "note": "rc.2 TUI 剩余面：/worktree、/mcp status/restart/probe、/files search；新增命令的嵌套/块长度触发棘轮，接受当前测量作为新基线，后续新增仍拦截。",
   "accepted": [
     "cycle|src/kernel/app.ts|src/kernel/app.ts -> src/kernel/command-args.ts",
     "maxDepth|examples/dsh-plugin/index.ts|apply",
@@ -10,10 +10,12 @@
     "maxDepth|lib/commands/commands/account.js|accountCommand",
     "maxDepth|lib/commands/commands/context.js|contextCommand",
     "maxDepth|lib/commands/commands/fb.js|feedbackCommand",
+    "maxDepth|lib/commands/commands/mcp.js|mcpCommand",
     "maxDepth|lib/commands/commands/model.js|pickModel",
     "maxDepth|lib/commands/commands/models.js|extract",
     "maxDepth|lib/commands/commands/settings.js|settingsCommand",
     "maxDepth|lib/commands/commands/terminal.js|installTerminalCommand",
+    "maxDepth|lib/commands/commands/worktree.js|worktreeCommand",
     "maxDepth|lib/commands/core.js|registerTool",
     "maxDepth|lib/commands/job-tail.js|tick",
     "maxDepth|lib/commands/nlcmd.js|matchOnce",
@@ -47,11 +49,13 @@
     "maxDepth|src/commands/commands/account.ts|accountCommand",
     "maxDepth|src/commands/commands/context.ts|contextCommand",
     "maxDepth|src/commands/commands/fb.ts|feedbackCommand",
+    "maxDepth|src/commands/commands/mcp.ts|mcpCommand",
     "maxDepth|src/commands/commands/model.ts|pickModel",
     "maxDepth|src/commands/commands/models.ts|extract",
     "maxDepth|src/commands/commands/permission.ts|spec",
     "maxDepth|src/commands/commands/settings.ts|settingsCommand",
     "maxDepth|src/commands/commands/terminal.ts|installTerminalCommand",
+    "maxDepth|src/commands/commands/worktree.ts|worktreeCommand",
     "maxDepth|src/commands/core.ts|registerTool",
     "maxDepth|src/commands/job-tail.ts|tick",
     "maxDepth|src/commands/nlcmd.ts|matchOnce",
@@ -147,6 +151,7 @@
     "maxFunctionLines|lib/commands/commands/schedule.js|createWizard",
     "maxFunctionLines|lib/commands/commands/schedule.js|scheduleCommand",
     "maxFunctionLines|lib/commands/commands/settings.js|settingsCommand",
+    "maxFunctionLines|lib/commands/commands/worktree.js|worktreeCommand",
     "maxFunctionLines|lib/commands/core.js|followup",
     "maxFunctionLines|lib/commands/core.js|onInput",
     "maxFunctionLines|lib/commands/core.js|registerHostEventHandlers",
@@ -243,9 +248,12 @@
     "maxIfBlockLines|lib/commands/commands/account.js|accountCommand",
     "maxIfBlockLines|lib/commands/commands/attach.js|attachCommand",
     "maxIfBlockLines|lib/commands/commands/mcp.js|mcpCommand",
+    "maxIfBlockLines|lib/commands/commands/mcp.js|mcpCommand#L121",
+    "maxIfBlockLines|lib/commands/commands/mcp.js|mcpCommand#L87",
     "maxIfBlockLines|lib/commands/commands/memory.js|memoryCommand",
     "maxIfBlockLines|lib/commands/commands/model.js|pickModel",
     "maxIfBlockLines|lib/commands/commands/settings.js|settingsCommand",
+    "maxIfBlockLines|lib/commands/commands/worktree.js|worktreeCommand",
     "maxIfBlockLines|lib/commands/core.js|followup",
     "maxIfBlockLines|lib/commands/core.js|followup#L81",
     "maxIfBlockLines|lib/commands/core.js|onInput",
@@ -368,6 +376,11 @@
       "limit": 4
     },
     {
+      "key": "maxDepth|lib/commands/commands/mcp.js|mcpCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
       "key": "maxDepth|lib/commands/commands/model.js|pickModel",
       "actual": 5,
       "limit": 4
@@ -384,6 +397,11 @@
     },
     {
       "key": "maxDepth|lib/commands/commands/terminal.js|installTerminalCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|lib/commands/commands/worktree.js|worktreeCommand",
       "actual": 5,
       "limit": 4
     },
@@ -553,6 +571,11 @@
       "limit": 4
     },
     {
+      "key": "maxDepth|src/commands/commands/mcp.ts|mcpCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
       "key": "maxDepth|src/commands/commands/model.ts|pickModel",
       "actual": 5,
       "limit": 4
@@ -574,6 +597,11 @@
     },
     {
       "key": "maxDepth|src/commands/commands/terminal.ts|installTerminalCommand",
+      "actual": 5,
+      "limit": 4
+    },
+    {
+      "key": "maxDepth|src/commands/commands/worktree.ts|worktreeCommand",
       "actual": 5,
       "limit": 4
     },
@@ -1014,7 +1042,7 @@
     },
     {
       "key": "maxFunctionLines|lib/commands/commands/mcp.js|mcpCommand",
-      "actual": 88,
+      "actual": 154,
       "limit": 60
     },
     {
@@ -1050,6 +1078,11 @@
     {
       "key": "maxFunctionLines|lib/commands/commands/settings.js|settingsCommand",
       "actual": 118,
+      "limit": 60
+    },
+    {
+      "key": "maxFunctionLines|lib/commands/commands/worktree.js|worktreeCommand",
+      "actual": 62,
       "limit": 60
     },
     {
@@ -1134,7 +1167,7 @@
     },
     {
       "key": "maxFunctionLines|lib/index.js|apply",
-      "actual": 67,
+      "actual": 68,
       "limit": 60
     },
     {
@@ -1294,7 +1327,7 @@
     },
     {
       "key": "maxFunctionLines|src/commands/commands/mcp.ts|mcpCommand",
-      "actual": 71,
+      "actual": 116,
       "limit": 60
     },
     {
@@ -1529,7 +1562,17 @@
     },
     {
       "key": "maxIfBlockLines|lib/commands/commands/mcp.js|mcpCommand",
+      "actual": 25,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/commands/mcp.js|mcpCommand#L121",
       "actual": 24,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/commands/mcp.js|mcpCommand#L87",
+      "actual": 21,
       "limit": 20
     },
     {
@@ -1545,6 +1588,11 @@
     {
       "key": "maxIfBlockLines|lib/commands/commands/settings.js|settingsCommand",
       "actual": 46,
+      "limit": 20
+    },
+    {
+      "key": "maxIfBlockLines|lib/commands/commands/worktree.js|worktreeCommand",
+      "actual": 24,
       "limit": 20
     },
     {
