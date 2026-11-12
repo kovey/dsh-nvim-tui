@@ -67,8 +67,11 @@ dsh --profile <name>
 - 发布版本统一为 `0.6.5`（`package.json`、`package-lock.json`、`BUILD_VERSION`）。
 - 门禁配置随上游 0.8.8 套件标准化：interaction-gate 与 quality-gate 已对齐
   （interaction 保持本地审批、不走 IM；quality 使用 `npm test` / `npm run lint` /
-  standards）。supply-chain 仍为上游 scaffold：`auditCommands` 为空，本流程
-  **未**配置 `npm audit`；审计命令需宿主用 `/suite set` 人工写入（当前未配置）。
+  standards）。supply-chain-gate 的依赖审计改为 **runtime-only**
+  （`npm audit --omit=dev --json`，清单只读 `package.json` / `package-lock.json`），
+  `dependency_audit` 为 PASS（0 block）。**devDependencies 不在门禁范围内**：全量
+  `npm audit --json` 仍报 15 个 high（`@deepseek-ai/dsh-*` 开发依赖链与 `zod`），
+  升级到本版不会改变这一结果，也不把其当作通过。
 - 内置命令数保持 83 条，`docs/COMMANDS.md` 与 README 同步。
 
 ### 说明

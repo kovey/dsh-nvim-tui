@@ -15,9 +15,11 @@
 - 门禁配置随上游 0.8.8 套件标准化：interaction-gate 与 quality-gate 已对齐
   （interaction 只保留项目级允许键，本工程 `unmappedWorkspace=local`，不启用
   IM 审批；quality 使用 `npm test` / `npm run lint` / standards）。supply-chain-gate
-  仍为上游 scaffold：`deps.manifests` 含尚未生成的 `pnpm-lock.yaml`、
-  `auditCommands` 为空，本流程**未**配置 `npm audit`；审计命令需宿主用
-  `/suite set` 人工写入（当前未配置）。
+  的依赖审计改为 **runtime-only**：`deps.manifests` 只读 `package.json` /
+  `package-lock.json`，`deps.auditCommands` 为 `npm audit --omit=dev --json`；
+  `dependency_audit` 因此 PASS（0 finding、0 block）。**devDependencies 不在门禁
+  范围内**：全量 `npm audit --json` 仍报 15 个 high（`@deepseek-ai/dsh-*` 开发
+  依赖链与 `zod`），本版不把它算作通过，也不声称已消除。
 - 内置命令表保持 **83** 条，`docs/COMMANDS.md` 与 README 同步（由 smoke 断言）。
 
 ### Added · rc.2 适配
@@ -92,6 +94,10 @@
 - rc.1 隔离 profile 启动本次未执行：当前沙箱禁止写
   `~/.dsh/profiles/<name>/cordis.yml`（EPERM，workspace-write 限制）；
   smoke 内置的等价 headless nvim 启动通过，真实终端可跑 `npm run e2e` 复核。
+- 供应链审计：`npm audit --omit=dev --json` exit 0（0 漏洞，仅生产依赖），
+  对应 `dependency_audit` PASS（0 block，清单无变更）；全量 `npm audit --json`
+  exit 1、15 个 high **全部来自 devDependencies**，不在门禁范围内，未计入本版
+  验证结论。
 - `scripts/standards-check.sh` 为 WARN（扫描达 4000 文件上限，结论不完整；无新增/
   恶化违规，不阻断）。
 
