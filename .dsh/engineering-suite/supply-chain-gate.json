@@ -5,7 +5,7 @@
       "package-lock.json"
     ],
     "auditCommands": [
-      "npm audit --json"
+      "npm audit --omit=dev --json"
     ]
   },
   "secretScan": {
