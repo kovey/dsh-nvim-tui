@@ -37,8 +37,16 @@ const childDisplay = (c: Child): string => {
   return `${display}${detail}${nameHidden ? ` · ${c.name}` : ''}${depth}`
 }
 
+/** Picker rows are rendered as REAL nvim buffer lines, and nvim_buf_set_lines
+ *  rejects any line carrying CR/LF ("'replacement string' item contains
+ *  newlines"). A child's label is often its whole multi-line task prompt, so
+ *  /subagents failed before the float opened (the Lua picker folds its own
+ *  labels too — this is the second layer, so no other caller can bypass it).
+ *  Fold CR/LF/TAB runs into one space; an empty label stays empty. */
+export const singleLineLabel = (label: string): string => label.replace(/[\r\n\t]+/g, ' ')
+
 /** Picker rows, newest/running order already applied by the caller. */
-const childRows = (children: Child[], settledCount: number): Array<{ label: string; value: string }> => {
+export const childRows = (children: Child[], settledCount: number): Array<{ label: string; value: string }> => {
   const rows: Array<{ label: string; value: string }> = []
   let cleanRowInserted = false
   for (const c of children) {
@@ -47,7 +55,7 @@ const childRows = (children: Child[], settledCount: number): Array<{ label: stri
       if (settledCount > 0) rows.push({ label: tf('🧹 清理全部已结束思考链（{0} 条）', [settledCount]), value: 'act:clean' })
     }
     rows.push({
-      label: `${childDisplay(c)}${c.running ? t(' · 运行中') : ` · 已结束${ageLabel(c.createdAt) !== '' ? ` · ${ageLabel(c.createdAt)}` : ''}`}`,
+      label: singleLineLabel(`${childDisplay(c)}${c.running ? t(' · 运行中') : ` · 已结束${ageLabel(c.createdAt) !== '' ? ` · ${ageLabel(c.createdAt)}` : ''}`}`),
       value: c.id,
     })
   }

@@ -54,7 +54,7 @@ import { worktreeCommand, worktreeDiffArgv, worktreeDiffLines } from '../lib/com
 import { mcpCommand } from '../lib/commands/commands/mcp.js'
 import { filesCommand, searchWorkspaceFiles } from '../lib/commands/commands/files.js'
 import { listSubagentChildren } from '../lib/sessions/subagent-list.js'
-import { subagentsCommand } from '../lib/subagents/commands/subagents.js'
+import { childRows, singleLineLabel, subagentsCommand } from '../lib/subagents/commands/subagents.js'
 import { installSubagents } from '../lib/subagents/index.js'
 import { wireHostEvents } from '../lib/kernel/host-events.js'
 import { modelRefFor } from '../lib/sessions/services.js'
@@ -1554,6 +1554,22 @@ description:
   // Plain buffer: every entry is a real line, so nvim's own navigation keys
   // work — G must reach the LAST ENTRY, and the window caps at 22 rows on a
   // tall editor.
+  await lua('require("dsh_tui").picker_cancel()', [])
+  // Multi-line label guard: nvim_buf_set_lines rejects CR/LF, and a subagent's
+  // label IS its whole multi-line task prompt — show_picker must fold it into
+  // one line instead of throwing (the runner used to swallow that error and
+  // settle the pick with null, so /subagents never opened). Empty labels stay
+  // valid (TC-004/TC-005).
+  await lua('require("dsh_tui").show_picker(...)', ['多行', [
+    { label: '任务第一行\r\n\t任务第二行', value: 'multi' },
+    { label: '', value: 'empty' },
+  ]])
+  const multiBuf = await lua('return require("dsh_tui")._float.buf', [])
+  const multiLines = await nvim.request('nvim_buf_get_lines', [multiBuf, 0, -1, false]) as string[]
+  assert.deepEqual(multiLines, ['任务第一行 任务第二行', ''], 'show_picker folds CR/LF/TAB into one space and keeps an empty label empty')
+  assert.equal(await lua('return vim.api.nvim_win_is_valid(require("dsh_tui")._float.win)', []), true, 'multi-line picker float is open (no buf_set_lines throw)')
+  await lua('require("dsh_tui").update_picker(...)', [[{ label: '第二行\r\n第三行\t结束', value: 'updated' }]])
+  assert.deepEqual(await nvim.request('nvim_buf_get_lines', [multiBuf, 0, -1, false]), ['第二行 第三行 结束'], 'update_picker folds multi-line labels too')
   await lua('require("dsh_tui").picker_cancel()', [])
   const uiClient = await connectNvim(sockPath)
   await uiClient.uiAttach(80, 50, {})
@@ -3264,6 +3280,25 @@ description:
       '/subagents keeps the rc.2 name when the path does not contain it')
     assert.equal(rows.find((r) => r.value === 'child-rc1')?.label, '旧子代理 · 运行中',
       'rc.1 rows (no name/path/depth) render exactly as before')
+  }
+
+  // /subagents multi-line LABEL (AC-002): the final childRows label is folded
+  // to one line, so no other caller can bypass the Lua picker's own guard. A
+  // plain single-line row keeps its exact previous shape.
+  {
+    assert.equal(singleLineLabel('a\r\n\tb'), 'a b', 'singleLineLabel folds a CR/LF/TAB run into one space')
+    const rows = childRows([
+      { id: 'child-multiline', label: '扫描仓库\r\n\t再写测试', name: 'scout', path: 'scout', depth: 1, running: true, mode: 'continuable', createdAt: Date.now() },
+      { id: 'child-plain', label: '普通子代理', running: false, mode: 'one-shot', createdAt: Date.now() },
+    ] as never, 1)
+    const multi = rows.find((r) => r.value === 'child-multiline')
+    const plain = rows.find((r) => r.value === 'child-plain')
+    assert.equal(multi?.label, 'scout · 扫描仓库 再写测试 · L1 · 运行中',
+      'childRows folds a multi-line subagent label into one row')
+    assert.equal(/[\r\n\t]/.test(multi?.label ?? ''), false, 'childRows label carries no CR/LF/TAB')
+    assert.equal(plain?.label, '普通子代理 · 已结束 · 刚刚',
+      'plain single-line child rows are unchanged')
+    log(`subagents multiline row: ${JSON.stringify(multi?.label)}`)
   }
 
   // rc.2 subagent/start: parentSessionId routes to the parent feed and `name`

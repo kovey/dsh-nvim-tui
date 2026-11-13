@@ -493,6 +493,16 @@ end
 --- flush with the window bottom because the height fits the content.
 local PICKER_HINT = '[j/k] 移动  [Enter] 选择  [Esc] 取消'
 
+--- Picker rows are REAL buffer lines, and nvim_buf_set_lines rejects any line
+--- carrying CR/LF ("'replacement string' item contains newlines"). A subagent
+--- label is often its whole multi-line task prompt, which used to raise inside
+--- show_picker *before* the float opened — the runner then settled the picker
+--- with null, so /subagents silently showed nothing. Fold CR/LF/TAB runs into
+--- one space so every label is renderable; an empty label stays an empty line.
+local function single_line_label(label)
+  return (tostring(label):gsub('[\r\n\t]+', ' '))
+end
+
 function P.show_picker(title, items)
   P.close_float()
   local values = {}
@@ -500,7 +510,7 @@ function P.show_picker(title, items)
   local activeRow = 1
   for _, it in ipairs(items or {}) do
     if type(it) == 'table' and type(it.label) == 'string' then
-      lines[#lines + 1] = it.label
+      lines[#lines + 1] = single_line_label(it.label)
       values[#values + 1] = it.value
       if it.active then activeRow = #lines end
     end
@@ -593,7 +603,7 @@ function P.update_picker(items)
   local lines = {}
   for _, it in ipairs(items or {}) do
     if type(it) == 'table' and type(it.label) == 'string' then
-      lines[#lines + 1] = it.label
+      lines[#lines + 1] = single_line_label(it.label)
       values[#values + 1] = it.value
     end
   end
