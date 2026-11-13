@@ -3,6 +3,61 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.6.6] — 2026-11-13
+
+### Fixed · /subagents 在空 catalog 下不弹 picker（父会话 catalog 事件兜底 + fork 继承前缀）
+
+- **v0.6.5 不含本修复**：v0.6.5 标签（`ee71721`）创建于修复提交 `d9945cd` **之前**。
+  rc.1 宿主 `subagents.listChildren` 返回空（或抛错）、持久化 header 里也没有子会话时，
+  v0.6.5 的 `/subagents` 仍是空列表、不弹 picker；本版把该修复随发布物带上。
+- 根因 1：rc.1 的 `subagents.listChildren` 可能返回**空**（或抛错），持久化 header 里
+  也没有子会话；父会话自己的日志其实把每个直系子会话记成 `subagent/catalog` 事件，
+  `/subagents` 却只认 host catalog 与 header，于是空列表、不弹 picker。
+- 修法 1：`listSubagentChildren` 在 host catalog 空/失败后扫描父会话日志（新增
+  `src/sessions/subagent-catalog-log.ts`）：保留 `label`/`name`/`mode`/`childCreatedAt`，
+  按 id 去重（后一条 catalog 版本覆盖前一条），`subagent/catalog-diagnostic` 与只带
+  `reason` 的载荷不算子代理，cleaned id 照旧隐藏（运行中的除外）。host catalog 一旦
+  给出行仍是权威，日志只补不覆盖。
+- 根因 2（QA R-1）：`/fork`、`/branch` 把父会话日志**原样复制**进子会话，并把复制长度
+  记为 `inheritedEventCount`；兜底扫描读的是整条日志，于是 fork 的 `/subagents` 会把
+  **源会话**的子代理列出来，`cleanExpiredChildren` 还可能把这些 id 以 fork 的
+  parentId 记成 cleaned。
+- 修法 2：读日志时只保留 child-owned 事件——`event.seq < session.inheritedEventCount`
+  的继承前缀一律跳过（root 会话 cut=0 / 无该字段时全保留；事件没有数字 `seq` 的旧
+  宿主无法定位切点，保守保留）。
+- smoke 回归：host catalog 空 / 抛错时从父会话日志得到子代理行（label/mode/createdAt、
+  去重、cleaned 隐藏、diagnostic 排除）；fork 夹具（`inheritedEventCount=3`，继承前缀
+  里两条源会话 catalog 事件）只列出 fork 自己的子会话，root 会话（cut=0 / 无字段）仍
+  列出全部；TTL 清理只对 fork 自己的过期子会话调用 `cleanSubagentChain`。已用**临时
+  回退**验证断言有效：把 lib 里的切点过滤改成 `return events` 后，fork 实际得到
+  `['src-child-1','src-child-2','fork-child-1']`（修复后为 `['fork-child-1']`），root
+  断言不受影响。
+
+### 说明
+
+- 版本统一为 `0.6.6`：`package.json`、`package-lock.json`（root 与 `packages[""]`）、
+  `src/kernel/app.ts` 的 `BUILD_VERSION` 与 CHANGELOG / UPGRADE 同步。本版只做版本与
+  文档，不改其他功能。
+- 依赖审计口径保持 **runtime-only**（`npm audit --omit=dev --json`，清单只读
+  `package.json` / `package-lock.json`）：`dependency_audit` 为 PASS（0 block）。
+  **devDependencies 不在门禁范围内**：全量 `npm audit --json` 仍报 15 个 high，
+  本版不把它写成通过，也不声称已消除。
+- rc.2 适配仍是结构适配（宿主 npm registry 无 `0.2.2-rc.2`）：本版**不声称** rc.2
+  真机运行，真机验证仍只覆盖 rc.1。
+
+### 验证
+
+- `npm run build`（`tsc`）exit 0。
+- `npm run check`（`tsc --noEmit` ×2 + `check-arch` + `app-ops-check`）exit 0；
+  arch-check 与 app-ops-check（79 domain ops）均通过。
+- `npm test`（= `npm run smoke`，含 `npm run build`）exit 0，输出包含 `SMOKE PASS`
+  （其后 `graceful exit: ok`）。
+  与本版修复直接相关的 smoke 断言：
+  `subagents catalog-log fallback: log-1:continuable@1000,log-2:one-shot@2000,log-3:one-shot@3000` 与
+  `subagents fork heredity: fork=[fork-child-1] root=[src-child-1,src-child-2,fork-child-1] cleaned=[["fork-log","fork-child-1"]]`。
+- 版本一致性：`package.json` / `package-lock.json`（root 与 `packages[""]`）/
+  `BUILD_VERSION` 均为 `0.6.6`。
+
 ## [v0.6.5] — 2026-11-12
 
 ### Changed · 工程标准化（npm 脚本 / 门禁配置）
@@ -73,33 +128,10 @@
   而非 `['raw-1','raw-2','raw-3','raw-4']`；改成只读 header 时四行 `createdAt`
   全变 `undefined`。
 
-### Fixed · /subagents 在空 catalog 下不弹窗（父会话事件兜底 + fork 继承前缀）
-
-- 根因 1：rc.1 的 `subagents.listChildren` 可能返回**空**（或抛错），持久化 header 里
-  也没有子会话；父会话自己的日志其实把每个直系子会话记成 `subagent/catalog` 事件，
-  `/subagents` 却只认 host catalog 与 header，于是空列表、不弹 picker。
-- 修法 1：`listSubagentChildren` 在 host catalog 空/失败后扫描父会话日志（新增
-  `src/sessions/subagent-catalog-log.ts`）：保留 `label`/`name`/`mode`/`childCreatedAt`，
-  按 id 去重（后一条 catalog 版本覆盖前一条），`subagent/catalog-diagnostic` 与只带
-  `reason` 的载荷不算子代理，cleaned id 照旧隐藏（运行中的除外）。host catalog 一旦
-  给出行仍是权威，日志只补不覆盖。
-- 根因 2（QA R-1）：`/fork`、`/branch` 把父会话日志**原样复制**进子会话，并把复制长度
-  记为 `inheritedEventCount`；兜底扫描读的是整条日志，于是 fork 的 `/subagents` 会把
-  **源会话**的子代理列出来，`cleanExpiredChildren` 还可能把这些 id 以 fork 的
-  parentId 记成 cleaned。
-- 修法 2：读日志时只保留 child-owned 事件——`event.seq < session.inheritedEventCount`
-  的继承前缀一律跳过（root 会话 cut=0 / 无该字段时全保留；事件没有数字 `seq` 的旧
-  宿主无法定位切点，保守保留）。
-- smoke 回归：host catalog 空 / 抛错时从父会话日志得到子代理行（label/mode/createdAt、
-  去重、cleaned 隐藏、diagnostic 排除）；fork 夹具（`inheritedEventCount=3`，继承前缀
-  里两条源会话 catalog 事件）只列出 fork 自己的子会话，root 会话（cut=0 / 无字段）仍
-  列出全部；TTL 清理只对 fork 自己的过期子会话调用 `cleanSubagentChain`。已用**临时
-  回退**验证断言有效：把 lib 里的切点过滤改成 `return events` 后，fork 实际得到
-  `['src-child-1','src-child-2','fork-child-1']`（修复后为 `['fork-child-1']`），root
-  断言不受影响。
-
 ### 说明
 
+- **本版不含 `/subagents` 空 catalog 兜底修复**：v0.6.5 标签（`ee71721`）在修复提交
+  `d9945cd` 之前创建；该修复随 **v0.6.6** 发布（见上）。
 - rc.2 目前只有 GitHub release，npm registry 仍无 `0.2.2-rc.2`。本次以 rc.2 源码
   /发布说明做结构适配，**真机验证仍只能覆盖 rc.1**；等 rc.2 可安装后再跑隔离 profile。
 - 其余 rc.2 功能（Web 侧栏的 Git worktree 审阅面板、桌面更新渠道、Web 侧栏/右键/

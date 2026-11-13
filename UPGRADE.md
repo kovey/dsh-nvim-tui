@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.6.5（宿主 0.2.2-rc.1） | [v0.6.5 → v0.6.6（/subagents 空 catalog 兜底；宿主不变）](#v065--v066subagents-空-catalog-兜底宿主不变) |
 | nvim-tui v0.6.4（宿主 0.2.2-rc.1） | [v0.6.4 → v0.6.5（工程标准化与 npm test/lint；宿主不变）](#v064--v065工程标准化与-npm-testlint宿主不变) |
 | nvim-tui v0.6.3（宿主 0.2.2-rc.1） | [v0.6.3 → v0.6.4（`always` 改为自动允许；宿主不变）](#v063--v064always-改为自动允许宿主不变) |
 | nvim-tui v0.6.2（宿主 0.2.2-rc.1） | [v0.6.2 → v0.6.3（审批浮窗替换修复；宿主不变）](#v062--v063审批浮窗替换修复宿主不变) |
@@ -48,6 +49,33 @@
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
 
 ---
+
+## v0.6.5 → v0.6.6（/subagents 空 catalog 兜底；宿主不变）
+
+> **结论先行**：宿主不变（dsh 0.2.2-rc.1；Node ≥24.9）。本版只修 `/subagents` 在宿主
+> catalog 为空/失败时不弹 picker 的问题，**v0.6.5 不含该修复**（v0.6.5 标签创建于修复
+> 提交之前）；从 v0.6.5 升级必须到 v0.6.6 才会带上。
+
+```bash
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.6.6"
+dsh --profile <name>
+```
+
+### 修了什么
+
+- rc.1 的 `subagents.listChildren` 返回**空**（或抛错）、持久化 header 里也没有子会话时，
+  `/subagents` 现在回退到**父会话自己的日志**：`subagent/catalog` 事件给出直系子会话的
+  `id` / `label` / `mode` / `createdAt`，host catalog 非空时仍以它为准（日志只补不覆盖）。
+- `/fork`、`/branch` 继承的父日志前缀（`inheritedEventCount` 之前的事件）不参与兜底，
+  fork 的 `/subagents` 不会列出源会话的子代理，TTL 清理也只记 fork 自己的子会话。
+- cleaned id 照旧隐藏（运行中的除外）；`subagent/catalog-diagnostic` 与只带 `reason`
+  的载荷不算子代理。
+
+### 需要留意
+
+- 依赖审计口径未变（runtime-only：`npm audit --omit=dev`）；devDependencies 的 15 个
+  high 不在门禁范围内，本版**不声称**已消除。
+- rc.2 适配仍是结构适配，本版**不声称** rc.2 真机运行；真机验证仍只覆盖 rc.1。
 
 ## v0.6.4 → v0.6.5（工程标准化与 npm test/lint；宿主不变）
 
