@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.6.6（宿主 0.2.2-rc.1） | [v0.6.6 → v0.6.7（/subagents 多行 label 不弹 picker 修复；宿主不变）](#v066--v067subagents-多行-label-不弹-picker-修复宿主不变) |
 | nvim-tui v0.6.5（宿主 0.2.2-rc.1） | [v0.6.5 → v0.6.6（/subagents 空 catalog 兜底；宿主不变）](#v065--v066subagents-空-catalog-兜底宿主不变) |
 | nvim-tui v0.6.4（宿主 0.2.2-rc.1） | [v0.6.4 → v0.6.5（工程标准化与 npm test/lint；宿主不变）](#v064--v065工程标准化与-npm-testlint宿主不变) |
 | nvim-tui v0.6.3（宿主 0.2.2-rc.1） | [v0.6.3 → v0.6.4（`always` 改为自动允许；宿主不变）](#v063--v064always-改为自动允许宿主不变) |
@@ -47,6 +48,40 @@
 | nvim-tui ≤ v0.3.4（宿主 0.1.2-rc.1） | [v0.3.4 → v0.4.0（含宿主 0.1.2-rc.1 → 0.1.5-rc.1）](#v034--v040含宿主-012-rc1--015-rc1) |
 | nvim-tui v0.4.0 已升（宿主仍 0.1.2-rc.1） | 同上（宿主段落必读：peer 锚点已改为 `^0.1.5-rc.1`） |
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
+
+---
+
+## v0.6.6 → v0.6.7（/subagents 多行 label 不弹 picker 修复；宿主不变）
+
+> **结论先行**：宿主不变（dsh 0.2.2-rc.1；Node ≥24.9）。本版只修 `/subagents` 在子代理
+> `label` 为**多行**时不弹 picker 的问题——**v0.6.6 的 catalog 兜底解决的是「列表为空」，
+> 不解决「label 含换行」**：列表只要有任意一条多行 label，v0.6.6 依旧不弹浮窗。零破坏，
+> 无需改动配置，也不必重跑任何迁移。
+
+```bash
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.6.7"
+dsh --profile <name>
+```
+
+### 修了什么
+
+- 根因：picker 的每一行都是 `nvim_buf_set_lines` 写入的**真实 buffer 行**，该接口拒绝
+  含 CR/LF 的项（`'replacement string' item contains newlines`）。子代理 `label` 常是它
+  整段多行任务 prompt，于是 `show_picker` 在浮窗打开**之前**抛错，`openPicker` 的 `.catch()`
+  以 `settlePicker(null)` 静默 `resolve(null)` —— 表现就是 `/subagents` **什么都不弹**
+  （而不是报错）。
+- 现在两层都做单行化：`childRows` 侧新增 `singleLineLabel()`（把 `[\r\n\t]+` 折成一个
+  空格，空 label 仍为空），让 picker 收到的行本身就是单行；Lua 侧 `show_picker` 与
+  `update_picker` 再兜一层，任何调用方都不会把多行文本塞进 buffer。
+- 原本单行的 label 渲染输出与 v0.6.6 一致，无行为变化。
+
+### 需要留意
+
+- 多行 label 在 picker 里折成一行（换行/制表符变空格），这是**渲染层**行为；子代理的
+  实际任务文本不受影响。
+- 依赖审计口径未变（runtime-only：`npm audit --omit=dev`）；devDependencies 不在门禁
+  范围内，本版**不声称**已消除，也未重新取数（本次环境无 registry 访问）。
+- rc.2 适配仍是结构适配，本版**不声称** rc.2 真机运行；真机验证仍只覆盖 rc.1。
 
 ---
 

@@ -3,6 +3,55 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.6.7] — 2026-11-13
+
+### Fixed · /subagents 在子代理 label 为多行时不弹 picker（picker 行双层单行化）
+
+- **真实根因（与「空 catalog」是两件事）**：picker 的每一行都是**真正的 nvim buffer 行**，
+  由 `nvim_buf_set_lines` 写入；而 `nvim_buf_set_lines` 拒绝任何携带 CR/LF 的项，抛
+  `nvim_buf_set_lines: 'replacement string' item contains newlines`。子代理的 `label`
+  往往是它**整段多行任务 prompt**，于是 `show_picker` 在浮窗打开**之前**就抛错；
+  `src/kernel/app.ts` 的 `openPicker` 用 `.catch()` 吞掉该失败并 `settlePicker(null)`
+  （即静默 `resolve(null)`），最终表现为**「`/subagents` 什么都不弹」而不是报错**。
+  v0.6.6 的父会话 catalog 兜底只解决「列表为空」：只要列表里有任何一条多行 label，
+  v0.6.6 依旧在 `nvim_buf_set_lines` 处抛错、依旧不开浮窗。
+- **修法 1（数据层）**：`src/subagents/commands/subagents.ts` 新增并导出
+  `singleLineLabel()`（把 `[\r\n\t]+` 连续串折成一个空格，空 label 仍为空），
+  `childRows` 在拼好的 label 上应用它——picker 拿到的行本身已是单行；`childRows`
+  同时导出以便 smoke 直接断言。
+- **修法 2（兜底层）**：`nvim/lua/dsh_tui/popup_core.lua` 新增 `single_line_label()`，
+  `show_picker` 与 `update_picker` 组装 buffer 行时都过一遍——任何调用方（含未来新增的
+  picker）都不再可能把多行文本塞进 buffer；空 label 仍是空行。
+- 已是单行的 label 输出与 v0.6.6 **逐字节一致**（仅在出现 CR/LF/TAB 时折叠），无行为变化。
+
+### 说明
+
+- 版本统一为 `0.6.7`：`package.json`、`package-lock.json`（root 与 `packages[""]`）、
+  `src/kernel/app.ts` 的 `BUILD_VERSION` 与 CHANGELOG / UPGRADE 同步。本版只做版本与
+  文档（修复提交 `27e742f` 已在 `main` 上），不改其他功能。
+- 依赖审计口径保持 **runtime-only**（`npm audit --omit=dev --json`，清单只读
+  `package.json` / `package-lock.json`）。**devDependencies 不在门禁范围内**：本版未把它
+  写成通过，也不声称已消除（本次环境内 `npm audit` 无 registry 访问、未能重新取数，
+  因此不给出新的漏洞计数，也不据此宣称"0 漏洞"）。
+- rc.2 适配仍是结构适配（宿主 npm registry 无 `0.2.2-rc.2`）：本版**不声称** rc.2
+  真机运行，真机验证仍只覆盖 rc.1。
+
+### 验证
+
+- `npm run build`（`tsc`）exit 0。
+- `npm run check`（`tsc --noEmit` ×2 + `check-arch` + `app-ops-check`）exit 0；
+  arch-check 与 app-ops-check（79 domain ops）均通过。
+- `npm test`（= `npm run smoke`，含 `npm run build`）exit 0，输出包含 `SMOKE PASS`
+  （其后 `graceful exit: ok`）。
+- headless nvim（smoke 内真实 nvim + `nvim_buf_get_lines` 断言）覆盖本版修复：
+  `show_picker` 传入 `任务第一行\r\n\t任务第二行` 后 buffer 行是
+  `['任务第一行 任务第二行', '']`（多行折成一行、空 label 仍是空行）且浮窗已打开
+  （即 `nvim_buf_set_lines` 未抛错）；`update_picker` 同样折叠；
+  `childRows` 的多行子代理行断言为 `scout · 扫描仓库 再写测试 · L1 · 运行中`（不含 CR/LF/TAB），
+  单行子代理行仍为 `普通子代理 · 已结束 · 刚刚`。
+- 版本一致性：`package.json` / `package-lock.json`（root 与 `packages[""]`）/
+  `BUILD_VERSION` 均为 `0.6.7`。
+
 ## [v0.6.6] — 2026-11-13
 
 ### Fixed · /subagents 在空 catalog 下不弹 picker（父会话 catalog 事件兜底 + fork 继承前缀）
