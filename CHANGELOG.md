@@ -73,6 +73,31 @@
   而非 `['raw-1','raw-2','raw-3','raw-4']`；改成只读 header 时四行 `createdAt`
   全变 `undefined`。
 
+### Fixed · /subagents 在空 catalog 下不弹窗（父会话事件兜底 + fork 继承前缀）
+
+- 根因 1：rc.1 的 `subagents.listChildren` 可能返回**空**（或抛错），持久化 header 里
+  也没有子会话；父会话自己的日志其实把每个直系子会话记成 `subagent/catalog` 事件，
+  `/subagents` 却只认 host catalog 与 header，于是空列表、不弹 picker。
+- 修法 1：`listSubagentChildren` 在 host catalog 空/失败后扫描父会话日志（新增
+  `src/sessions/subagent-catalog-log.ts`）：保留 `label`/`name`/`mode`/`childCreatedAt`，
+  按 id 去重（后一条 catalog 版本覆盖前一条），`subagent/catalog-diagnostic` 与只带
+  `reason` 的载荷不算子代理，cleaned id 照旧隐藏（运行中的除外）。host catalog 一旦
+  给出行仍是权威，日志只补不覆盖。
+- 根因 2（QA R-1）：`/fork`、`/branch` 把父会话日志**原样复制**进子会话，并把复制长度
+  记为 `inheritedEventCount`；兜底扫描读的是整条日志，于是 fork 的 `/subagents` 会把
+  **源会话**的子代理列出来，`cleanExpiredChildren` 还可能把这些 id 以 fork 的
+  parentId 记成 cleaned。
+- 修法 2：读日志时只保留 child-owned 事件——`event.seq < session.inheritedEventCount`
+  的继承前缀一律跳过（root 会话 cut=0 / 无该字段时全保留；事件没有数字 `seq` 的旧
+  宿主无法定位切点，保守保留）。
+- smoke 回归：host catalog 空 / 抛错时从父会话日志得到子代理行（label/mode/createdAt、
+  去重、cleaned 隐藏、diagnostic 排除）；fork 夹具（`inheritedEventCount=3`，继承前缀
+  里两条源会话 catalog 事件）只列出 fork 自己的子会话，root 会话（cut=0 / 无字段）仍
+  列出全部；TTL 清理只对 fork 自己的过期子会话调用 `cleanSubagentChain`。已用**临时
+  回退**验证断言有效：把 lib 里的切点过滤改成 `return events` 后，fork 实际得到
+  `['src-child-1','src-child-2','fork-child-1']`（修复后为 `['fork-child-1']`），root
+  断言不受影响。
+
 ### 说明
 
 - rc.2 目前只有 GitHub release，npm registry 仍无 `0.2.2-rc.2`。本次以 rc.2 源码

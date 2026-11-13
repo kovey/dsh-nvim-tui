@@ -19,7 +19,7 @@ import { sniffMediaType, parseImageDataUrl, splitImageDataUrls, imageLabel } fro
 import { diffTexts, fileDiffsFromMeta } from '../lib/feed/diff.js'
 import { t, setLocale, locale } from '../lib/kernel/i18n.js'
 import { matchIntent } from '../lib/commands/nlcmd.js'
-import { ageLabel, isExpired, orderSubagentChildren } from '../lib/kernel/subagent-clean.js'
+import { ageLabel, isExpired, orderSubagentChildren, writeCleanedIds } from '../lib/kernel/subagent-clean.js'
 import { runningBadge } from '../lib/statusline/index.js'
 import stringWidth from 'string-width'
 import { matchSessionEventFilter } from '../lib/ext-api/index.js'
@@ -3060,6 +3060,173 @@ description:
       'both catalog faces failing falls back to the persisted header')
     assert.ok(elapsed < 3000, `the header fallback is reached in under 3s (took ${elapsed}ms)`)
     log(`subagents fallback regression: elapsed=${elapsed}ms (header fallback, signal ignored)`)
+  }
+
+  // v0.6.5 follow-up: an rc.1 host can answer `listChildren` with an EMPTY
+  // catalog (or fail) and the persisted header may carry no child, yet the
+  // parent Session's own log records every direct child as a `subagent/catalog`
+  // event. /subagents must list those children (label/mode/childCreatedAt kept,
+  // diagnostics excluded, cleaned ids hidden, id deduped) instead of claiming
+  // there are none. (AC-001/AC-002/AC-004, TC-001/TC-002/TC-003/TC-004/TC-005)
+  {
+    const parentRec = { handle: { agent: { session: { id: 'parent-log' } } } }
+    const logEvents = [
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'subagent/catalog', data: { childId: 'log-1', childCreatedAt: 1_000, version: 1, mode: 'continuable', label: '日志子代理甲' } },
+      { type: 'subagent/catalog', data: { childId: 'log-2', childCreatedAt: 2_000, version: 0, mode: 'one-shot', label: '日志子代理乙' } },
+      // v3 re-records log-1 with its routing name: one row, the latest wins.
+      { type: 'subagent/catalog', data: { childId: 'log-1', childCreatedAt: 1_000, version: 3, mode: 'continuable', label: '日志子代理甲', name: 'scout' } },
+      { type: 'subagent/catalog', data: { childId: 'log-3', childCreatedAt: 3_000, version: 1, mode: 'one-shot' } },
+      { type: 'subagent/catalog', data: { childId: 'log-clean', childCreatedAt: 4_000, version: 1, mode: 'one-shot', label: '已清理' } },
+      // diagnostics are a DIFFERENT kind and a reason-only payload is not a child.
+      { type: 'subagent/catalog-diagnostic', data: { parentSessionId: 'parent-log', childSessionId: 'log-diag', reason: 'unavailable' } },
+      { type: 'subagent/catalog', data: { childId: 'log-diag2', reason: 'unavailable' } },
+      { type: 'subagent/catalog', data: null },
+      { type: 'subagent/catalog', data: { childId: 42, mode: 'one-shot' } },
+    ]
+    const trans = { sessionEvents: (session: { id?: string }) => session.id === 'parent-log' ? logEvents : [] }
+    const appWith = (svc: unknown) => ({
+      svc: (name: string) => name === 'subagents' ? svc
+        : name === 'sessionPersistence' ? { list: async () => [] } : undefined,
+      slices: {
+        sessions: {
+          live: new Map([['parent-log', parentRec]]),
+          runningSubagents: new Map([['log-2', { parentId: 'parent-log', label: '日志子代理乙', startedAt: 2 }]]),
+        },
+        trans,
+      },
+      runtimeCtx: { agents: { get: () => undefined } },
+      liveSessions: { list: () => [], get: () => undefined },
+    })
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-subagent-log-'))
+    const prevHome = process.env['DSH_HOME']
+    process.env['DSH_HOME'] = tmpHome
+    try {
+      writeCleanedIds({ 'parent-log': ['log-clean'] })
+      // 1) host listChildren answers [] — the parent log fills the picker.
+      const emptyHost = await listSubagentChildren(appWith({ listChildren: async () => [] }) as never, 'parent-log')
+      assert.deepEqual(emptyHost.map((c) => c.id), ['log-1', 'log-2', 'log-3'],
+        'an empty host catalog falls back to the parent subagent/catalog log (AC-001/TC-001/TC-004)')
+      assert.deepEqual(
+        emptyHost.map((c) => ({ label: c.label, name: c.name, mode: c.mode, createdAt: c.createdAt, running: c.running })),
+        [
+          { label: '日志子代理甲', name: 'scout', mode: 'continuable', createdAt: 1_000, running: false },
+          { label: '日志子代理乙', name: undefined, mode: 'one-shot', createdAt: 2_000, running: true },
+          { label: 'log-3', name: undefined, mode: 'one-shot', createdAt: 3_000, running: false },
+        ],
+        'log rows keep label/name/mode/childCreatedAt, dedupe by id (latest version wins) and hide cleaned ids (AC-002/TC-002/TC-003)',
+      )
+      assert.ok(emptyHost.every((c) => c.label !== '已清理' && c.id !== 'log-diag' && c.id !== 'log-diag2'),
+        'cleaned children and diagnostics are never listed from the log (AC-002)')
+      // 2) host catalog throws instead of answering — same log rows.
+      const thrownHost = await listSubagentChildren(appWith({
+        listChildren: async () => { throw new Error('host catalog unavailable') },
+        listDescendants: async () => { throw new Error('host catalog unavailable') },
+      }) as never, 'parent-log')
+      assert.deepEqual(thrownHost.map((c) => c.id), ['log-1', 'log-2', 'log-3'],
+        'a failing host catalog still lists the log children (AC-001/TC-004)')
+      // 3) host/direct rows stay authoritative: no duplicate, no override.
+      const hostCatalog = [
+        { kind: 'child' as const, id: 'log-2', label: '宿主行', mode: 'one-shot' },
+        { kind: 'child' as const, id: 'host-1', label: '宿主独有', mode: 'one-shot' },
+      ]
+      const authoritative = await listSubagentChildren(appWith({ listChildren: async () => hostCatalog }) as never, 'parent-log')
+      assert.deepEqual(authoritative.map((c) => [c.id, c.label]), [['log-2', '宿主行'], ['host-1', '宿主独有']],
+        'host catalog rows are never duplicated or overridden by the log scan (AC-002)')
+      // 4) no live parent record / no log reader: empty answer, never a throw.
+      const noRec = await listSubagentChildren({
+        svc: () => ({}),
+        slices: { sessions: { live: new Map(), runningSubagents: new Map() } },
+        runtimeCtx: { agents: { get: () => undefined } },
+        liveSessions: { list: () => [], get: () => undefined },
+      } as never, 'parent-log')
+      assert.deepEqual(noRec, [], 'no live parent session returns an empty directory instead of throwing (TC-005)')
+      // R-1 (v0.6.5 QA): /fork and /branch copy the parent's log VERBATIM into
+      // the child's log and record the copied length as `inheritedEventCount`.
+      // That inherited prefix is the SOURCE session's history, not this
+      // session's children: /subagents on the fork must not list the source's
+      // subagents, and TTL cleanup must never record them as cleaned under the
+      // fork's id. A root session (cut 0 / field absent) keeps every catalog
+      // event it owns. (AC-001/AC-002/AC-003, TC-001/TC-003)
+      writeCleanedIds({ 'parent-log': ['log-clean'], 'fork-log': ['fork-clean'] })
+      const forkEvents = [
+        { seq: 0, type: 'turn/start', data: { turn: 1 } },
+        // inherited prefix (seq < inheritedEventCount = 3): the SOURCE session's children.
+        { seq: 1, type: 'subagent/catalog', data: { childId: 'src-child-1', childCreatedAt: 1_000, version: 1, mode: 'continuable', label: '源会话子代理甲' } },
+        { seq: 2, type: 'subagent/catalog', data: { childId: 'src-child-2', childCreatedAt: 2_000, version: 1, mode: 'one-shot', label: '源会话子代理乙' } },
+        // child-owned from the cut: the inherited marker, then the fork's own children.
+        { seq: 3, type: 'session/end-seed', data: { inherited: true } },
+        { seq: 4, type: 'subagent/catalog', data: { childId: 'fork-child-1', childCreatedAt: 1_000, version: 1, mode: 'one-shot', label: '分叉自己的子代理' } },
+        { seq: 5, type: 'subagent/catalog', data: { childId: 'fork-clean', childCreatedAt: 6_000, version: 1, mode: 'one-shot', label: '分叉已清理' } },
+      ]
+      const forkApp = (session: Record<string, unknown>, events: unknown[], cleanCalls: Array<[string, string]>) => ({
+        svc: (name: string) => name === 'subagents'
+          ? { listChildren: async () => [] }
+          : name === 'sessionPersistence' ? { list: async () => [] } : undefined,
+        slices: {
+          sessions: {
+            live: new Map([['fork-log', { handle: { agent: { session } } }]]),
+            runningSubagents: new Map(),
+            cleanSubagentChain: async (parentId: string, childId: string) => { cleanCalls.push([parentId, childId]); return true },
+          },
+          trans: { sessionEvents: () => events },
+        },
+        runtimeCtx: { agents: { get: () => undefined } },
+        liveSessions: { list: () => [], get: () => undefined },
+      })
+      const noClean: Array<[string, string]> = []
+      const forked = await listSubagentChildren(forkApp({ id: 'fork-log', inheritedEventCount: 3 }, forkEvents, noClean) as never, 'fork-log')
+      assert.deepEqual(forked.map((c) => c.id), ['fork-child-1'],
+        'a fork lists ONLY its own catalog events: the inherited prefix (seq < inheritedEventCount) belongs to the source session (AC-001/TC-001)')
+      assert.ok(forked.every((c) => !c.id.startsWith('src-child-')),
+        'no source-session child leaks into the fork directory through the log fallback (AC-002)')
+      const rootOwned = await listSubagentChildren(forkApp({ id: 'fork-log' }, forkEvents, noClean) as never, 'fork-log')
+      assert.deepEqual(rootOwned.map((c) => c.id), ['src-child-1', 'src-child-2', 'fork-child-1'],
+        'a root session (no inheritedEventCount field) keeps listing every catalog event it owns (AC-001)')
+      const zeroCut = await listSubagentChildren(forkApp({ id: 'fork-log', inheritedEventCount: 0 }, forkEvents, noClean) as never, 'fork-log')
+      assert.deepEqual(zeroCut.map((c) => c.id), ['src-child-1', 'src-child-2', 'fork-child-1'],
+        'inheritedEventCount=0 is a root session: nothing is filtered (AC-001)')
+      // A legacy/structural host exposes no `seq`: the inherited position is
+      // unknowable there, so the rows are kept (never silently emptied).
+      const seqlessEvents = forkEvents.map((e) => ({ type: e.type, data: e.data }))
+      const seqless = await listSubagentChildren(forkApp({ id: 'fork-log', inheritedEventCount: 3 }, seqlessEvents, noClean) as never, 'fork-log')
+      assert.deepEqual(seqless.map((c) => c.id), ['src-child-1', 'src-child-2', 'fork-child-1'],
+        'events without a numeric seq cannot be placed before the fork cut, so they are kept (no silent empty list)')
+      // End-to-end: /subagents on the fork targets ONLY the fork's own expired
+      // child for TTL cleanup — the inherited ids never reach cleanSubagentChain.
+      const commandClean: Array<[string, string]> = []
+      const notices: string[] = []
+      const picked: Array<{ label: string; value: string }> = []
+      const commandApp = {
+        ...forkApp({ id: 'fork-log', inheritedEventCount: 3 }, forkEvents, commandClean),
+        config: { subagentTtlHours: 1 },
+        notice: (m: string) => { notices.push(m) },
+        openPicker: async (_title: string, items: Array<{ label: string; value: string }>) => { picked.push(...items); return null },
+      }
+      await subagentsCommand({
+        ...commandApp,
+        slices: {
+          ...commandApp.slices,
+          agent: { pendingSubagentFollowup: null },
+          sessions: {
+            ...commandApp.slices.sessions,
+            activeId: 'fork-log',
+            listSubagentChildren: (pid: string) => listSubagentChildren(commandApp as never, pid),
+          },
+        },
+      } as never)
+      assert.deepEqual(commandClean, [['fork-log', 'fork-child-1']],
+        'TTL cleanup targets only the fork\'s own expired child, so no source child is recorded as cleaned under the fork id (R-1)')
+      assert.deepEqual(picked.filter((r) => r.value !== 'act:clean').map((r) => r.value), ['fork-child-1'],
+        '/subagents on a fork offers the fork\'s own children only (AC-003)')
+      assert.ok(notices.every((m) => !m.startsWith('subagents 失败')), `subagentsCommand does not fail on the fork fixture: ${notices.join(' | ')}`)
+      log(`subagents fork heredity: fork=[${forked.map((c) => c.id).join(',')}] root=[${rootOwned.map((c) => c.id).join(',')}] cleaned=${JSON.stringify(commandClean)}`)
+      log(`subagents catalog-log fallback: ${emptyHost.map((c) => `${c.id}:${c.mode}@${c.createdAt}`).join(',')}`)
+    } finally {
+      if (prevHome === undefined) delete process.env['DSH_HOME']
+      else process.env['DSH_HOME'] = prevHome
+      fs.rmSync(tmpHome, { recursive: true, force: true })
+    }
   }
 
   // /subagents rows show the rc.2 path, name and depth (AC-001 display half).

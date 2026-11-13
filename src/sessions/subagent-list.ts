@@ -5,9 +5,13 @@
  *  The non-recursive `listChildren` is the backbone: rc.1's `listDescendants`
  *  recursively observes every descendant session and never settles while a
  *  child's query is not ready, so it may only ever be a BOUNDED enrichment
- *  (name/path/depth). The persisted-header scan stays the last fallback.
+ *  (name/path/depth). The parent's own `subagent/catalog` log records come
+ *  next — an rc.1 host may answer with an EMPTY catalog even though the log
+ *  names every direct child — and the persisted-header scan stays the last
+ *  fallback.
  */
 import { persistedHeader } from '../kernel/app.js'
+import { catalogLogRows } from './subagent-catalog-log.js'
 import { readCleanedIds } from '../kernel/subagent-clean.js'
 import type { App } from '../kernel/app.js'
 import type { SubagentListEntry } from '../kernel/agent-extra-types.js'
@@ -199,6 +203,35 @@ const scanHeaders = (
   return children
 }
 
+/** Last resort beside the header scan: the parent's own log records every
+ *  direct child as a `subagent/catalog` event, so /subagents still lists rows
+ *  when the host catalog answers EMPTY/fails and no header has survived (rc.1
+ *  may answer `[]`). The log rows carry label/mode/childCreatedAt; cleaned ids
+ *  stay hidden unless the child is still running (AC-001, AC-002). */
+const fromParentLog = (app: App, parentId: string, ctx: ListingContext): SubagentChild[] => {
+  const rows: SubagentChild[] = []
+  for (const r of catalogLogRows(app, parentId)) {
+    const row: SubagentChild = {
+      id: r.id,
+      label: r.label ?? r.name ?? r.id.slice(0, 8),
+      name: r.name,
+      running: childRunning(app, r.id),
+      mode: r.mode,
+      createdAt: r.createdAt ?? ctx.createdAtOf(r.id),
+    }
+    if (!row.running && ctx.hidden.has(r.id)) continue
+    rows.push(row)
+  }
+  return rows
+}
+
+/** Merge header-derived rows after the log rows: the log row keeps its
+ *  label/mode/createdAt, the header only adds children the log missed. */
+const mergeRows = (primary: SubagentChild[], extra: SubagentChild[]): SubagentChild[] => {
+  const seen = new Set(primary.map((c) => c.id))
+  return [...primary, ...extra.filter((c) => !seen.has(c.id))]
+}
+
 export const listSubagentChildren = async (app: App, parentId: string): Promise<SubagentChild[]> => {
   const histMap = await persistedHeaders(app)
   const ctx: ListingContext = {
@@ -212,13 +245,21 @@ export const listSubagentChildren = async (app: App, parentId: string): Promise<
   const direct: CatalogAttempt = typeof host?.listChildren === 'function'
     ? await attemptCatalog(app, ctx, (signal) => host.listChildren!(parentId, signal))
     : { failed: true, answered: false }
+  let hostRows = direct.rows
   // rc.2: the recursive catalog is an ENRICHMENT of the direct rows (it adds
   // name/path/depth for nested teams). It is only worth a deadline when there
   // are rows to enrich — or when the direct face failed, where it is the only
   // catalog left. An empty direct answer means nothing deeper exists (AC-002).
   if ((direct.failed || direct.answered) && typeof host?.listDescendants === 'function') {
     const deep = await attemptCatalog(app, ctx, (signal) => host.listDescendants!(parentId, signal))
-    if (deep.rows !== undefined) return deep.rows
+    if (deep.rows !== undefined) hostRows = deep.rows
   }
-  return direct.rows ?? scanHeaders(app, parentId, histMap, ctx)
+  // A host that answered with rows is authoritative: the parent-log scan must
+  // never duplicate or override it (AC-002).
+  if (hostRows !== undefined && hostRows.length > 0) return hostRows
+  // Host catalog empty/failed AND the persisted header may carry nothing: the
+  // parent's own session log still names every direct child (AC-001).
+  const fromLog = fromParentLog(app, parentId, ctx)
+  const fromHeader = scanHeaders(app, parentId, histMap, ctx)
+  return fromLog.length === 0 ? fromHeader : mergeRows(fromLog, fromHeader)
 }
