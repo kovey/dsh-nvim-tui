@@ -46,7 +46,7 @@ dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"
 
 | 依赖 | 要求 | 说明 |
 |---|---|---|
-| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | `>=0.2.2-rc.1 <0.3.0` | 已实测 0.2.2-rc.1；rc.2 按 GitHub release 源码做结构适配（npm 尚未发布 rc.2，未真机验证）；整个 0.2.2 系列按稳定接口声明；0.3.0 未验证，故意不声明兼容 |
+| [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) | `>=0.2.2-rc.4 <0.3.0` | 已实测 0.2.2-rc.4 隔离宿主上的 headless 启动（`dsh --version` = `0.2.2-rc.4`，exit 0）：**最小 profile 下 peer 全绑定 rc4**；完整 profile 可能混合 rc2 peer（那只能证明宿主能起）；rc.4 相对 rc.2 的 TUI 消费面只有 `dsh-llm` 新增 `CONTENT_REFUSED` 一个错误码（非 breaking）；**能力 smoke 未在 rc4 重跑**（历史基线仍是 rc.1，见下）；整个 0.2.2 系列按稳定接口声明；0.3.0 未验证，故意不声明兼容 |
 | [Neovim](https://neovim.io) | 0.9+（推荐 0.10+） | 0.10+ 完整体验（输入框四边框、弹窗提示嵌入边框）；0.9 可运行但降级 |
 | Node.js | 24.9+ | 跟随 dsh 0.2.2 的 `engines` 要求；旧 Node 需先升级 |
 
@@ -54,6 +54,21 @@ dsh plugin --profile tui add "kovey/dsh-nvim-tui#<tag>"
   0.11 / 0.12 自动走完整分支；已逐项核对 0.12.6 的 breaking changes，均未使用。
 - **注意预发布版**：dsh 的 `next` dist-tag 是 release candidate，`latest` 可能更旧；
   安装时显式带版本或 `@next`，别让 `npm i -g @deepseek-ai/dsh` 装回旧版。
+- **rc.4 支持范围**：rc.4 宿主上实际验证到的是「TUI 进程能启动并渲染」（headless：
+  banner / 会话 / statusline 正常，`quit code=0`）。**没有**做真实模型对话，也没有在
+  rc.4 上逐项重跑子代理 / AgentTeam / worktree / MCP / 工具错误码 / batch append 的
+  能力 smoke——这些能力的历史验证基线仍是 rc.1。逐项差异见
+  [docs/RC4-ADAPTATION.md](./docs/RC4-ADAPTATION.md)。
+- **混合 peer 的风险**：若用 rc.4 宿主去启动一个仍由 rc.2 插件组成的完整 profile
+  （插件从 profile 树之外的目录链接进来），profile 作用域的模块路由不覆盖那些包，
+  插件实际解析到的 `@deepseek-ai/*` 可能是 rc.2 拷贝。这种组合只能证明「rc.4 的
+  launcher/宿主能起 TUI」，**不能**证明 peer 已全量绑到 rc.4；要验证后者，用只含
+  `@deepseek-ai/dsh-base` + `dsh-nvim-tui` 的最小 profile（本仓库已用它验证 rc.4 全绑定）。
+- **Web / Desktop 专属变化不是 TUI 功能**：rc3 的 DeepSeek 官网会话导入（浏览器上传
+  路由 `/api/deepseek-chat-import/archive` + 浏览器 UI 槽位，**没有** TUI 可调用的导入
+  API，也没有 CLI 子命令）、LiveShare 桌面分享修复（Electron `ELECTRON_RUN_AS_NODE`
+  传递）、Windows 安装器 restart-status 与 CI 的 bubblewrap 缓存，都属于 Web / Desktop
+  或发布链路。TUI 不提供这些入口，也不声称支持。
 
 ## 主要特性
 
@@ -176,6 +191,7 @@ npm run e2e -- "你好，请只回复：收到"   # 真模型回归（需 dsh �
 | [docs/COMMANDS.md](./docs/COMMANDS.md) | 斜杠命令完整参考 |
 | [docs/CONFIG.md](./docs/CONFIG.md) | 配置项、环境变量、主题、难度路由、headless |
 | [docs/EXT-API.md](./docs/EXT-API.md) | 插件开放接口（Node / Lua 两面） |
+| [docs/RC4-ADAPTATION.md](./docs/RC4-ADAPTATION.md) | dsh 0.2.2-rc.4 支持范围与 rc2→rc4 差异 |
 | [docs/STRUCTURE.md](./docs/STRUCTURE.md) | 目录结构与设计决策 |
 | [UPGRADE.md](./UPGRADE.md) | 宿主与插件版本升级指南 |
 | [CHANGELOG.md](./CHANGELOG.md) | 版本变更记录 |

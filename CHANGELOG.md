@@ -3,6 +3,80 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [Unreleased] — dsh 0.2.2-rc.4
+
+### Changed · 宿主锚点前移到 dsh 0.2.2-rc.4（结构适配，TUI 零代码改动）
+
+- `package.json`：`peerDependencies` 的 `@deepseek-ai/dsh-agent` / `dsh-llm` / `dsh-tools`
+  与 `engines.dsh` 从 `>=0.2.2-rc.1` 改为 `>=0.2.2-rc.4 <0.3.0`；14 个
+  `@deepseek-ai/*` devDependencies 从 `0.2.2-rc.1` 钉到 `0.2.2-rc.4`。
+- `package-lock.json`：根 `packages[""]` 与各 `node_modules/@deepseek-ai/*` 条目同步到
+  `0.2.2-rc.4`；rc.4 的 `dsh-llm` 多带一个 peer `@deepseek-ai/dsh-error@0.2.2-rc.4`，
+  npm 已自动补进 lock（未写进 `package.json`，**不要**手工删）。
+- 隔离宿主 `node_modules/.probe-rc4`：安装 `@deepseek-ai/dsh@0.2.2-rc.4`，
+  `dsh --version` 输出 `0.2.2-rc.4`。
+- 版本号/`BUILD_VERSION` 本条目**不 bump**：仍是 `0.6.7`，待发布时统一改。
+
+### 差异（rc.2 → rc.4，只列与 TUI 有关的）
+
+- **TUI 消费面只有一个新增错误码**：本仓库静态导入的 4 个包是 `@deepseek-ai/cordis`、
+  `dsh-agent`、`dsh-llm`、`dsh-tools`。逐文件对比 rc.2 与 rc.4 的 `lib/`：`cordis`
+  （4.1.0 未变）、`dsh-agent`、`dsh-tools` 完全一致；`dsh-llm` 只在
+  `lib/types/error.d.ts` / `lib/types/error.js` / `lib/index.js` 的 `LlmErrorCode`
+  枚举里新增 `CONTENT_REFUSED`。**没有 breaking change**，TUI 源码无需改动。
+- **`llm-deepseek` 的拒答行为**：rc.4 里 DeepSeek 以 `stop_reason: "refusal"` 结束流时，
+  适配器先 yield `usage`（已计费 token 保留）再抛 `CONTENT_REFUSED`（rc.2 报
+  `MALFORMED_RESPONSE`），错误消息带上提供方说明；默认重试策略把拒答当终结，不重试。
+  TUI 不在本地映射 LLM 错误码，错误文本原样随会话事件显示，因此行为兼容。
+  注意：仓库 compare 列表里另有 `safetyCheck` 开关 / 「始终请求安全审核」两个提交，
+  但 `dsh-v0.2.2-rc.4` tag 的 `config.ts` / `serialize.ts` / `wire-types.ts` / `types.ts`
+  与 rc.2 逐字节一致（改动被后续「拒答不请求安全审核」提交抵消），发布包里也检索不到
+  `safetyCheck` 配置键——rc.4 只落了拒答处理，**不要**按该开关配置。
+- **能力相关包零差异**：`dsh-session`、`dsh-subagent`、`dsh-tool-subagent`、
+  `dsh-agent-team`、`dsh-mcp-client` / `dsh-mcp-manager` / `dsh-mcp-resources`、
+  `dsh-experimental-worktree` / `dsh-experimental-tool-worktree`
+  的 `lib/` 与 `lib/types/` 在 rc.2 与 rc.4 之间逐字节一致。工具批量调度**没有独立包**：
+  类型在 `@deepseek-ai/dsh-tools` 的 `lib/types/batch.d.ts`（`executeToolBatch`）与
+  `lib/types/executor.d.ts`（`ToolBatchInput` / `ToolBatchResult`），追加事件走
+  `@deepseek-ai/dsh-session` 的 `Session.append` 类型（`lib/types/index.d.ts`）；
+  rc.4 安装树里**不存在** `dsh-tool-batch` 包，不要按该包名找依赖或类型。
+- **新增一个包**：`@deepseek-ai/dsh-deepseek-chat-import`（rc3 功能）。**官方入口只有
+  浏览器 UI**：浏览器 UI 槽位（`sidebar.session.action`）+ Host 侧 owner-only 上传路由
+  `/api/deepseek-chat-import/archive` 与远程方法 `deepseekChatImport/limits`（只供浏览器
+  前端调用）；**没有** TUI 命令、**没有** CLI 子命令、**没有** TUI 可直接调用的导入
+  API。`dsh-official-bundles` 与 `dsh-tool-cordis` 只是把它登记为可选实验 bundle /
+  服务目录条目（供 GUI 与 cordis 工具使用）。
+- **LiveShare**：rc.4 把宿主进程的 `ELECTRON_RUN_AS_NODE` 传给 tunnel worker
+  （`workerNodeModeEnv`），修的是桌面端 worker 被 Electron 单实例锁杀掉的问题；
+  纯 Node 宿主下该值为 `undefined` → 传空对象，对 TUI 是 no-op。
+- **发布 / CI / Desktop**：rc4 的 CI 只改了「缓存并限定 bubblewrap 下载」的 workflow；
+  Windows 安装器的 `restart-status` 修复只动 `apps/desktop`。均无 TUI 运行时 API 变化。
+
+### 未支持 / 不声称
+
+- rc3 的 DeepSeek 官网会话导入：TUI **不支持**（无上传 UI、无命令、无服务 API 可调）；
+  不把它列为 TUI 功能。
+- LiveShare 分享：浏览器 / 桌面能力；TUI 没有分享 UI，也不声称支持。
+- rc.4 上**没有**做真实模型对话，也**没有**逐项重跑子代理 / AgentTeam / worktree /
+  MCP / 工具错误码 / batch append 的能力 smoke；这些能力的历史验证基线仍是 rc.1。
+- 用「rc.4 宿主 + 仍为 rc.2 peer 的完整 profile」启动成功，只证明宿主/launcher 能起 TUI，
+  **不**证明 peer 全量绑到 rc.4。
+
+### 验证
+
+- `node_modules/.probe-rc4/node_modules/.bin/dsh --version` → `0.2.2-rc.4`（exit 0）。
+- 最小 profile（`@deepseek-ai/dsh-base` + `dsh-nvim-tui`，rc4 全绑定）headless 启动：
+  `EXIT=0`；dump 有 banner（`dsh-nvim-tui 0.6.7 · channel 3`）、会话、statusline；
+  错误日志 `boot-complete` → `quit code=0` → `nvim-exit code=0`。2026-11-18 重跑仍 exit 0。
+- 完整 profile（rc.4 宿主 + 部分 rc.2 peer）headless 启动：`exit 0`（连续两次）；
+  ESM trace 同时出现 probe rc.4 与全局 rc.2 路径 → 仅作为「宿主能启动」的证据。
+- rc.4 类型检查：`node_modules/.bin/tsc -p node_modules/.probe-rc4/tsconfig.rc4.json --noEmit`
+  （path 映射到 rc.4 的 `lib/types`，覆盖整个 `src/`）exit 0。
+- 仓库 `npm run build` / `npm run check` / `npm test`（= `smoke`）exit 0。
+  注意：本机 `node_modules` 尚未重装，仍是 `0.2.2-rc.1` 的包（`package-lock.json` 已锁
+  `0.2.2-rc.4`）；`npm ci` / `npm install` 之后需要重跑一次 `build` / `check` / `smoke`，
+  并确认 `lib/` 产物 diff 为空。
+
 ## [v0.6.7] — 2026-11-13
 
 ### Fixed · /subagents 在子代理 label 为多行时不弹 picker（picker 行双层单行化）

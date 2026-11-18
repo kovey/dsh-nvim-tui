@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.6.7（宿主 0.2.2-rc.1 / rc.2） | [v0.6.7 → 下一版（dsh 0.2.2-rc.4）](#v067--下一版dsh-0222-rc4) |
 | nvim-tui v0.6.6（宿主 0.2.2-rc.1） | [v0.6.6 → v0.6.7（/subagents 多行 label 不弹 picker 修复；宿主不变）](#v066--v067subagents-多行-label-不弹-picker-修复宿主不变) |
 | nvim-tui v0.6.5（宿主 0.2.2-rc.1） | [v0.6.5 → v0.6.6（/subagents 空 catalog 兜底；宿主不变）](#v065--v066subagents-空-catalog-兜底宿主不变) |
 | nvim-tui v0.6.4（宿主 0.2.2-rc.1） | [v0.6.4 → v0.6.5（工程标准化与 npm test/lint；宿主不变）](#v064--v065工程标准化与-npm-testlint宿主不变) |
@@ -48,6 +49,58 @@
 | nvim-tui ≤ v0.3.4（宿主 0.1.2-rc.1） | [v0.3.4 → v0.4.0（含宿主 0.1.2-rc.1 → 0.1.5-rc.1）](#v034--v040含宿主-012-rc1--015-rc1) |
 | nvim-tui v0.4.0 已升（宿主仍 0.1.2-rc.1） | 同上（宿主段落必读：peer 锚点已改为 `^0.1.5-rc.1`） |
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
+
+---
+
+## v0.6.7 → 下一版（dsh 0.2.2-rc.4）
+
+> **结论先行**：宿主锚点从 `0.2.2-rc.1` 前移到 **`0.2.2-rc.4`**（`peerDependencies` 与
+> `engines.dsh` 都是 `>=0.2.2-rc.4 <0.3.0`；Node 仍 ≥24.9）。**TUI 源码零改动**：rc.2 →
+> rc.4 的 TUI 消费面只多了 `dsh-llm` 的一个错误码 `CONTENT_REFUSED`。rc.4 宿主上已实测
+> headless 启动（exit 0），但**没有**做真实模型对话，也**没有**在 rc.4 上逐项重跑能力
+> smoke——子代理 / AgentTeam / worktree / MCP / 工具错误码 / batch append 的历史基线
+> 仍是 rc.1。逐项对比见 [docs/RC4-ADAPTATION.md](./docs/RC4-ADAPTATION.md)。
+
+```bash
+# 1) 升级宿主（显式带版本，别被 latest 装回旧版）
+npm i -g @deepseek-ai/dsh@0.2.2-rc.4
+dsh --version   # 期望 0.2.2-rc.4
+
+# 2) 升级插件（git/tag 依赖只能用 add 带新 ref 重写）
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#<下一版 tag>"
+dsh --profile <name>
+```
+
+### 需要做什么
+
+- **必须**：宿主 ≥ `0.2.2-rc.4`（低于它会因新 `engines.dsh` / peer 区间被判为不兼容）。
+  从 `0.2.2-rc.1` 直接升到 `rc.4` 时，TUI 侧不需要额外步骤：会话格式包
+  （`dsh-session-format*`）与 `dsh-session` 在 rc.2 与 rc.4 之间逐字节一致。
+- **不需要**：改配置、改 profile 的 `cordis.patch.yml`、重跑任何数据迁移。0.2.2 系列的
+  `session` / `subagent` / `agent-team` / `mcp` / `worktree` 类型面在
+  rc.2 与 rc.4 之间逐字节一致；工具批量调度**没有独立包**（类型在 `dsh-tools` 的
+  `lib/types/batch.d.ts` 与 `lib/types/executor.d.ts`，事件追加走 `dsh-session` 的
+  `Session.append`），同样零差异。
+- **拒答可见性**：模型被 DeepSeek 内容安全审核拒绝时，宿主报 `CONTENT_REFUSED`（此前是
+  `MALFORMED_RESPONSE`）。TUI 不本地映射错误码，错误文本随会话事件原样显示；如果你有
+  外部脚本按 `MALFORMED_RESPONSE` 分类拒答，需要改判 `CONTENT_REFUSED`。
+  rc.4 的发布包里**没有** `safetyCheck` 配置键，不要按该开关写配置。
+
+### 升级后怎么确认
+
+- `dsh --version` → `0.2.2-rc.4`。
+- 启动后 TUI 有 banner（`dsh-nvim-tui <版本> · channel 3`）、会话与 statusline 正常；
+  headless 场景下错误日志出现 `boot-complete`、`quit code=0`、`nvim-exit code=0`。
+- 若用完整 profile（含其他插件）启动失败，先分清是**宿主**还是**混合 peer**问题：
+  profile 树之外链接进来的插件会按 Node 原生规则解析裸导入，可能拿到 rc.2 拷贝。
+  用只含 `@deepseek-ai/dsh-base` + `dsh-nvim-tui` 的最小 profile 复测，可把变量降到只剩 rc.4。
+
+### 本版未支持 / 不声称
+
+- rc3 的 DeepSeek 官网会话导入是**浏览器**功能（上传路由 + 浏览器 UI 槽位，owner-only），
+  **没有** TUI 命令、**没有** CLI 子命令、**没有** TUI 可调用的导入 API → 不列为 TUI 支持。
+- LiveShare 分享与 rc4 的桌面分享修复属 Web / Desktop；TUI 没有分享入口。
+- rc.4 上只验证到「能启动并渲染」，不声称 rc.4 的能力级回归已全部通过。
 
 ---
 
