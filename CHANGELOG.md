@@ -3,7 +3,21 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [Unreleased] — dsh 0.2.2-rc.4
+## [v0.6.8] — 2026-11-18
+
+### 发布要点
+
+本版是 **dsh 0.2.2-rc.4 的结构适配发布**：TUI 源码零改动，只前移依赖锚点
+（`peerDependencies` / `engines.dsh` / devDependencies 全部到 `0.2.2-rc.4`），并在 rc4
+隔离宿主上确认 headless 启动（最小 profile 下 rc4 peer 全绑定、`EXIT=0`）。唯一与 TUI
+消费面相关的宿主变化是 `dsh-llm` 新增错误码 `CONTENT_REFUSED`（DeepSeek 拒答时取代
+`MALFORMED_RESPONSE`，非 breaking）。rc4 的 DeepSeek 官网会话导入、LiveShare、桌面安装器
+与 CI 改动都在 **Web / Desktop / 发布链路**：TUI 不支持、不列为 TUI 功能。
+
+**本版不声称**：在 rc4 上做过真实模型对话，或在 rc4 上重跑过能力级 smoke（子代理 /
+AgentTeam / worktree / MCP / 工具错误码 / batch append）——这些能力的历史验证基线仍是
+rc.1；本版证据只到「类型面逐字节零差异 + rc4 宿主能启动并渲染」。版本号已统一：
+`package.json`、`package-lock.json`、`src/kernel/app.ts` 的 `BUILD_VERSION` 均为 `0.6.8`。
 
 ### Changed · 宿主锚点前移到 dsh 0.2.2-rc.4（结构适配，TUI 零代码改动）
 
@@ -15,7 +29,8 @@
   npm 已自动补进 lock（未写进 `package.json`，**不要**手工删）。
 - 隔离宿主 `node_modules/.probe-rc4`：安装 `@deepseek-ai/dsh@0.2.2-rc.4`，
   `dsh --version` 输出 `0.2.2-rc.4`。
-- 版本号/`BUILD_VERSION` 本条目**不 bump**：仍是 `0.6.7`，待发布时统一改。
+- 版本号/`BUILD_VERSION` 随本版 bump 到 `0.6.8`（`package.json` / `package-lock.json` /
+  `src/kernel/app.ts` 三处一致）；banner 与 `--version` 由 `BUILD_VERSION` 插值，无代码分支。
 
 ### 差异（rc.2 → rc.4，只列与 TUI 有关的）
 
@@ -66,13 +81,16 @@
 
 - `node_modules/.probe-rc4/node_modules/.bin/dsh --version` → `0.2.2-rc.4`（exit 0）。
 - 最小 profile（`@deepseek-ai/dsh-base` + `dsh-nvim-tui`，rc4 全绑定）headless 启动：
-  `EXIT=0`；dump 有 banner（`dsh-nvim-tui 0.6.7 · channel 3`）、会话、statusline；
+  `EXIT=0`；dump 有 banner（`dsh-nvim-tui 0.6.7 · channel 3`，**该次验证早于版本 bump**，
+  banner 由 `BUILD_VERSION` 插值，本版发布后为 `0.6.8`）、会话、statusline；
   错误日志 `boot-complete` → `quit code=0` → `nvim-exit code=0`。2026-11-18 重跑仍 exit 0。
 - 完整 profile（rc.4 宿主 + 部分 rc.2 peer）headless 启动：`exit 0`（连续两次）；
   ESM trace 同时出现 probe rc.4 与全局 rc.2 路径 → 仅作为「宿主能启动」的证据。
 - rc.4 类型检查：`node_modules/.bin/tsc -p node_modules/.probe-rc4/tsconfig.rc4.json --noEmit`
   （path 映射到 rc.4 的 `lib/types`，覆盖整个 `src/`）exit 0。
-- 仓库 `npm run build` / `npm run check` / `npm test`（= `smoke`）exit 0。
+- 仓库 `npm run build` / `npm run check` / `npm test`（= `smoke`）exit 0；bump 到 `0.6.8`
+  后复跑三者仍 exit 0（`SMOKE PASS`），`package.json` / `package-lock.json` /
+  `src/kernel/app.ts` 的版本一致。
   注意：本机 `node_modules` 尚未重装，仍是 `0.2.2-rc.1` 的包（`package-lock.json` 已锁
   `0.2.2-rc.4`）；`npm ci` / `npm install` 之后需要重跑一次 `build` / `check` / `smoke`，
   并确认 `lib/` 产物 diff 为空。

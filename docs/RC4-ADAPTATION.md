@@ -9,7 +9,8 @@
 
 - 适配日期：2026-11-18
 - 目标宿主：`@deepseek-ai/dsh@0.2.2-rc.4`（npm）
-- 被测 TUI：`dsh-nvim-tui` 0.6.7（工作区 `lib/` 构建产物）。与验证时 profile 里那份
+- 被测 TUI：`dsh-nvim-tui` 0.6.7（工作区 `lib/` 构建产物；验证时版本号尚未 bump，适配
+  内容随 **v0.6.8** 发布）。与验证时 profile 里那份
   `dsh-nvim-tui` 只做到 **`lib/` 逐文件 diff 为空**；那份的 `package.json` 仍是旧锚点
   （`peerDependencies` / `engines.dsh` / devDependencies 都还写 `0.2.2-rc.1`），因此
   **不能**据此说整包一致，也**不能**说验证时 profile 里的 manifest 已锚定 rc.4。
@@ -179,7 +180,8 @@ rc.2 与 rc.4 的 `lib/` 与 `lib/types/` **逐字节一致**（逐包 `diff -rq
   浏览器入口，没有 TUI 可调用的 API——正确的做法是标注「不支持」，而不是造一个
   只能靠上传路由模拟的伪功能。
 - **依赖与文档：** 已改 `package.json` / `package-lock.json` / `README.md` /
-  `CHANGELOG.md` / `UPGRADE.md` / 本文件。版本号与 `BUILD_VERSION` 未改（仍是 0.6.7）。
+  `CHANGELOG.md` / `UPGRADE.md` / 本文件。版本号在发布 **v0.6.8** 时统一 bump：
+  `package.json` / `package-lock.json` / `src/kernel/app.ts` 的 `BUILD_VERSION` 均为 `0.6.8`。
 
 ## 未覆盖与风险
 

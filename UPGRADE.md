@@ -20,7 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
-| nvim-tui v0.6.7（宿主 0.2.2-rc.1 / rc.2） | [v0.6.7 → 下一版（dsh 0.2.2-rc.4）](#v067--下一版dsh-0222-rc4) |
+| nvim-tui v0.6.7（宿主 0.2.2-rc.1 / rc.2） | [v0.6.7 → v0.6.8（dsh 0.2.2-rc.4 适配；宿主锚点前移）](#v067--v068dsh-022-rc4-适配宿主锚点前移) |
 | nvim-tui v0.6.6（宿主 0.2.2-rc.1） | [v0.6.6 → v0.6.7（/subagents 多行 label 不弹 picker 修复；宿主不变）](#v066--v067subagents-多行-label-不弹-picker-修复宿主不变) |
 | nvim-tui v0.6.5（宿主 0.2.2-rc.1） | [v0.6.5 → v0.6.6（/subagents 空 catalog 兜底；宿主不变）](#v065--v066subagents-空-catalog-兜底宿主不变) |
 | nvim-tui v0.6.4（宿主 0.2.2-rc.1） | [v0.6.4 → v0.6.5（工程标准化与 npm test/lint；宿主不变）](#v064--v065工程标准化与-npm-testlint宿主不变) |
@@ -52,14 +52,14 @@
 
 ---
 
-## v0.6.7 → 下一版（dsh 0.2.2-rc.4）
+## v0.6.7 → v0.6.8（dsh 0.2.2-rc.4 适配；宿主锚点前移）
 
-> **结论先行**：宿主锚点从 `0.2.2-rc.1` 前移到 **`0.2.2-rc.4`**（`peerDependencies` 与
-> `engines.dsh` 都是 `>=0.2.2-rc.4 <0.3.0`；Node 仍 ≥24.9）。**TUI 源码零改动**：rc.2 →
-> rc.4 的 TUI 消费面只多了 `dsh-llm` 的一个错误码 `CONTENT_REFUSED`。rc.4 宿主上已实测
-> headless 启动（exit 0），但**没有**做真实模型对话，也**没有**在 rc.4 上逐项重跑能力
-> smoke——子代理 / AgentTeam / worktree / MCP / 工具错误码 / batch append 的历史基线
-> 仍是 rc.1。逐项对比见 [docs/RC4-ADAPTATION.md](./docs/RC4-ADAPTATION.md)。
+> **结论先行**：本版 **v0.6.8** 只做宿主锚点前移（`0.2.2-rc.1` → **`0.2.2-rc.4`**；
+> `peerDependencies` 与 `engines.dsh` 都是 `>=0.2.2-rc.4 <0.3.0`，Node 仍 ≥24.9）与
+> 文档归档。**TUI 源码零改动**：rc.2 → rc.4 的 TUI 消费面只多了 `dsh-llm` 的一个错误码
+> `CONTENT_REFUSED`。rc.4 宿主上已实测 headless 启动（exit 0），但**没有**做真实模型对话，
+> 也**没有**在 rc.4 上逐项重跑能力 smoke——子代理 / AgentTeam / worktree / MCP / 工具错误码
+> / batch append 的历史基线仍是 rc.1。逐项对比见 [docs/RC4-ADAPTATION.md](./docs/RC4-ADAPTATION.md)。
 
 ```bash
 # 1) 升级宿主（显式带版本，别被 latest 装回旧版）
@@ -67,7 +67,7 @@ npm i -g @deepseek-ai/dsh@0.2.2-rc.4
 dsh --version   # 期望 0.2.2-rc.4
 
 # 2) 升级插件（git/tag 依赖只能用 add 带新 ref 重写）
-dsh plugin --profile <name> add "kovey/dsh-nvim-tui#<下一版 tag>"
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.6.8"
 dsh --profile <name>
 ```
 
@@ -89,7 +89,8 @@ dsh --profile <name>
 ### 升级后怎么确认
 
 - `dsh --version` → `0.2.2-rc.4`。
-- 启动后 TUI 有 banner（`dsh-nvim-tui <版本> · channel 3`）、会话与 statusline 正常；
+- 启动后 TUI 有 banner（`dsh-nvim-tui <版本> · channel 3`，本版为 `0.6.8`）、会话与
+  statusline 正常；
   headless 场景下错误日志出现 `boot-complete`、`quit code=0`、`nvim-exit code=0`。
 - 若用完整 profile（含其他插件）启动失败，先分清是**宿主**还是**混合 peer**问题：
   profile 树之外链接进来的插件会按 Node 原生规则解析裸导入，可能拿到 rc.2 拷贝。
