@@ -48,10 +48,9 @@ export const attachSession = async (app: App, handle: AgentHandle, opts?: { back
   const id = handle.agent.session.id
   const modelRef = modelRefFor(app, handle)
   const ids = await app.lua.ensureChat(id)
-  // Background resume (row actions like rename) must NOT touch the global
-  // view state — the active session owns the visible chat/reasoning
-  // pointers; writing them here used to point the active view at the
-  // background session's buffers.
+  // Background resume (row actions like rename) must NOT touch the global view
+  // state — the active session owns the visible chat/reasoning pointers; writing
+  // them here pointed the active view at the background session's buffers.
   if (opts?.background !== true) {
     app.slices.runtime.setChatWin(ids.chatWin)
   }
@@ -242,10 +241,8 @@ const doResumeSession = async (app: App, id: string): Promise<string | undefined
     }
   } catch (err) {
     // A failed replay used to leave a HALF-MOUNTED record behind: `live` kept
-    // the broken session, `ensureLiveSession`'s early return then handed it
-    // back forever (the session could never be opened again), and the agent
-    // handle leaked. Roll the whole attach back and rethrow for the caller's
-    // fallback path.
+    // the broken session and `ensureLiveSession`'s early return handed it back
+    // forever (the agent handle leaked too). Roll the attach back and rethrow.
     app.exitDiag('resume-replay-failed', (err as Error).message)
     await rollbackAttach(app, sid, handle)
     throw err
@@ -257,9 +254,8 @@ const doResumeSession = async (app: App, id: string): Promise<string | undefined
 /** Undo a half-mounted attach: drop the live record, dispose the handle and
  *  reclaim the nvim chat buffer. Best-effort — never throws. */
 const rollbackAttach = async (app: App, sid: string, handle: { dispose: () => Promise<unknown> }): Promise<void> => {
-  // Stop the half-mounted feed BEFORE its chat buffer is reclaimed: a queued
-  // throttle flush after the wipe throws `Invalid buffer id`.
-  try { app.slices.sessions.live.get(sid)?.feed.dispose() } catch {}
+  // Stop the half-mounted feed before close_chat reclaims its buffer.
+  app.slices.sessions.live.get(sid)?.feed.dispose()
   try { app.slices.sessions.live.delete(sid) } catch {}
   try { await handle.dispose() } catch (err) { app.exitDiag('rollback-dispose-failed', (err as Error).message) }
   void app.luaCall('return require("dsh_tui").close_chat(...)', [sid]).catch(() => {})
@@ -283,10 +279,7 @@ export const disposeLiveSession = async (app: App, id: string): Promise<void> =>
       app.exitDiag('disposeLiveSession', (err as Error).message)
     }
     app.slices.sessions.live.delete(id)
-    // close_chat WIPES the session's chat buffer. Stop the feed's throttle
-    // timer / thinking ticker / whale ticker FIRST: a flush that fires after
-    // the wipe throws `nvim_buf_set_lines: Invalid buffer id` (the online
-    // rc.2 report) and spams "render flush failed".
+    // close_chat WIPES the chat buffer: retire the feed before the wipe.
     rec.feed.dispose()
     // Reclaim the chat buffer on the nvim side (runner-side LRU close_chat).
     void app.luaCall('return require("dsh_tui").close_chat(...)', [id]).catch(() => {})
@@ -340,18 +333,16 @@ export const switchTo = async (app: App, id: string) => {
     return
   }
   // The jobs cache/badge/board belong to the ACTIVE session: without this the
-  // statusline kept showing the previous session's jobs for up to 30s (the
-  // idle heartbeat interval).
+  // statusline showed the previous session's jobs for up to 30s (idle heartbeat).
   app.slices.ui.refreshBgJobs()
   app.slices.ui.ensureSpinner()
   app.slices.ui.updateStatusline()
-  // Sync the runtime's GLOBAL view pointers with the Lua side. The resume
-  // path attaches with background:true (S6 — row actions must not move the
-  // visible view), so setChatWin/setReasoning never ran for it; without this
-  // sync updateStatusline early-returns (chatWinId === null) and the stats
-  // bar stays blank for the whole resumed session. chatWin is the SHARED
-  // chat window and reasoningWin the global panel state, so ids() (not
-  // ensure_chat) is the accurate source right after set_active.
+  // Sync the runtime's GLOBAL view pointers with the Lua side: the resume path
+  // attaches with background:true (S6 — row actions must not move the visible
+  // view), so setChatWin/setReasoning never ran for it and updateStatusline
+  // would early-return (chatWinId === null), leaving the stats bar blank.
+  // chatWin is the SHARED chat window and reasoningWin the global panel state,
+  // so ids() (not ensure_chat) is the accurate source right after set_active.
   try {
     const ids = await app.luaCall('return require("dsh_tui").ids()', []) as {
       chatWin?: unknown; reasoningOpen?: unknown; reasoningWin?: unknown

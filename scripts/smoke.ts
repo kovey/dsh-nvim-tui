@@ -22,7 +22,7 @@ import { matchIntent } from '../lib/commands/nlcmd.js'
 import { ageLabel, isExpired, orderSubagentChildren, writeCleanedIds } from '../lib/kernel/subagent-clean.js'
 import { runningBadge } from '../lib/statusline/index.js'
 import stringWidth from 'string-width'
-import { matchSessionEventFilter } from '../lib/ext-api/index.js'
+import { handleDshExtRequest, matchSessionEventFilter } from '../lib/ext-api/index.js'
 import { readPatchRowIds, packageExists } from '../lib/deps/index.js'
 import { installRootCandidates } from '../lib/deps/services.js'
 import { checkSessionLog } from '../lib/kernel/session-health.js'
@@ -64,7 +64,8 @@ import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
 import { installDiffCommand } from '../lib/commands/commands/diff.js'
 import { officialRows, runOfficialCommand } from '../lib/commands/commands/official-commands.js'
-import { failureMark, isInvalidBufferError, quotaAdvice } from '../lib/feed/feed.js'
+import { failureMark, quotaAdvice } from '../lib/feed/feed.js'
+import { isInvalidBufferError } from '../lib/feed/lifecycle.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN, installTodoGuard } from '../lib/kernel/todo-guard.js'
@@ -169,6 +170,17 @@ try {
 
   await lua('require("dsh_tui").attach(...)', [channelId])
   assert.equal(await lua('return require("dsh_tui").channel()', []), channelId)
+
+  // Close-handshake responder: on THIS channel the smoke harness plays the
+  // runner, so it must answer the subagent close requests the Lua side sends
+  // (q/Esc blocks in vim.rpcrequest — an unanswered request freezes nvim).
+  // Routed through the real handleDshExtRequest, so the smoke exercises the
+  // production path; slots point at the feeds created in the subagent section.
+  const handshakeSlots: { subagentView: unknown; subagentChat: unknown } = { subagentView: null, subagentChat: null }
+  nvim.on('request', (method: string, args: unknown[], resp: { send: (r: unknown) => void }) => {
+    if (method !== 'dsh-subagent-view-close' && method !== 'dsh-subagent-chat-close') return
+    handleDshExtRequest({ slices: { agent: handshakeSlots } } as never, method, args, resp)
+  })
 
   // VimEnter may not have fired yet (start() mounts the UI there) — poll.
   let ids!: { inputBuf?: number; chatWin?: number; inputWin?: number; reasoningOpen?: boolean; sessionsBuf?: number }
@@ -1826,7 +1838,25 @@ description:
   assert.ok((svLines[gotoRow - 1] ?? '').startsWith('·· thinking'), 'landing row is the thinking header')
   const idsBeforeClose = await lua('return require("dsh_tui").subagent_view_ids()', [])
   assert.ok(idsBeforeClose && idsBeforeClose.buf === svIds.buf, 'subagent_view_ids reports open view')
-  await lua('require("dsh_tui").close_subagent_view()', [])
+  // Deterministic close handshake (TC-003): q/Esc must ask the runner to
+  // dispose the feed via rpcrequest WHILE the buffer still exists — then wipe.
+  // Spy on vim.rpcrequest and record the buffer's validity at request time;
+  // the '-closed' notification alone lands after the wipe (the race QA found).
+  handshakeSlots.subagentView = { childId: 'smoke-view', feed: subFeed }
+  const svCloseProbe = await lua(`local buf = require("dsh_tui")._subagentView.buf
+    local orig = vim.rpcrequest
+    local seen = {}
+    vim.rpcrequest = function(chan, method, ...)
+      seen[#seen + 1] = { method = method, alive = vim.api.nvim_buf_is_valid(buf) }
+      return orig(chan, method, ...)
+    end
+    require("dsh_tui").close_subagent_view()
+    vim.rpcrequest = orig
+    return seen`, [])
+  assert.equal(svCloseProbe?.length, 1, 'close_subagent_view issues exactly one rpc request')
+  assert.equal(svCloseProbe?.[0]?.method, 'dsh-subagent-view-close', 'it requests the runner close handshake')
+  assert.equal(svCloseProbe?.[0]?.alive, true, 'the view feed is disposed BEFORE its buffer is wiped')
+  assert.equal(subFeed.disposed, true, 'the close handshake retired the runner view feed during the request')
   hit = await waitNote('dsh-subagent-view-closed')
   assert.ok(hit, 'close notifies the runner (dsh-subagent-view-closed)')
   const idsAfterClose = await lua('return require("dsh_tui").subagent_view_ids()', [])
@@ -1910,8 +1940,24 @@ description:
   assert.equal(await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._subagentChat.inputWin)', []), 3, 'input float grows to 3 rows')
   const chatH3 = await lua('return vim.api.nvim_win_get_height(require("dsh_tui")._subagentChat.win)', [])
   assert.equal(chatH3 + 3, chatH1 + 1, 'composite footprint stays constant (transcript shrinks by the input growth)')
-  // Close: windows close, buffers wipe, the runner is notified.
-  await lua('require("dsh_tui").close_subagent_chat()', [])
+  // Close: the runner feed is disposed synchronously (handshake) BEFORE the
+  // transcript buffer is wiped, then the windows close and the runner is
+  // notified. Same probe as the view close above.
+  handshakeSlots.subagentChat = { childId: 'smoke-chat', parentId: 'parent', label: 'chat', feed: scFeed }
+  const scCloseProbe = await lua(`local buf = require("dsh_tui")._subagentChat.buf
+    local orig = vim.rpcrequest
+    local seen = {}
+    vim.rpcrequest = function(chan, method, ...)
+      seen[#seen + 1] = { method = method, alive = vim.api.nvim_buf_is_valid(buf) }
+      return orig(chan, method, ...)
+    end
+    require("dsh_tui").close_subagent_chat()
+    vim.rpcrequest = orig
+    return seen`, [])
+  assert.equal(scCloseProbe?.length, 1, 'close_subagent_chat issues exactly one rpc request')
+  assert.equal(scCloseProbe?.[0]?.method, 'dsh-subagent-chat-close', 'it requests the runner close handshake')
+  assert.equal(scCloseProbe?.[0]?.alive, true, 'the chat feed is disposed BEFORE its buffer is wiped')
+  assert.equal(scFeed.disposed, true, 'the close handshake retired the runner chat feed during the request')
   hit = await waitNote('dsh-subagent-chat-closed')
   assert.ok(hit, 'close notifies the runner (dsh-subagent-chat-closed)')
   assert.equal(await lua('return require("dsh_tui").subagent_chat_ids()', []), null, 'chat ids cleared after close')
@@ -3639,6 +3685,35 @@ description:
     assert.equal(ops.includes('chat-feed.dispose'), true, 'chat-closed notification disposes the feed')
     assert.equal(agent.subagentChat, null, 'chat-closed notification drops the routing state')
     log(`subagent view/chat close order: ${ops.join(' → ')}`)
+
+    // Close HANDSHAKE (q/Esc): the Lua side blocks in vim.rpcrequest BEFORE it
+    // wipes the buffer, so the request itself must retire the feed and answer
+    // — relying on the '-closed' notification alone leaves the flush window
+    // open between wipe and notify (TC-003).
+    ops.length = 0
+    const replies: unknown[] = []
+    // NOTE: assert.deepEqual narrows its `actual`, so the collector must be
+    // declared BEFORE the first assertion (an inline arrow afterwards would be
+    // typed against the narrowed `{ ok: boolean }[]`).
+    const collect = (r: unknown): void => { replies.push(r) }
+    agent.subagentView = { childId: 'c-handshake', feed: oldViewFeed }
+    handleDshExtRequest(fake as never, 'dsh-subagent-view-close', [], { send: collect })
+    assert.deepEqual(replies, [{ ok: true }], 'view-close handshake answers ok (nvim is unblocked)')
+    assert.deepEqual(ops, ['view-feed.dispose'], 'view-close handshake disposes the feed synchronously')
+    assert.equal(agent.subagentView?.childId, 'c-handshake', 'handshake leaves routing state to the closed notification')
+    agent.subagentChat = { childId: 'c-handshake-chat', parentId: 'parent-A', label: 'l', feed: oldChatFeed }
+    replies.length = 0
+    handleDshExtRequest(fake as never, 'dsh-subagent-chat-close', [], { send: collect })
+    assert.deepEqual(replies, [{ ok: true }], 'chat-close handshake answers ok')
+    assert.equal(ops.at(-1), 'chat-feed.dispose', 'chat-close handshake disposes the chat feed')
+    assert.equal(agent.subagentChat?.childId, 'c-handshake-chat', 'handshake leaves chat routing state to the closed notification')
+    // Any other non-dsh-ext method keeps answering "unsupported" (no silent ok).
+    replies.length = 0
+    handleDshExtRequest(fake as never, 'dsh-unknown-close', [], { send: collect })
+    assert.equal((replies[0] as { ok?: unknown })?.ok, false, 'unknown request methods still answer an error')
+    agent.subagentView = null
+    agent.subagentChat = null
+    log(`subagent close handshake: ${ops.join(' → ')}`)
   }
 
   // rc.2 worktree surface: new/list/restore/diff through `worktrees` and the

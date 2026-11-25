@@ -162,9 +162,15 @@ function P.subagent_view_jump(where)
   vim.api.nvim_win_set_cursor(sv.win, { row, 0 })
 end
 
---- User-facing close (q/Esc): notify the runner so it stops routing events.
+--- User-facing close (q/Esc): dispose the runner's feed SYNCHRONOUSLY, then
+--- wipe. `rpcrequest` (not `rpcnotify`) is what makes this deterministic: the
+--- runner answers only after `feed.dispose()` ran, so a throttled flush queued
+--- for the 40ms slot cannot fire between the wipe and the notification.
 function P.close_subagent_view()
   detach_footer()
+  if S.channel then
+    pcall(vim.rpcrequest, S.channel, 'dsh-subagent-view-close')
+  end
   local sv = S.subagentView
   if sv.win and vim.api.nvim_win_is_valid(sv.win) then
     pcall(vim.api.nvim_win_close, sv.win, true)

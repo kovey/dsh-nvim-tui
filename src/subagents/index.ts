@@ -19,6 +19,39 @@ const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
  *  Preferred path: the official `subagents.listChildren` directory.
  *  Fallback: scan the live session store + sessionPersistence.list() for
  *  headers with parentSession === parentId and origin 'subagent'. */
+/** Read one child's event log for a float: live children stream from the
+ *  in-memory store (new events keep arriving via session/event routing),
+ *  settled ones are read from persistence without resuming or publishing an
+ *  agent. `undefined` = unreadable (the notice is already shown) — abort. */
+const readSubagentEvents = async (app: App, childId: string): Promise<{
+  events: SessionEvent[]
+  live: ReturnType<App['liveSessions']['get']>
+} | undefined> => {
+  const live = app.liveSessions.get(childId)
+  if (live) return { events: [...app.slices.trans.sessionEvents(live)], live }
+  try {
+    const persistence = app.svc('sessionPersistence')
+    if (typeof persistence?.open !== 'function') {
+      // pre-0.1.5 hosts: read-only inspection.
+      const inspection = await persistence?.inspect?.(childId)
+      return { events: (inspection?.events ?? []) as SessionEvent[], live }
+    }
+    // 0.1.5: open a read handle, read the validated log, then close it — a
+    // THROWING read used to skip close() and leak the session handle.
+    const handle = await persistence.open(childId, 'read')
+    try {
+      const result = handle === undefined ? undefined : await handle.read?.()
+      return { events: (result?.events ?? []) as SessionEvent[], live }
+    } finally {
+      // A close() failure must never mask the read's own result/error.
+      if (handle !== undefined) await Promise.resolve(handle.close?.()).catch(() => {})
+    }
+  } catch (err) {
+    app.notice(tf('读取子代理会话失败: {0}', [(err as Error).message]))
+    return undefined
+  }
+}
+
 /** Open a read-only replay of one subagent's session log in a float. */
 const openSubagentView = async (app: App, childId: string, label: string) => {
   // One float family at a time: the chat window closes (its close handler
@@ -30,39 +63,9 @@ const openSubagentView = async (app: App, childId: string, label: string) => {
     await app.luaCall('require("dsh_tui").close_subagent_chat()', []).catch(() => {})
     W(app.slices.agent).subagentChat = null
   }
-  // Gather the event log: live children stream from the in-memory store
-  // (new events keep arriving via session/event routing); settled children
-  // are read from persistence without resuming or publishing an agent.
-  const live = app.liveSessions.get(childId)
-  let events: SessionEvent[] = []
-  if (live) {
-    events = [...app.slices.trans.sessionEvents(live)]
-  } else {
-    try {
-      const persistence = app.svc('sessionPersistence')
-      if (typeof persistence?.open === 'function') {
-        // 0.1.5: open a read handle, read the validated log, close the handle.
-        const handle = await persistence.open(childId, 'read')
-        // try/finally: a THROWING read used to skip close() and leak the
-        // session handle (both the view and the chat path had this shape).
-        try {
-          const result = handle === undefined ? undefined : await handle.read?.()
-          events = (result?.events ?? []) as SessionEvent[]
-        } finally {
-          if (handle !== undefined) {
-            try { await handle.close?.() } catch {}
-          }
-        }
-      } else {
-        // pre-0.1.5 hosts: read-only inspection.
-        const inspection = await persistence?.inspect?.(childId)
-        events = (inspection?.events ?? []) as SessionEvent[]
-      }
-    } catch (err) {
-      app.notice(tf('读取子代理会话失败: {err}', { err: (err as Error).message }))
-      return
-    }
-  }
+  const log = await readSubagentEvents(app, childId)
+  if (log === undefined) return
+  const { events, live } = log
   if (events.length === 0) {
     // A just-started child streams its first events moments after spawn —
     // open the empty view anyway; the session/event routing fills it live.
@@ -129,34 +132,9 @@ const openSubagentChat = async (app: App, childId: string, label: string) => {
     await app.luaCall('require("dsh_tui").close_subagent_view()', []).catch(() => {})
     W(app.slices.agent).subagentView = null
   }
-  const live = app.liveSessions.get(childId)
-  let events: SessionEvent[] = []
-  if (live) {
-    events = [...app.slices.trans.sessionEvents(live)]
-  } else {
-    try {
-      const persistence = app.svc('sessionPersistence')
-      if (typeof persistence?.open === 'function') {
-        // 0.1.5: open a read handle, read the validated log, close the handle.
-        const handle = await persistence.open(childId, 'read')
-        try {
-          const result = handle === undefined ? undefined : await handle.read?.()
-          events = (result?.events ?? []) as SessionEvent[]
-        } finally {
-          if (handle !== undefined) {
-            try { await handle.close?.() } catch {}
-          }
-        }
-      } else {
-        // pre-0.1.5 hosts: read-only inspection.
-        const inspection = await persistence?.inspect?.(childId)
-        events = (inspection?.events ?? []) as SessionEvent[]
-      }
-    } catch (err) {
-      app.notice(tf('读取子代理会话失败: {0}', [(err as Error).message]))
-      return
-    }
-  }
+  const log = await readSubagentEvents(app, childId)
+  if (log === undefined) return
+  const { events, live } = log
   if (events.length === 0) {
     app.notice(t('子代理会话无事件（可能尚未开始）'))
     return
@@ -242,11 +220,21 @@ const sendToSubagent = (app: App, text: string) => {
   })()
 }
 
-/** /subagents — child-agent directory; pick one to view its thinking. */
+/** Bounded memory: long-running hosts spawn unbounded children, so evict the
+ *  oldest durable routing entry past the cap — but only one whose child is NOT
+ *  running (a live child's entry must survive for its tool diffs). */
+const evictStaleChild = (app: App): void => {
+  if (app.slices.sessions.childParent.size <= 400) return
+  for (const [childKey] of app.slices.sessions.childParent) {
+    if (app.slices.sessions.runningSubagents.has(childKey)) continue
+    app.slices.sessions.childParent.delete(childKey)
+    return
+  }
+}
+
 /** Fill the subagents module's App slots and register its commands. */
 export function installSubagents(app: App): void {
   // -- agent sub-part ops (this module owns subagentView/subagentChat) --
-  const W = (d: AppSlices['agent']) => d as WritableSlice<AppSlices['agent']>
   const A = W(app.slices.agent)
   A.setSubagentView = (v) => { A.subagentView = v }
   A.setSubagentChat = (v) => { A.subagentChat = v }
@@ -274,17 +262,14 @@ export function installSubagents(app: App): void {
     return app.slices.sessions.activeId === null ? undefined : app.slices.sessions.live.get(app.slices.sessions.activeId)
   }
 
-
   app.slices.agent.openSubagentView = (childId, label) => openSubagentView(app, childId, label)
   app.slices.agent.openSubagentChat = (childId, label) => openSubagentChat(app, childId, label)
   app.slices.agent.sendToSubagent = (text) => sendToSubagent(app, text)
   installSubagentsCommand(app)
 
-
   // -- nvim notifications this module owns (dispatched by boot via rpc.ts) --
   registerNvimNotification('dsh-subagent-view-closed', t('子代理视图'), (app) => {
-    // The Lua side already closed and WIPED the replay buffer: retire the
-    // feed so no queued throttle flush / ticker hits the dead id.
+    // The Lua side already WIPED the replay buffer: retire the feed first.
     app.slices.agent.subagentView?.feed.dispose()
     app.slices.agent.setSubagentView(null)
   })
@@ -321,17 +306,7 @@ export function installSubagents(app: App): void {
       // Durable routing for the child's own session events (tool diffs,
       // late messages) — kept after subagent/end, pruned with the parent.
       app.slices.sessions.childParent.set(String(key), { parentId: parent.id, label })
-      // Bounded memory: long-running hosts spawn unbounded children;
-      // evict the oldest routing entry past the cap.
-      if (app.slices.sessions.childParent.size > 400) {
-        // Evict the oldest entry whose child is NOT running — a live
-        // child's routing entry must survive for its tool diffs.
-        for (const [k] of app.slices.sessions.childParent) {
-          if (app.slices.sessions.runningSubagents.has(k)) continue
-          app.slices.sessions.childParent.delete(k)
-          break
-        }
-      }
+      evictStaleChild(app)
       app.slices.ui.ensureSpinner()
       app.slices.ui.updateStatusline()
     }

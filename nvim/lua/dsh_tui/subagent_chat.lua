@@ -275,9 +275,14 @@ function SAC.history_move(dir)
   SAC.resize()
 end
 
---- Close the chat window and hand focus back to the main input.
+--- Close the chat window and hand focus back to the main input. The runner's
+--- feed is disposed SYNCHRONOUSLY first: `rpcrequest` returns only after the
+--- feed is retired, so `wipe_previous()` cannot race a queued throttle flush.
 function SAC.close()
   PC.detach_footer()
+  if S.channel then
+    pcall(vim.rpcrequest, S.channel, 'dsh-subagent-chat-close')
+  end
   wipe_previous()
   if S.channel then
     vim.rpcnotify(S.channel, 'dsh-subagent-chat-closed')

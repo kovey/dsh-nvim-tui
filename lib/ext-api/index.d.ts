@@ -1,11 +1,9 @@
 import type { App } from '../kernel/app.js';
 /** Extension API version (semver, independent of the bundle version). */
 export declare const EXT_API_VERSION = "0.2.0";
-/** Default upper bound for one dsh-ext handler execution (both directions).
- *  vim.rpcrequest blocks nvim uninterruptibly and cannot be cancelled from
- *  Lua — the bounded answer is the ONLY freeze protection, so the runner
- *  always answers within this window (timeout → structured error; late
- *  results are discarded). */
+/** Upper bound for one dsh-ext handler execution: vim.rpcrequest blocks nvim
+ *  uninterruptibly, so the runner ALWAYS answers within this window (late
+ *  results are discarded) — the bounded answer is the only freeze protection. */
 export declare const EXT_HANDLER_TIMEOUT_MS = 30000;
 import type { ExtSessionEventFilter } from '../kernel/ext-types.js';
 export { approvalPickerItems, approvalPickerTitle, pickApproval } from './approval.js';
@@ -16,13 +14,11 @@ export declare function matchSessionEventFilter(filter: ExtSessionEventFilter, s
  *  publishes the built surface through the cordis registry). */
 export declare function installExtApi(app: App): void;
 /** nvim `request` side of the dsh-ext bus (moved out of boot): every
- *  vim.rpcrequest(channel, 'dsh-ext', …) gets a BOUNDED response —
- *  vim.rpcrequest blocks nvim uninterruptibly (and cannot be cancelled from
- *  Lua), so a hung handler freezes the UI forever. The runner races the
- *  handler against its timeout and answers an error when it overruns; late
- *  handler results are discarded (answered flag guards the single-send
- *  channel). NOTE: nvim DOES process events while blocked in rpcrequest, so
- *  handlers may safely make nested nvim calls (verified empirically). */
+ *  vim.rpcrequest gets a BOUNDED response — nvim blocks uninterruptibly and
+ *  cannot cancel from Lua, so a hung handler would freeze the UI forever. An
+ *  overrun answers an error and the late result is discarded (single-send
+ *  `answered` flag). NOTE: nvim DOES process events while blocked, so
+ *  handlers may make nested nvim calls (verified empirically). */
 export declare function handleDshExtRequest(app: App, method: string, args: unknown[], resp: {
     send: (r: unknown) => void;
 }): void;
