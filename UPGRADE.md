@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.6.8（宿主 0.2.2-rc.4） | [v0.6.8 → v0.6.9（pi-ai 嵌套 models 修复；宿主不变）](#v068--v069pi-ai-嵌套-models-修复宿主不变) |
 | nvim-tui v0.6.7（宿主 0.2.2-rc.1 / rc.2） | [v0.6.7 → v0.6.8（dsh 0.2.2-rc.4 适配；宿主锚点前移）](#v067--v068dsh-022-rc4-适配宿主锚点前移) |
 | nvim-tui v0.6.6（宿主 0.2.2-rc.1） | [v0.6.6 → v0.6.7（/subagents 多行 label 不弹 picker 修复；宿主不变）](#v066--v067subagents-多行-label-不弹-picker-修复宿主不变) |
 | nvim-tui v0.6.5（宿主 0.2.2-rc.1） | [v0.6.5 → v0.6.6（/subagents 空 catalog 兜底；宿主不变）](#v065--v066subagents-空-catalog-兜底宿主不变) |
@@ -49,6 +50,44 @@
 | nvim-tui ≤ v0.3.4（宿主 0.1.2-rc.1） | [v0.3.4 → v0.4.0（含宿主 0.1.2-rc.1 → 0.1.5-rc.1）](#v034--v040含宿主-012-rc1--015-rc1) |
 | nvim-tui v0.4.0 已升（宿主仍 0.1.2-rc.1） | 同上（宿主段落必读：peer 锚点已改为 `^0.1.5-rc.1`） |
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
+
+---
+
+## v0.6.8 → v0.6.9（pi-ai 嵌套 models 修复；宿主不变）
+
+> **结论先行**：宿主不变（dsh `0.2.2-rc.4`；Node ≥24.9）。本版只修 llm-pi-ai 路由的
+> 模型目录读取：配置段是 `providers.<route>.models` 的嵌套形状时，旧版把
+> `providers.<route>.modelOverrides` 的键当成模型目录，导致 `/models` 只列出被覆盖的
+> 子集、`/model <provider>/<model>` 拒绝其它已安装模型。零破坏，无需改配置，也不必
+> 重跑任何迁移。
+
+```bash
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.6.9"
+dsh --profile <name>
+```
+
+### 修了什么
+
+- `configuredModels` 支持 pi-ai 的嵌套形状 `providers.<route>.models`（条目可以是
+  id 字符串或 `{ id }` 对象），route 键**严格匹配**：大小写敏感，兄弟 route 的模型
+  不会混入；route 不在 `providers` 里时返回 `[]`。
+- `modelOverrides` 不再被当成模型目录：只有 overrides、没有 `models` 的 route 返回
+  `[]`（`/models` 退回信息行，`/model` 不再拒绝未被覆盖的已安装模型）。overrides 只是
+  对内置目录已有条目的逐个覆盖，**不是**完整的模型目录发现。
+- 既有形状（裸数组、顶层 `{ models: [...] }`，`llm-deepseek` 等）行为不变；空/畸形
+  形状一律 `[]`，不抛错（目录读取保持 best-effort）。
+- `scripts/smoke.ts` 覆盖单模型、多 provider 隔离、大小写严格匹配、overrides-only
+  返回 `[]`、空与畸形形状，以及既有顶层形状。
+
+### 需要留意
+
+- 配置里没有显式 `models` 列表的 route 仍只显示信息行（提示
+  `用 /model <provider>/<模型名> 切换`）：本版不猜测内置目录，也没有新增 provider
+  catalog 发现。
+- 依赖未变：本版不动 `package.json` 的依赖锚点，lock 只随根 `version` 变化；依赖审计
+  口径仍是 runtime-only `npm audit --omit=dev`，本版未重新取数。
+- rc.2 适配仍是结构适配，本版**不声称** rc.2 真机运行；真机验证基线仍是 v0.6.8 的
+  rc.4 结构适配，本版没有新增真实模型对话验证。
 
 ---
 

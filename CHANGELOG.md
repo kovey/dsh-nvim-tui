@@ -3,7 +3,24 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
-## [Unreleased]
+## [v0.6.9] — 2026-11-25
+
+### 发布要点
+
+本版是 **llm-pi-ai 模型目录修复发布**：`/models` 不再把
+`providers.<route>.modelOverrides` 的字典键当成模型目录，`/model <provider>/<model>`
+也不再因此拒绝未被覆盖的已安装模型。`configuredModels` 现在按 pi-ai 的嵌套形状
+`providers.<route>.models` 解析 route 的模型列表，route 键**严格匹配**（大小写敏感，
+兄弟 route 的模型不会串进来）；只有 `modelOverrides` 而没有 `models` 的 route 返回
+`[]`（`/models` 退回信息行）——overrides 只是对内置目录已有条目的逐个覆盖，并不声明
+该 route 服务的模型集合，所以这**不是**完整的模型目录发现。既有顶层形状（裸数组、
+`{ models: [...] }`）保持不变。宿主锚点不变（dsh `0.2.2-rc.4`；Node ≥24.9），TUI 其余
+行为零改动。版本号已统一：`package.json`、`package-lock.json`、`src/kernel/app.ts`
+的 `BUILD_VERSION` 均为 `0.6.9`。
+
+**本版不声称**：新增 provider catalog 发现（TUI 只枚举配置段里**显式声明**的
+`models`，未声明的 route 仍显示信息行，不猜测内置目录）；也没有 rc.2 真机运行——
+真机验证基线仍只到 v0.6.8 的 rc.4 结构适配。
 
 ### Fixed · /models 只列出 `modelOverrides` 子集、/model 拒绝其它已安装模型
 
