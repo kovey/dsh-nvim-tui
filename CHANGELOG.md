@@ -3,6 +3,20 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [Unreleased]
+
+### Fixed · /models 只列出 `modelOverrides` 子集、/model 拒绝其它已安装模型
+
+- `src/commands/commands/models.ts`：`configuredModels` 不再把 llm-pi-ai
+  `providers.<route>.modelOverrides` 的字典键当成模型目录。`modelOverrides` 只是对
+  内置目录里已有条目的逐个覆盖，并不声明该 route 实际服务的模型集合；把它的键当成
+  目录会让 `/models` 只显示被覆盖的子集，并让 `/model <provider>/<model>` 拒绝其它
+  已安装模型（回归）。现在 route 只按 `providers.<route>.models` 解析，无 `models`
+  就是一个空目录（返回 `[]`，`/models` 退回信息行），其它 route 的模型不会串进来。
+- `scripts/smoke.ts`：overrides-only 断言改为 `[]`；嵌套 `providers.<route>.models`
+  （单模型 / 多 provider 隔离 / 大小写严格匹配）、空与畸形形状、以及现有顶层
+  `models` 数组的用例保留。
+
 ## [v0.6.8] — 2026-11-18
 
 ### 发布要点

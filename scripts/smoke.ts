@@ -41,6 +41,7 @@ import { systemOpenArgv, systemRevealArgv } from '../lib/commands/commands/deliv
 import { deliverablePaths, emptyDeliverables, mergePresentedFiles, resolveDeliverablePath } from '../lib/kernel/deliverables.js'
 import { parseFeedbackArgs } from '../lib/commands/commands/feedback.js'
 import { parseSettingValue } from '../lib/commands/commands/settings.js'
+import { configuredModels, modelCatalogRows, providerSettingsNs } from '../lib/commands/commands/models.js'
 import { appArgv, parseTuiArgs } from '../lib/kernel/cli.js'
 import { turnOutlineRows } from '../lib/transcript/commands/outline.js'
 import { installSessionController } from '../lib/sessions/session-controller.js'
@@ -2737,6 +2738,107 @@ description:
     assert.deepEqual(parseSettingValue('{"provider":"x"}'), { provider: 'x' })
     assert.equal(parseSettingValue('deepseek-flash'), 'deepseek-flash')
     assert.equal(parseSettingValue('not json {'), 'not json {')
+  }
+
+  // /models catalog (llm-pi-ai): ONE settings section holds EVERY route under
+  // `providers.<route>`, and a route's `models` list is its catalog. The old
+  // parser only knew an array / top-level `{ models }`, so a configured
+  // `new-ai` route rendered as an informational row (no switch entries) and
+  // /model's catalog validation saw an empty list. Assert the nested shape, the
+  // strict route isolation (a sibling route is NOT this provider's), and the
+  // existing flat shapes staying untouched.
+  {
+    const settingsApp = (describe: () => Array<{ ns?: string; value?: unknown }>): Record<string, unknown> => ({
+      svc: (name: string) => (name === 'settings' ? { describe } : undefined),
+    })
+    const piSection = {
+      providers: {
+        'new-ai': { displayName: 'wudi360', models: [{ id: 'gpt-6.2-sol', name: 'GPT 6.2 Sol' }] },
+        'other-ai': { displayName: 'other', models: [{ id: 'other-1' }, { id: 'other-2' }] },
+      },
+    }
+    const piApp = settingsApp(() => [{ ns: 'llm-pi-ai', value: piSection }])
+    assert.deepEqual(configuredModels(piApp as never, 'new-ai', 'llm-pi-ai'), ['gpt-6.2-sol'],
+      'pi-ai nested providers.<route>.models is enumerated (single model)')
+    assert.deepEqual(configuredModels(piApp as never, 'other-ai', 'llm-pi-ai'), ['other-1', 'other-2'],
+      'a sibling route keeps its own catalog (no cross-provider bleed)')
+    assert.deepEqual(configuredModels(piApp as never, 'third-ai', 'llm-pi-ai'), [],
+      'a route absent from providers yields [] — never another route’s models')
+    assert.deepEqual(configuredModels(piApp as never, 'New-Ai', 'llm-pi-ai'), [],
+      'route keys match exactly (settings dictionaries are case-sensitive)')
+
+    // `modelOverrides` alone (a shipped-catalog route narrowed per model) has
+    // no `models` list, so the route's served set is unknown here: overrides
+    // tune entries of a shipped catalog and do NOT name it. Reporting their
+    // keys made /models list only the overridden subset and /model reject every
+    // other installed model, so this must stay [] (never another route's ids).
+    const overridesApp = settingsApp(() => [{
+      ns: 'llm-pi-ai',
+      value: { providers: { 'new-ai': { modelOverrides: { 'gpt-6.2-sol': { contextWindow: 1 }, 'gpt-6.2-mini': {} } } } },
+    }])
+    assert.deepEqual(configuredModels(overridesApp as never, 'new-ai', 'llm-pi-ai'), [],
+      'an overrides-only route yields [] — overrides are not a model catalog')
+
+    // Malformed / empty shapes must degrade to [] (never throw): the catalog
+    // read feeds both /models and /model validation.
+    const noModelsApp = settingsApp(() => [{ ns: 'llm-pi-ai', value: { providers: { 'new-ai': { displayName: 'wudi360' } } } }])
+    assert.deepEqual(configuredModels(noModelsApp as never, 'new-ai', 'llm-pi-ai'), [],
+      'a route with no models key yields []')
+    const badShapeApp = settingsApp(() => [{ ns: 'llm-pi-ai', value: { providers: { 'new-ai': { models: 'gpt-6.2-sol' } } } }])
+    assert.deepEqual(configuredModels(badShapeApp as never, 'new-ai', 'llm-pi-ai'), [],
+      'a non-array models value yields [] instead of throwing')
+    const nullProviderApp = settingsApp(() => [{ ns: 'llm-pi-ai', value: { providers: { 'new-ai': null } } }])
+    assert.deepEqual(configuredModels(nullProviderApp as never, 'new-ai', 'llm-pi-ai'), [],
+      'a null route profile yields [] instead of throwing')
+    const nullValueApp = settingsApp(() => [{ ns: 'llm-pi-ai', value: null }])
+    assert.deepEqual(configuredModels(nullValueApp as never, 'new-ai', 'llm-pi-ai'), [],
+      'a null section value yields [] instead of throwing')
+    const emptyProvidersApp = settingsApp(() => [{ ns: 'llm-pi-ai', value: { providers: {} } }])
+    assert.deepEqual(configuredModels(emptyProvidersApp as never, 'new-ai', 'llm-pi-ai'), [],
+      'an empty providers dict yields []')
+
+    // Existing shapes (llm-deepseek & co) must not regress.
+    assert.deepEqual(configuredModels(settingsApp(() => [{ ns: 'llm-deepseek', value: ['a', 'b'] }]) as never, 'x', 'llm-deepseek'),
+      ['a', 'b'], 'bare array of ids still parses')
+    assert.deepEqual(configuredModels(settingsApp(() => [{ ns: 'llm-deepseek', value: [{ id: 'a' }, { id: 'b' }] }]) as never, 'x', 'llm-deepseek'),
+      ['a', 'b'], 'array of { id } still parses')
+    assert.deepEqual(configuredModels(settingsApp(() => [{ ns: 'llm-deepseek', value: { models: ['a', { id: 'b' }] } }]) as never, 'x', 'llm-deepseek'),
+      ['a', 'b'], 'top-level { models: [...] } still parses (strings and objects)')
+    assert.deepEqual(configuredModels(settingsApp(() => [{ ns: 'llm-deepseek', value: { models: [] } }]) as never, 'x', 'llm-deepseek'),
+      [], 'an empty flat models list yields []')
+
+    // The live-provider row path: nested models become switch rows (/models
+    // Enter + /model's picker and catalog validation both read these).
+    const llm = {
+      listProviders: () => [{ id: 'new-ai', name: 'wudi360' }],
+      listConfigurableProviders: () => [{ provider: 'new-ai', displayName: 'wudi360', settingsNs: 'llm-pi-ai' }],
+      resolveModelInfo: async () => ({ inputModalities: ['text'] }),
+    }
+    const catalogApp = {
+      slices: { agent: { currentSelection: () => ({ provider: 'new-ai', model: 'gpt-6.2-sol' }) } },
+      runtimeCtx: { get: (name: string) => (name === 'llm' ? llm : undefined) },
+      svc: (name: string) => (name === 'llm' ? llm : name === 'settings' ? { describe: () => [{ ns: 'llm-pi-ai', value: piSection }] } : undefined),
+    }
+    const rows = await modelCatalogRows(catalogApp as never)
+    assert.ok(rows !== null && rows.some((r) =>
+      r.value === `switch:${JSON.stringify({ provider: 'new-ai', model: 'gpt-6.2-sol' })}`),
+      '/models emits a switchable row for the pi-ai nested model')
+    assert.ok(rows !== null && rows.some((r) => r.value === 'prov:new-ai'), 'the live provider group row is kept')
+    assert.ok(rows !== null && !rows.some((r) => r.value.includes('other-1')),
+      'a sibling route’s models never appear under the live provider')
+
+    // /model's direct-switch validation composes exactly these two calls
+    // (providerSettingsNs → configuredModels): the nested id must be accepted.
+    const routeApp = {
+      svc: (name: string) => (name === 'llm'
+        ? { listConfigurableProviders: () => [{ provider: 'new-ai', displayName: 'wudi360', settingsNs: 'llm-pi-ai' }] }
+        : name === 'settings' ? { describe: () => [{ ns: 'llm-pi-ai', value: piSection }] } : undefined),
+    }
+    assert.equal(providerSettingsNs(routeApp as never, 'new-ai'), 'llm-pi-ai',
+      'the pi-ai route resolves its shared settings namespace')
+    assert.deepEqual(configuredModels(routeApp as never, 'new-ai', providerSettingsNs(routeApp as never, 'new-ai')),
+      ['gpt-6.2-sol'], '/model <provider>/<model> catalog validation sees the nested model')
+    log('models catalog: pi-ai nested providers + flat shapes ok')
   }
 
   // dsh 0.2.2 Agent.model migration: the TUI's ModelRef is a proxy over the

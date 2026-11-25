@@ -5,10 +5,6 @@ import { applyModelSelection } from '../core.js'
 import type { LlmService } from '../../kernel/types.js'
 import type { App } from '../../kernel/app.js'
 
-/** Model ids configured for one provider — read from the settings section
- *  (`llm-<provider>.models`, the same catalog the vision-model switch and
- *  /settings overview use). Best-effort: returns [] when the section is
- *  absent or the schema is unrecognized. */
 /** Settings namespace for one provider route. The route id and the settings
  *  section name are NOT derivable from each other — 0.1.5 ships provider
  *  `deepseek-official` with ns `llm-deepseek` — so resolve it from the host's
@@ -25,6 +21,48 @@ export const providerSettingsNs = (app: App, providerId: string): string | undef
   return undefined
 }
 
+/** Model ids out of one `models` list. Entries are either bare strings or
+ *  `{ id, ... }` profile objects — both spellings are accepted by the
+ *  adapters, and a bare string's `.id` is undefined (since 0.6.x that used to
+ *  stringify as "undefined" and had to be filtered out). */
+const modelIds = (list: unknown): string[] => {
+  if (!Array.isArray(list)) return []
+  return list
+    .map((m) => (typeof m === 'string' ? m : String((m as { id?: unknown } | undefined)?.id ?? '')))
+    .filter((x) => x !== '' && x !== 'undefined')
+}
+
+/** Model ids out of one settings section value. Three shapes are live, and the
+ *  newest one is why /models showed only an informational provider row:
+ *  a bare array, `{ models: [...] }` (llm-deepseek & co), and the pi-ai
+ *  adapter's `{ providers: { <route>: { models: [...] } } }` — there ONE
+ *  settings section holds EVERY route, so the route key has to match exactly;
+ *  a sibling route's catalog is not this provider's.
+ *
+ *  A route narrowed with `modelOverrides` only (no `models` list) is NOT a
+ *  catalog: overrides tweak entries of a shipped catalog without naming the
+ *  served set, so those dict keys must never be reported as the route's
+ *  models. Doing so made /models list a subset and /model reject every
+ *  installed model that was not overridden. Anything unrecognized yields []
+ *  (never a throw): the catalog read is best-effort and an empty list just
+ *  keeps the informational row. */
+const sectionModelIds = (value: unknown, providerId: string): string[] => {
+  if (Array.isArray(value)) return modelIds(value)
+  if (value === null || typeof value !== 'object') return []
+  const top = modelIds((value as { models?: unknown }).models)
+  if (top.length > 0) return top
+  const providers = (value as { providers?: unknown }).providers
+  if (providers === null || typeof providers !== 'object' || Array.isArray(providers)) return []
+  const profile: unknown = (providers as Record<string, unknown>)[providerId]
+  if (profile === null || typeof profile !== 'object') return []
+  return modelIds((profile as { models?: unknown }).models)
+}
+
+/** Model ids configured for one provider — read from its settings section (the
+ *  same catalog the vision-model switch, /model's validation and the /settings
+ *  overview use). The section is resolved through {@link providerSettingsNs}
+ *  (or the `llm-<provider>` fallback). Best-effort: returns [] when the section
+ *  is absent or the schema is unrecognized; never throws. */
 export const configuredModels = (app: App, providerId: string, settingsNs?: string): string[] => {
   const settings = app.svc('settings')
   if (typeof settings?.describe !== 'function') return []
@@ -33,22 +71,33 @@ export const configuredModels = (app: App, providerId: string, settingsNs?: stri
   try {
     for (const d of settings.describe()) {
       if (d.ns === undefined || !wanted.has(d.ns)) continue
-      const extract = (v: unknown): string[] => {
-        if (Array.isArray(v)) {
-          return v.map((m) => String((m as { id?: unknown } | undefined)?.id ?? (m as unknown) ?? ''))
-            .filter((x) => x !== '' && x !== 'undefined')
-        }
-        const arr = (v as { models?: Array<{ id?: unknown } | string> } | undefined)?.models
-        if (Array.isArray(arr)) {
-          return arr.map((m) => String(typeof m === 'string' ? m : m?.id ?? '')).filter((x) => x !== '')
-        }
-        return []
-      }
-      const ids = extract(d.value)
+      const ids = sectionModelIds(d.value, providerId)
       if (ids.length > 0) return ids
     }
   } catch { /* catalog read is best-effort */ }
   return []
+}
+
+/** One switchable model row (`switch:{provider,model}`). The capability marker
+ *  shows what the HOST believes about image input: "my config says it supports
+ *  images but the runtime disagrees" is otherwise unfalsifiable from the TUI —
+ *  the switch silently falls through to a text model and the user only sees the
+ *  adapter's refusal. Split out of the catalog loop so that loop stays at the
+ *  repository's nesting limit (standards: maxDepth). */
+const modelRow = async (
+  app: App,
+  providerId: string,
+  model: string,
+  selected: { provider: string; model: string },
+): Promise<{ label: string; value: string }> => {
+  const isCur = selected.provider === providerId && selected.model === model
+  const info = await app.svc('llm')?.resolveModelInfo(providerId, model).catch(() => undefined)
+  const mods = (info as { inputModalities?: readonly string[] } | undefined)?.inputModalities
+  const cap = mods === undefined ? ' ?' : mods.includes('image') ? ' 🖼' : ''
+  return {
+    label: `    ${isCur ? '▸ ' : ' '}${model}${isCur ? '（当前）' : ''}${cap}`,
+    value: `switch:${JSON.stringify({ provider: providerId, model })}`,
+  }
 }
 
 /** Shared catalog rows for the /models directory AND the /model picker:
@@ -75,18 +124,7 @@ export const modelCatalogRows = async (app: App): Promise<Array<{ label: string;
     if (models.length > 0) {
       rows.push({ label: `● ${id} · ${String(p.name ?? '')}`, value: `prov:${id}` })
       for (const m of models) {
-        const isCur = sel.provider === id && sel.model === m
-        // Show what the HOST believes about image input. "My config says it
-        // supports images but the runtime disagrees" is otherwise unfalsifiable
-        // from the TUI: the switch silently falls through to a text model and the
-        // user only sees the adapter's refusal.
-        const info = await app.svc('llm')?.resolveModelInfo(id, m).catch(() => undefined)
-        const mods = (info as { inputModalities?: readonly string[] } | undefined)?.inputModalities
-        const cap = mods === undefined ? ' ?' : mods.includes('image') ? ' 🖼' : ''
-        rows.push({
-          label: `    ${isCur ? '▸ ' : ' '}${m}${isCur ? '（当前）' : ''}${cap}`,
-          value: `switch:${JSON.stringify({ provider: id, model: m })}`,
-        })
+        rows.push(await modelRow(app, id, m, sel))
       }
     } else {
       rows.push({ label: tf('● {0} · {1}（用 /model {2}/<模型名> 切换）', [id, String(p.name ?? ''), id]), value: `prov:${id}` })
