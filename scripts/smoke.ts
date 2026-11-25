@@ -58,12 +58,13 @@ import { listSubagentChildren } from '../lib/sessions/subagent-list.js'
 import { childRows, singleLineLabel, subagentsCommand } from '../lib/subagents/commands/subagents.js'
 import { installSubagents } from '../lib/subagents/index.js'
 import { wireHostEvents } from '../lib/kernel/host-events.js'
-import { modelRefFor } from '../lib/sessions/services.js'
+import { dispatchNvimNotification } from '../lib/kernel/rpc.js'
+import { disposeLiveSession, modelRefFor } from '../lib/sessions/services.js'
 import { serializeSessionLog } from '../lib/kernel/session-log.js'
 import { installChangesCommand } from '../lib/commands/commands/changes.js'
 import { installDiffCommand } from '../lib/commands/commands/diff.js'
 import { officialRows, runOfficialCommand } from '../lib/commands/commands/official-commands.js'
-import { failureMark, quotaAdvice } from '../lib/feed/feed.js'
+import { failureMark, isInvalidBufferError, quotaAdvice } from '../lib/feed/feed.js'
 import { judgeDump, frameTurn } from './e2e-judge.ts'
 import { estimateByRules } from '../lib/kernel/difficulty.js'
 import { latestTodos, todoGuardReminder, MAX_NUDGES_PER_TURN, installTodoGuard } from '../lib/kernel/todo-guard.js'
@@ -523,6 +524,150 @@ try {
   assert.ok(linesA3.some((l: string) => l.startsWith('◈ workflow 审计')), 'workflow run row in transcript')
   assert.ok(linesA3.includes('  ◇ #1 audit-a · 扫描') && linesA3.includes('  ◇ #1 · completed'), 'workflow member rows')
   assert.ok(linesA3.includes('  · dsh 官网 · https://example.com · DeepSeek Harness'), 'structured tool result itemized')
+
+  // 4b-2. FeedRenderer lifecycle (AC-001/AC-003, TC-001/TC-002/TC-004/TC-005/
+  // TC-006/TC-008): close_chat / close_subagent_* delete the buffer a feed
+  // renders into. dispose() must make it inert; an EXTERNAL wipe heals by
+  // re-binding the current buffer from idsProvider, or retires the feed
+  // silently when there is no buffer left. A genuine RPC failure still throws.
+  {
+    assert.equal(isInvalidBufferError(new Error('nvim_buf_set_lines: Invalid buffer id: 30')), true,
+      'the reported dead-buffer RPC error is recognized')
+    assert.equal(isInvalidBufferError(new Error('nvim_buf_set_lines: boom')), false,
+      'ordinary RPC failures are NOT classified as a dead buffer (no blanket swallow)')
+    assert.equal(isInvalidBufferError('Invalid buffer id: 30'), false,
+      'only Error instances are classified')
+
+    // TC-001 / TC-008: dispose() clears queued timers and makes every entry
+    // point a no-op — nothing is written and nothing throws.
+    const disposeChat = await lua('return require("dsh_tui").ensure_chat(...)', ['session-dispose'])
+    let disposeProviderCalls = 0
+    const disposeFeed = new FeedRenderer(nvim, disposeChat.chatBuf, disposeChat.chatWin, {
+      idsProvider: async () => { disposeProviderCalls++; return { chatBuf: disposeChat.chatBuf, chatWin: disposeChat.chatWin } },
+    })
+    disposeFeed.appendNotice('before dispose')
+    await new Promise((r) => setTimeout(r, 120))
+    const beforeDispose = await nvim.request('nvim_buf_get_lines', [disposeChat.chatBuf, 0, -1, false])
+    assert.ok(beforeDispose.includes('· before dispose'), 'fixture: the feed renders before dispose')
+    // A timer queued BEFORE dispose must never run its flush (TC-008).
+    disposeFeed.appendNotice('queued before dispose')
+    assert.notEqual(disposeFeed.timer, null, 'fixture: a flush timer is queued')
+    disposeFeed.dispose()
+    assert.equal(disposeFeed.timer, null, 'dispose() clears the queued flush timer')
+    const providerCallsAtDispose = disposeProviderCalls
+    await new Promise((r) => setTimeout(r, 150))
+    assert.deepEqual(await nvim.request('nvim_buf_get_lines', [disposeChat.chatBuf, 0, -1, false]), beforeDispose,
+      'a disposed feed writes nothing (the queued timer never flushes)')
+    disposeFeed.applyEvent({ type: 'user/message', data: { content: [{ type: 'text', text: 'ignored' }] } })
+    disposeFeed.schedule()
+    await disposeFeed.flush() // resolves: no RPC, no throw
+    await new Promise((r) => setTimeout(r, 80))
+    assert.deepEqual(await nvim.request('nvim_buf_get_lines', [disposeChat.chatBuf, 0, -1, false]), beforeDispose,
+      'applyEvent/schedule/flush after dispose are safe no-ops')
+    assert.equal(disposeProviderCalls, providerCallsAtDispose, 'a disposed feed never consults its idsProvider')
+    log(`feed lifecycle dispose: timer=${String(disposeFeed.timer)} disposed=${disposeFeed.disposed} providerCalls=${disposeProviderCalls}`)
+    await nvim.request('nvim_buf_delete', [disposeChat.chatBuf, { force: true }])
+
+    // TC-004: the buffer is wiped EXTERNALLY while the feed is live; the
+    // idsProvider hands back a replacement buffer → rebind + full repaint.
+    const rebindChat = await lua('return require("dsh_tui").ensure_chat(...)', ['session-rebind'])
+    let rebindTarget: number = rebindChat.chatBuf
+    const rebindFeed = new FeedRenderer(nvim, rebindChat.chatBuf, rebindChat.chatWin, {
+      idsProvider: async () => ({ chatBuf: rebindTarget, chatWin: rebindChat.chatWin }),
+    })
+    rebindFeed.appendNotice('before wipe')
+    await rebindFeed.flush()
+    const rebindBefore = await nvim.request('nvim_buf_get_lines', [rebindChat.chatBuf, 0, -1, false])
+    assert.ok(rebindBefore.includes('· before wipe'), 'fixture: rebind feed rendered')
+    await nvim.request('nvim_buf_delete', [rebindChat.chatBuf, { force: true }])
+    rebindTarget = await lua(`local b = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(b, 0, -1, false, { '' })
+      return b`, []) as number
+    const logged: unknown[][] = []
+    const origConsoleError = console.error
+    console.error = (...a: unknown[]) => { logged.push(a) }
+    try {
+      rebindFeed.appendNotice('after wipe')
+      await new Promise((r) => setTimeout(r, 250))
+    } finally {
+      console.error = origConsoleError
+    }
+    assert.equal(rebindFeed.bufId, rebindTarget, 'feed re-bound to the replacement buffer')
+    assert.equal(rebindFeed.disposed, false, 'a rebound feed stays live')
+    const reboundLines = await nvim.request('nvim_buf_get_lines', [rebindTarget, 0, -1, false])
+    assert.ok(reboundLines.includes('· before wipe') && reboundLines.includes('· after wipe'),
+      'the rebound feed repainted the full transcript into the new buffer')
+    assert.deepEqual(logged, [], 'the invalid-buffer recovery logs nothing')
+    log(`feed lifecycle rebind: ${rebindChat.chatBuf} → ${rebindTarget} lines=${JSON.stringify(reboundLines)}`)
+    rebindFeed.dispose()
+    await nvim.request('nvim_buf_delete', [rebindTarget, { force: true }])
+
+    // TC-005: wiped with NO replacement buffer (window truly closed) → retire
+    // silently: no throw, no "render flush failed" log.
+    const goneChat = await lua('return require("dsh_tui").ensure_chat(...)', ['session-gone'])
+    const goneFeed = new FeedRenderer(nvim, goneChat.chatBuf, goneChat.chatWin, {
+      idsProvider: async () => undefined,
+    })
+    goneFeed.appendNotice('first')
+    await new Promise((r) => setTimeout(r, 120))
+    await nvim.request('nvim_buf_delete', [goneChat.chatBuf, { force: true }])
+    const goneLogged: unknown[][] = []
+    console.error = (...a: unknown[]) => { goneLogged.push(a) }
+    try {
+      goneFeed.appendNotice('after wipe')
+      await new Promise((r) => setTimeout(r, 200))
+    } finally {
+      console.error = origConsoleError
+    }
+    assert.equal(goneFeed.disposed, true, 'with no replacement buffer the feed retires itself')
+    assert.deepEqual(goneLogged, [], 'no "render flush failed" is logged for a closed buffer')
+    await goneFeed.flush() // still safe after retirement
+    log(`feed lifecycle retire: disposed=${goneFeed.disposed} logs=${goneLogged.length}`)
+
+    // TC-006: a NON-buffer RPC failure is a real render bug — it must still
+    // throw (the dead-buffer recovery must not swallow it).
+    const boom = new Error('nvim_buf_set_lines: boom (not a wiped buffer)')
+    const throwingNvim = { request: async () => { throw boom }, lua: async () => { throw boom } }
+    const errorFeed = new FeedRenderer(throwingNvim as never, 1, 1, {})
+    errorFeed.appendNotice('x')
+    await assert.rejects(() => errorFeed.flush(), /not a wiped buffer/, 'non-buffer RPC failures still throw')
+    assert.equal(errorFeed.disposed, false, 'a real render failure does not dispose the feed')
+    errorFeed.dispose()
+    log('feed lifecycle: non-buffer RPC failure still throws (not swallowed)')
+
+    // TC-002: disposeLiveSession retires the feed BEFORE close_chat deletes
+    // the chat buffer (the online "Invalid buffer id: 30" path).
+    const order: string[] = []
+    const bgRec = {
+      handle: { dispose: async () => { order.push('handle.dispose') } },
+      feed: { dispose: () => { order.push('feed.dispose') } },
+    }
+    const bgLive = new Map<string, unknown>([['bg-session', bgRec]])
+    const dismissFake = {
+      slices: {
+        sessions: {
+          activeId: 'active-session',
+          live: bgLive,
+          refreshList: () => { order.push('refreshList') },
+        },
+      },
+      luaCall: async (code: string) => {
+        order.push(String(code).includes('close_chat') ? 'lua.close_chat' : 'lua.other')
+        return null
+      },
+      exitDiag: () => {},
+    }
+    await disposeLiveSession(dismissFake as never, 'bg-session')
+    const feedDisposeAt = order.indexOf('feed.dispose')
+    const closeChatAt = order.indexOf('lua.close_chat')
+    assert.ok(feedDisposeAt >= 0, 'disposeLiveSession disposes the session feed')
+    assert.ok(closeChatAt > feedDisposeAt, 'feed.dispose() runs BEFORE close_chat wipes the buffer')
+    assert.equal(bgLive.has('bg-session'), false, 'the live record is removed')
+    const orderBeforeActive = order.length
+    await disposeLiveSession(dismissFake as never, 'active-session')
+    assert.equal(order.length, orderBeforeActive, 'the active session is never disposed (unchanged behavior)')
+    log(`disposeLiveSession order: ${order.join(' → ')}`)
+  }
 
   // 4c. i18n: en dictionary switches user-facing strings; unknown keys fall
   // back to the zh literal.
@@ -3435,7 +3580,9 @@ description:
       registerCommands: (specs: unknown[]) => specs,
       svc: () => undefined,
       notice: () => {},
-      luaCall: async () => {},
+      luaCall: async (_code: string, _args?: unknown[]): Promise<unknown> => null,
+      guard: (_label: string, fn: () => unknown) => () => fn(),
+      exitDiag: () => {},
     }
     installSubagents(fake as never)
     wireHostEvents(fake as never)
@@ -3445,6 +3592,53 @@ description:
     assert.equal(fake.slices.sessions.childParent.get('child-1')?.parentId, 'parent-B', 'durable child routing uses the payload parent')
     handlers.get('subagent/start')?.({ id: 'child-2', runId: 'run-2' })
     assert.equal(started.at(-1)?.feed, 'A', 'missing parentSessionId falls back to the child header / active session')
+
+    // AC-002 (TC-003): opening one subagent float closes the other — the OLD
+    // feed must be disposed BEFORE close_subagent_* wipes its buffer, or a
+    // queued flush throws `Invalid buffer id` (the online rc.2 report).
+    const ops: string[] = []
+    fake.luaCall = async (code: string) => { ops.push(String(code)); return null }
+    const agent = fake.slices.agent as unknown as {
+      subagentView: { childId: string; feed: { dispose: () => void } } | null
+      subagentChat: { childId: string; parentId: string; label: string; feed: { dispose: () => void } } | null
+      openSubagentView: (childId: string, label: string) => Promise<void>
+      openSubagentChat: (childId: string, label: string) => Promise<void>
+    }
+    const oldChatFeed = { dispose: () => { ops.push('chat-feed.dispose') } }
+    agent.subagentChat = { childId: 'c-old', parentId: 'parent-A', label: 'old', feed: oldChatFeed }
+    await agent.openSubagentView('c-new', 'new view')
+    const chatDisposeAt = ops.indexOf('chat-feed.dispose')
+    const chatCloseAt = ops.findIndex((o) => o.includes('close_subagent_chat'))
+    assert.ok(chatDisposeAt >= 0, 'opening the view retires the old subagent chat feed')
+    assert.ok(chatCloseAt > chatDisposeAt, 'the chat feed is disposed BEFORE close_subagent_chat wipes its buffer')
+    assert.equal(agent.subagentChat, null, 'the replaced chat routing state is dropped')
+    log(`subagent open-view close order: ${ops.join(' → ')}`)
+
+    ops.length = 0
+    const oldViewFeed = { dispose: () => { ops.push('view-feed.dispose') } }
+    agent.subagentView = { childId: 'c-old-view', feed: oldViewFeed }
+    await agent.openSubagentChat('c-new-chat', 'new chat')
+    const viewDisposeAt = ops.indexOf('view-feed.dispose')
+    const viewCloseAt = ops.findIndex((o) => o.includes('close_subagent_view'))
+    assert.ok(viewDisposeAt >= 0, 'opening the chat retires the old subagent view feed')
+    assert.ok(viewCloseAt > viewDisposeAt, 'the view feed is disposed BEFORE close_subagent_view wipes its buffer')
+    assert.equal(agent.subagentView, null, 'the replaced view routing state is dropped')
+    log(`subagent open-chat close order: ${ops.join(' → ')}`)
+
+    // Close notification (q/Esc): the Lua side already closed and WIPED the
+    // buffer, so the handler retires the feed instead of leaving queued
+    // flushes pointing at the dead id (TC-003).
+    ops.length = 0
+    agent.subagentView = { childId: 'c-closed', feed: oldViewFeed }
+    await dispatchNvimNotification(fake as never, 'dsh-subagent-view-closed', [])
+    assert.equal(ops.includes('view-feed.dispose'), true, 'view-closed notification disposes the feed')
+    assert.equal(agent.subagentView, null, 'view-closed notification drops the routing state')
+    ops.length = 0
+    agent.subagentChat = { childId: 'c-closed-chat', parentId: 'parent-A', label: 'l', feed: oldChatFeed }
+    await dispatchNvimNotification(fake as never, 'dsh-subagent-chat-closed', [])
+    assert.equal(ops.includes('chat-feed.dispose'), true, 'chat-closed notification disposes the feed')
+    assert.equal(agent.subagentChat, null, 'chat-closed notification drops the routing state')
+    log(`subagent view/chat close order: ${ops.join(' → ')}`)
   }
 
   // rc.2 worktree surface: new/list/restore/diff through `worktrees` and the

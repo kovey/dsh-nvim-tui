@@ -26,6 +26,13 @@
  */
 import { NeovimClient } from 'neovim';
 import type { ChatMessage, SessionEvent } from '../kernel/types.js';
+/** The one RPC failure that means "the buffer this feed writes into is gone"
+ *  (close_chat / close_subagent_* deleted it, or an external :bwipeout).
+ *  nvim reports `Invalid buffer id: N` (the RPC layer may prefix the method:
+ *  `nvim_buf_set_lines: Invalid buffer id: 30`). ONLY this class of failure
+ *  is healed/disposed — every other RPC error is a real render bug and must
+ *  keep propagating to the caller/log. */
+export declare const isInvalidBufferError: (err: unknown) => boolean;
 /** Inline highlight span (byte offsets into the rendered line). */
 export interface Span {
     s: number;
@@ -226,7 +233,21 @@ export declare class FeedRenderer {
     whaleTicker: ReturnType<typeof setInterval> | null;
     ticker: ReturnType<typeof setTimeout> | null;
     eventTime: number;
+    /** Terminal state: the chat/subagent buffer this feed renders into is
+     *  being (or has been) deleted. `dispose()` is called BEFORE the Lua side
+     *  wipes it — otherwise a throttle timer/ticker that fires after the wipe
+     *  throws `nvim_buf_set_lines: Invalid buffer id` (the close_chat /
+     *  close_subagent_* regression). A disposed feed is inert: schedule/flush/
+     *  applyEvent/all timers are no-ops. */
+    disposed: boolean;
     constructor(nvim: NeovimClient, bufId: number, winId: number, { flushDelayMs, idsProvider, activeChecker, reasoningBuf, reasoningView, inlineReasoning, whale, stepsMode, welcome, }?: FeedOptions);
+    /** Stop every timer and make this renderer inert. MUST run BEFORE the
+     *  underlying buffer is deleted (close_chat / close_subagent_view /
+     *  close_subagent_chat): a pending 40ms throttle flush or the 500ms
+     *  thinking ticker used to fire after the wipe and throw
+     *  `nvim_buf_set_lines: Invalid buffer id: N` (render flush failed).
+     *  Idempotent and safe to call from any lifecycle path. */
+    dispose(): void;
     /** Clear the transcript (the /clear command). */
     clear(): void;
     /** Notice line (runner lifecycle, status). Multi-line text (e.g. an error
@@ -387,7 +408,22 @@ export declare class FeedRenderer {
      *  overflow against. */
     private winSize;
     schedule(): void;
+    /** Re-adopt the CURRENT chat buffer after the one this feed was writing
+     *  into vanished (`:bwipeout`, a Lua layout rebuild). Ids come from the
+     *  SAME provider used at construction: sessions expose `chatBuf`/`chatWin`,
+     *  subagent floats expose `buf`/`win`. Returns false when there is no live
+     *  buffer to adopt — the caller then disposes the feed silently. */
+    private rebindBuffer;
     flush(): Promise<void>;
+    /** Classify a failed flush. True = handled (a vanished buffer was adopted,
+     *  or the feed retired silently because no buffer is left); false = a real
+     *  render failure the caller must (re)throw. Only `Invalid buffer id` is
+     *  treated as a vanished buffer — every other RPC error stays visible. */
+    private recoverFlushFailure;
+    /** Continuation of a finished flush: chain a dirty follow-up, or keep the
+     *  "thinking…" placeholder ticking (a running subagent keeps its activity
+     *  line ticking too). Never runs for a disposed feed. */
+    private afterFlush;
     /** Sync the activity panel (reasoning + tools) for this session.
      *  A wiped panel buffer (external :bwipe etc.) must never kill the chat
      *  flush — the panel is auxiliary, the transcript is not. */

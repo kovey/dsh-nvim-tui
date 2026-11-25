@@ -257,6 +257,9 @@ const doResumeSession = async (app: App, id: string): Promise<string | undefined
 /** Undo a half-mounted attach: drop the live record, dispose the handle and
  *  reclaim the nvim chat buffer. Best-effort — never throws. */
 const rollbackAttach = async (app: App, sid: string, handle: { dispose: () => Promise<unknown> }): Promise<void> => {
+  // Stop the half-mounted feed BEFORE its chat buffer is reclaimed: a queued
+  // throttle flush after the wipe throws `Invalid buffer id`.
+  try { app.slices.sessions.live.get(sid)?.feed.dispose() } catch {}
   try { app.slices.sessions.live.delete(sid) } catch {}
   try { await handle.dispose() } catch (err) { app.exitDiag('rollback-dispose-failed', (err as Error).message) }
   void app.luaCall('return require("dsh_tui").close_chat(...)', [sid]).catch(() => {})
@@ -280,6 +283,11 @@ export const disposeLiveSession = async (app: App, id: string): Promise<void> =>
       app.exitDiag('disposeLiveSession', (err as Error).message)
     }
     app.slices.sessions.live.delete(id)
+    // close_chat WIPES the session's chat buffer. Stop the feed's throttle
+    // timer / thinking ticker / whale ticker FIRST: a flush that fires after
+    // the wipe throws `nvim_buf_set_lines: Invalid buffer id` (the online
+    // rc.2 report) and spams "render flush failed".
+    rec.feed.dispose()
     // Reclaim the chat buffer on the nvim side (runner-side LRU close_chat).
     void app.luaCall('return require("dsh_tui").close_chat(...)', [id]).catch(() => {})
     app.slices.sessions.refreshList()

@@ -44,6 +44,17 @@ const QUOTE_RE = /^>\s?/
 /** UTF-8 byte length — nvim highlight columns are byte-indexed. */
 const utf8Len = (s: string): number => Buffer.byteLength(s, 'utf8')
 
+/** The one RPC failure that means "the buffer this feed writes into is gone"
+ *  (close_chat / close_subagent_* deleted it, or an external :bwipeout).
+ *  nvim reports `Invalid buffer id: N` (the RPC layer may prefix the method:
+ *  `nvim_buf_set_lines: Invalid buffer id: 30`). ONLY this class of failure
+ *  is healed/disposed — every other RPC error is a real render bug and must
+ *  keep propagating to the caller/log. */
+export const isInvalidBufferError = (err: unknown): boolean => {
+  if (!(err instanceof Error)) return false
+  return /Invalid buffer id/.test(err.message)
+}
+
 /** Inline highlight span (byte offsets into the rendered line). */
 export interface Span {
   s: number
@@ -254,6 +265,13 @@ export class FeedRenderer {
   whaleTicker: ReturnType<typeof setInterval> | null
   ticker: ReturnType<typeof setTimeout> | null
   eventTime: number
+  /** Terminal state: the chat/subagent buffer this feed renders into is
+   *  being (or has been) deleted. `dispose()` is called BEFORE the Lua side
+   *  wipes it — otherwise a throttle timer/ticker that fires after the wipe
+   *  throws `nvim_buf_set_lines: Invalid buffer id` (the close_chat /
+   *  close_subagent_* regression). A disposed feed is inert: schedule/flush/
+   *  applyEvent/all timers are no-ops. */
+  disposed = false
 
   constructor(nvim: NeovimClient, bufId: number, winId: number, {
     flushDelayMs = 40,
@@ -317,6 +335,28 @@ export class FeedRenderer {
     this.lastPanelAt = 0
     this.ticker = null
     this.eventTime = 0
+  }
+
+  /** Stop every timer and make this renderer inert. MUST run BEFORE the
+   *  underlying buffer is deleted (close_chat / close_subagent_view /
+   *  close_subagent_chat): a pending 40ms throttle flush or the 500ms
+   *  thinking ticker used to fire after the wipe and throw
+   *  `nvim_buf_set_lines: Invalid buffer id: N` (render flush failed).
+   *  Idempotent and safe to call from any lifecycle path. */
+  dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    if (this.timer !== null) {
+      clearTimeout(this.timer)
+      this.timer = null
+    }
+    if (this.ticker !== null) {
+      clearTimeout(this.ticker)
+      this.ticker = null
+    }
+    this.stopWhaleTicker()
+    // A queued dirty follow-up must not resurrect the feed after dispose.
+    this.dirty = false
   }
 
   /** Clear the transcript (the /clear command). */
@@ -754,6 +794,7 @@ export class FeedRenderer {
   }
 
   applyEvent(event: SessionEvent, { history = false }: { history?: boolean } = {}): void {
+    if (this.disposed) return
     this.eventTime = event.time ?? this.eventTime
     switch (event.type) {
       case 'user/message': {
@@ -1270,16 +1311,65 @@ export class FeedRenderer {
   }
 
   schedule(): void {
+    if (this.disposed) return
     if (this.timer !== null) return
     this.timer = setTimeout(() => {
       this.timer = null
+      if (this.disposed) return
       this.flush().catch((err: unknown) => {
+        // A disposed feed's RPC failure is expected (its buffer was closed):
+        // flush() already handled/disposed quietly — never log it as a
+        // render bug. A live feed still reports every non-invalid-buffer
+        // failure (see flush()'s catch).
+        if (this.disposed) return
         console.error('[dsh-nvim-tui] render flush failed:', err)
       })
     }, this.flushDelayMs)
   }
 
+  /** Re-adopt the CURRENT chat buffer after the one this feed was writing
+   *  into vanished (`:bwipeout`, a Lua layout rebuild). Ids come from the
+   *  SAME provider used at construction: sessions expose `chatBuf`/`chatWin`,
+   *  subagent floats expose `buf`/`win`. Returns false when there is no live
+   *  buffer to adopt — the caller then disposes the feed silently. */
+  private async rebindBuffer(): Promise<boolean> {
+    if (this.idsProvider === null) return false
+    let ids: { chatBuf?: unknown; buf?: unknown; chatWin?: unknown; win?: unknown } | null | undefined
+    try {
+      ids = (await this.idsProvider()) as typeof ids
+    } catch {
+      return false
+    }
+    if (ids === null || ids === undefined || typeof ids !== 'object') return false
+    const buf = [ids.chatBuf, ids.buf].find((cand): cand is number =>
+      typeof cand === 'number' && Number.isInteger(cand))
+    if (buf === undefined) return false
+    // A stale provider may hand back the DEAD id (the Lua registry keeps it
+    // until close_chat drops the entry): only a VALID buffer is adopted,
+    // otherwise this would loop on the same invalid id forever.
+    try {
+      const valid = await this.nvim.request('nvim_buf_is_valid', [buf]) as unknown
+      if (valid !== true) return false
+    } catch {
+      return false
+    }
+    this.bufId = buf
+    const win = [ids.chatWin, ids.win].find((cand): cand is number =>
+      typeof cand === 'number' && Number.isInteger(cand))
+    if (win !== undefined) this.winId = win
+    // The new buffer holds none of the rows `lastView` claims: repaint in
+    // full on the next flush.
+    this.lastView = []
+    this.lastActivityCount = 0
+    // Extmark ids belonged to the dead buffer — the next flush re-creates
+    // them (a delete in the new buffer fails harmlessly, so drop the map).
+    this.cardRanges.clear()
+    this.schedule()
+    return true
+  }
+
   async flush(): Promise<void> {
+    if (this.disposed) return
     if (this.flushing) {
       // A flush is in flight; remember that newer content arrived.
       this.dirty = true
@@ -1626,9 +1716,13 @@ export class FeedRenderer {
     this.lastView = lines
 
     this.flushing = (async () => {
+      // dispose() may land while this task awaited: never write into a feed
+      // whose buffer is being deleted.
+      if (this.disposed) return
       if (this.ns === null) {
         this.ns = await this.nvim.request('nvim_create_namespace', ['dsh-tui-feed']) as number
       }
+      if (this.disposed) return
       if (unchanged) {
         await this.flushReasoningBuffer()
         return
@@ -1726,27 +1820,53 @@ export class FeedRenderer {
     try {
       await this.flushing
     } catch (err) {
+      if (await this.recoverFlushFailure(err)) return
       // A failed RPC leaves the buffer stale while lastView claims the new
       // content — reset it so the next flush rewrites in full (self-healing).
       this.lastView = []
       throw err
     } finally {
       this.flushing = null
-      if (this.dirty) {
-        this.dirty = false
-        void this.flush()
-      } else if (this.reasoningTail !== '' || this.toolActivity !== null ||
-        this.subagents.size > 0 ||
-        (this.turnStartedAt !== null &&
-          this.base.length === this.turnMarkerBase &&
-          this.tail === '')) {
-        // The turn is silent — keep the "thinking…" placeholder ticking; a
-        // running subagent keeps its activity line ticking too.
-        this.ticker = setTimeout(() => {
-          this.ticker = null
-          this.schedule()
-        }, 500)
-      }
+      // dispose() already cleared every timer: never queue another one.
+      if (!this.disposed) this.afterFlush()
+    }
+  }
+
+  /** Classify a failed flush. True = handled (a vanished buffer was adopted,
+   *  or the feed retired silently because no buffer is left); false = a real
+   *  render failure the caller must (re)throw. Only `Invalid buffer id` is
+   *  treated as a vanished buffer — every other RPC error stays visible. */
+  private async recoverFlushFailure(err: unknown): Promise<boolean> {
+    // A disposed feed's buffer is already gone by design — stay silent.
+    if (this.disposed) return true
+    if (!isInvalidBufferError(err)) return false
+    // The buffer was deleted underneath a still-live session/view
+    // (`:bwipeout`, a Lua layout rebuild): adopt the CURRENT buffer from the
+    // idsProvider and repaint in full. With no live buffer left the window is
+    // truly closed — retire the feed instead of throwing/logging on every
+    // late event.
+    if (await this.rebindBuffer()) return true
+    this.dispose()
+    return true
+  }
+
+  /** Continuation of a finished flush: chain a dirty follow-up, or keep the
+   *  "thinking…" placeholder ticking (a running subagent keeps its activity
+   *  line ticking too). Never runs for a disposed feed. */
+  private afterFlush(): void {
+    if (this.dirty) {
+      this.dirty = false
+      void this.flush()
+    } else if (this.reasoningTail !== '' || this.toolActivity !== null ||
+      this.subagents.size > 0 ||
+      (this.turnStartedAt !== null &&
+        this.base.length === this.turnMarkerBase &&
+        this.tail === '')) {
+      // The turn is silent — keep the placeholder alive.
+      this.ticker = setTimeout(() => {
+        this.ticker = null
+        this.schedule()
+      }, 500)
     }
   }
 
@@ -1754,6 +1874,7 @@ export class FeedRenderer {
    *  A wiped panel buffer (external :bwipe etc.) must never kill the chat
    *  flush — the panel is auxiliary, the transcript is not. */
   async flushReasoningBuffer(): Promise<void> {
+    if (this.disposed) return
     if (this.reasoningBuf === null) return
     try {
       await this.flushReasoningBufferInner()
