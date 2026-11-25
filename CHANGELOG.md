@@ -3,6 +3,56 @@
 本文件记录 dsh-nvim-tui 各版本的改动与新增。版本号遵循语义化约定，
 每个版本标签的附注与本表对应条目一致。
 
+## [v0.6.10] — 2026-11-25
+
+### 发布要点
+
+本版是 **feed 生命周期修复发布**：`close_chat` 或子代理 view/chat 关闭（含两者互换）之后，
+旧 `FeedRenderer` 已经排队的 40ms 节流 flush 与 500ms "thinking…" 活动 ticker 仍会向**已被
+wipe 的 buffer** 写入，抛出 `nvim_buf_set_lines: Invalid buffer id: N` 并刷 "render flush
+failed"（线上会话报告的现象）。修复把"谁拥有 buffer 生命周期"从渲染器里移出去：新增
+`src/feed/lifecycle.ts` 承载 retire / 重绑定 / flush 失败分类，所有关闭路径都在删除 buffer
+**之前**调用 `feed.dispose()`；Lua 侧 q/Esc 在 wipe 前增加 `rpcrequest` 关闭握手（原有的
+`*-closed` 通知保留）。外部 `:bwipeout` 这类不受控删除由 flush 失败分类兜底：能拿到当前 buffer 就
+重绑定并全量重绘，拿不到就静默停用；**非 buffer 错误仍然照抛**，不做 blanket swallow。宿主锚点
+不变（dsh `0.2.2-rc.4`；Node ≥24.9），TUI 其余行为零改动。版本号已统一：`package.json`、
+`package-lock.json`、`src/kernel/app.ts` 的 `BUILD_VERSION` 均为 `0.6.10`。
+
+**本版不声称**：没有 rc.2 真机运行——真机验证基线仍只到 v0.6.8 的 rc.4 结构适配，本版只在
+仓库内 `npm run check` 与 `npm test`（build + smoke）层面验证；`standards` 检查本次是**自然
+0/0**（无新增/恶化违规、也无需接受存量基线），但扫描**达到 4000 文件上限**、结论是 WARN
+（覆盖面不完整）——**不**把它写成"全仓扫描完整"。
+
+### Fixed · 关闭 chat/子代理后旧 FeedRenderer 写已删 buffer（`Invalid buffer id`）
+
+- 根因：`FeedRenderer` 的两个异步写触发（40ms 节流 `timer`、500ms 活动 `ticker`）都是
+  fire-and-forget——`close_chat` / `close_subagent_view` / `close_subagent_chat` 删除 buffer 时，
+  **已经排队**的那次 flush 不会消失，于是 `nvim_buf_set_lines` 拿到已失效的 buffer id 并抛错
+  （"render flush failed" 刷屏，界面留下半写坏的内容）。
+- `src/feed/lifecycle.ts`（新增）：`disposeFeed` 在 buffer 被删**之前**停掉节流 timer / 活动
+  ticker / whale ticker，并把 `schedule`/`flush`/`applyEvent` 变成 no-op（幂等，任何关闭路径都
+  可以调）；`handleFlushFailure` 只把 `Invalid buffer id` 当生命周期事件——用构造时传入的
+  `idsProvider`（session 的 `chatBuf`/`chatWin`、子代理 float 的 `buf`/`win`）取**当前** buffer，
+  经 `nvim_buf_is_valid` 校验后重绑定、清掉 `lastView`/extmark 并全量重绘；没有可用 buffer 就
+  静默 retire（不抛、不写日志、不写坏界面）。**其它 RPC 错误原样 rethrow**：这里是失败分类，
+  不是把所有错误吞掉。
+- `src/sessions/services.ts`：`disposeLiveSession` 在 `close_chat` wipe 之前 dispose 该 session
+  的 feed（线上 "Invalid buffer id" 的那条路径）；`rollbackAttach` 回滚半挂载 session 时先停
+  feed 再 reclaim buffer。
+- `src/subagents/index.ts`：view/chat 互斥切换时先 `dispose()` 旧 feed 再 `close_subagent_*`；
+  `dsh-subagent-view-closed` / `dsh-subagent-chat-closed` 通知 handler 同样先 dispose（外部关闭
+  兜底）；顺手把两处重复的"读子代理事件日志"分支收敛成 `readSubagentEvents`（行为不变，
+  `try/finally` 关闭 read handle）。
+- `nvim/lua/dsh_tui/subagent_chat.lua` / `nvim/lua/dsh_tui/popups.lua`：q/Esc 在原有
+  `*-closed` 的 `rpcnotify` **之外**，wipe 前先发一次 `vim.rpcrequest(..., 'dsh-subagent-chat-close'
+  | 'dsh-subagent-view-close')` **同步握手**——runner 在 `handleDshExtRequest` 里先
+  `feed.dispose()` 再应答，Lua 收到应答后才 `wipe_previous()`。`*-closed` 通知仍是 `rpcnotify`
+  （用于丢弃路由状态），但它落在 wipe 之后，只靠它太晚：40ms 窗口内的 flush 仍可能抢跑。
+- `scripts/smoke.ts`：新增 FeedRenderer 生命周期用例（dispose 清掉排队 timer 且入口变 no-op、
+  外部 wipe 能重绑定并重绘、无 buffer 时静默停用、非 buffer 错误仍抛、`disposeLiveSession`
+  先 dispose 再 `close_chat`、float 互换的先后顺序），并让 smoke 扮演 runner 真实应答关闭
+  握手（无人应答的 `rpcrequest` 会冻结 nvim）。
+
 ## [v0.6.9] — 2026-11-25
 
 ### 发布要点

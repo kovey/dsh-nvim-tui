@@ -20,6 +20,7 @@
 
 | 你的现状 | 读这一节 |
 |---|---|
+| nvim-tui v0.6.9（宿主 0.2.2-rc.4） | [v0.6.9 → v0.6.10（feed 生命周期修复；宿主不变）](#v069--v0610feed-生命周期修复宿主不变) |
 | nvim-tui v0.6.8（宿主 0.2.2-rc.4） | [v0.6.8 → v0.6.9（pi-ai 嵌套 models 修复；宿主不变）](#v068--v069pi-ai-嵌套-models-修复宿主不变) |
 | nvim-tui v0.6.7（宿主 0.2.2-rc.1 / rc.2） | [v0.6.7 → v0.6.8（dsh 0.2.2-rc.4 适配；宿主锚点前移）](#v067--v068dsh-022-rc4-适配宿主锚点前移) |
 | nvim-tui v0.6.6（宿主 0.2.2-rc.1） | [v0.6.6 → v0.6.7（/subagents 多行 label 不弹 picker 修复；宿主不变）](#v066--v067subagents-多行-label-不弹-picker-修复宿主不变) |
@@ -50,6 +51,46 @@
 | nvim-tui ≤ v0.3.4（宿主 0.1.2-rc.1） | [v0.3.4 → v0.4.0（含宿主 0.1.2-rc.1 → 0.1.5-rc.1）](#v034--v040含宿主-012-rc1--015-rc1) |
 | nvim-tui v0.4.0 已升（宿主仍 0.1.2-rc.1） | 同上（宿主段落必读：peer 锚点已改为 `^0.1.5-rc.1`） |
 | 仅升级宿主 dsh（插件版本不变） | 见下方历史小节 |
+
+---
+
+## v0.6.9 → v0.6.10（feed 生命周期修复；宿主不变）
+
+> **结论先行**：宿主不变（dsh `0.2.2-rc.4`；Node ≥24.9）。本版只修 feed 的 buffer 生命周期：
+> `close_chat` / 子代理 view·chat 关闭之后，旧 `FeedRenderer` 已经排队的 40ms 节流 flush 与
+> 500ms 活动 ticker 仍会向已删除的 buffer 写入，抛 `nvim_buf_set_lines: Invalid buffer id: N`
+> 并刷 "render flush failed"。零破坏：不需要改配置、不需要重跑迁移，命令与键位不变。
+
+```bash
+dsh plugin --profile <name> add "kovey/dsh-nvim-tui#v0.6.10"
+dsh --profile <name>
+```
+
+### 修了什么
+
+- 新增 `src/feed/lifecycle.ts`：`disposeFeed` 在 buffer 被删**之前**停掉节流 timer / 活动
+  ticker / whale ticker，并让 `schedule`/`flush`/`applyEvent` 变成 no-op。调用点是所有关闭
+  路径：`disposeLiveSession`（`close_chat` wipe 前）、子代理 view/chat 关闭与 float 互换、
+  `dsh-subagent-*-closed` 通知、`rollbackAttach`。
+- Lua 侧 q/Esc 在 wipe buffer 前增加 `rpcrequest` **关闭握手**（`dsh-subagent-chat-close` /
+  `dsh-subagent-view-close`；原有的 `*-closed` `rpcnotify` 保留，用于通知侧丢弃路由状态）：
+  runner 先同步 dispose feed 再应答，Lua 收到应答后才 wipe buffer，40ms 窗口内不会再有 flush
+  抢跑。
+- 兜底（外部 `:bwipeout` 等不受控删除）：flush 失败时只有 `Invalid buffer id` 被当作生命周期
+  事件——从构造时传入的 `idsProvider` 取**当前** buffer（`nvim_buf_is_valid` 校验）重绑定并
+  全量重绘；没有可用 buffer 就静默停用。**其它 RPC 错误仍照常抛出**，不是把所有错误吞掉。
+
+### 需要留意
+
+- 如果你在插件之外 `:bwipeout` 了 chat / 子代理 buffer，但窗口仍由同一个 session/float 持有：
+  以 `idsProvider` 返回的**当前** buffer 为准，旧 extmark 会重建，所以内容会整段重绘一遍
+  （预期行为，不是重复输出）。
+- 依赖未变：本版不动 `package.json` 的依赖锚点，lock 只随根 `version` 变化；依赖审计口径仍是
+  runtime-only `npm audit --omit=dev`，本版未重新取数。
+- `standards` 检查本版是**自然 0/0**（无新增/恶化违规），但扫描**达到 4000 文件上限**、结论
+  是 WARN：覆盖面不完整，**不**代表全仓扫描完整。
+- 本版**不声称** rc.2 真机运行：真机验证基线仍是 v0.6.8 的 rc.4 结构适配，本版的验证只到
+  `npm run check` 与 `npm test`（build + smoke）。
 
 ---
 
